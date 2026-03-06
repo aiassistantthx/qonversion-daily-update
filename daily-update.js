@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const SheetsUpdater = require('./sheets-updater');
 
 const CONFIG = {
   spreadsheetId: '1XGhckU9SJfGXK94JFVBIpAuoCBoybBSKVnT0Q4mqKwM',
@@ -118,16 +119,31 @@ async function getSales(page) {
 }
 
 async function getTrialToPaidConversion(page) {
-  log('Получаю Trial-to-Paid Conversion...');
-  await page.goto('https://dash.qonversion.io/analytics/trials', {
+  log('Получаю Trial-to-Paid Conversion за последние 30 дней...');
+
+  // Формируем URL с диапазоном 30 дней
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - 30);
+
+  const fromTs = Math.floor(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()) / 1000);
+  const toTs = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
+
+  const url = `https://dash.qonversion.io/analytics/trials?from=${fromTs}&to=${toTs}&project=PcnB70vn&account=8htsgud1`;
+
+  await page.goto(url, {
     waitUntil: 'domcontentloaded',
     timeout: 60000
   });
   await page.waitForTimeout(3000);
 
   // Кликаем на Trial-to-Paid Conversion
-  await page.click('text=Trial-to-Paid', { timeout: 5000 });
-  await page.waitForTimeout(5000);
+  try {
+    await page.click('text=Trial-to-Paid', { timeout: 5000 });
+    await page.waitForTimeout(5000);
+  } catch (e) {
+    log('Не удалось кликнуть на Trial-to-Paid');
+  }
 
   await page.screenshot({
     path: path.join(__dirname, 'screenshots', 'trial-to-paid.png'),
@@ -529,110 +545,159 @@ function checkAnomalies(data) {
 
 // ============ GOOGLE SHEETS UPDATE ============
 
-async function saveDataForSheets(data) {
-  log('Сохранение данных для Google Sheets...');
+// Карта месяцев для когорт -> колонок
+const COHORT_COLUMNS = {
+  'Jun, 2023': 'B', 'Jul, 2023': 'C', 'Aug, 2023': 'D', 'Sep, 2023': 'E',
+  'Oct, 2023': 'F', 'Nov, 2023': 'G', 'Dec, 2023': 'H', 'Jan, 2024': 'I',
+  'Feb, 2024': 'J', 'Mar, 2024': 'K', 'Apr, 2024': 'L', 'May, 2024': 'M',
+  'Jun, 2024': 'N', 'Jul, 2024': 'O', 'Aug, 2024': 'P', 'Sep, 2024': 'Q',
+  'Oct, 2024': 'R', 'Nov, 2024': 'S', 'Dec, 2024': 'T', 'Jan, 2025': 'U',
+  'Feb, 2025': 'V', 'Mar, 2025': 'W', 'Apr, 2025': 'X', 'May, 2025': 'Y',
+  'Jun, 2025': 'Z', 'Jul, 2025': 'AA', 'Aug, 2025': 'AB', 'Sep, 2025': 'AC',
+  'Oct, 2025': 'AD', 'Nov, 2025': 'AE', 'Dec, 2025': 'AF', 'Jan, 2026': 'AG',
+  'Feb, 2026': 'AH', 'Mar, 2026': 'AI'
+};
+
+async function updateGoogleSheets(data) {
+  log('Обновление Google Sheets...');
 
   const today = new Date();
   const dateStr = today.toISOString().split('T')[0];
-  const outputFile = path.join(__dirname, 'data', `update-${dateStr}.json`);
 
+  // Сохраняем данные локально
   fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
+  const outputFile = path.join(__dirname, 'data', `update-${dateStr}.json`);
   fs.writeFileSync(outputFile, JSON.stringify(data, null, 2));
 
-  log(`Данные сохранены в ${outputFile}`);
+  // Инициализируем SheetsUpdater
+  const updater = new SheetsUpdater(CONFIG.spreadsheetId);
+  await updater.init();
 
   // Строим карту дат -> колонок
   const dateMap = buildDateColumnMap();
 
-  // Находим колонку для сегодня
-  const todayColumn = findColumnForDate(dateMap, today);
-  log(`Колонка для ${formatDateDDMM(today)}: ${todayColumn}`);
-
-  // Формируем команды обновления для Google Sheets
   const updates = [];
 
-  // Данные для сегодняшнего дня
-  if (todayColumn) {
-    // Apple Ads Cost (row 7) - берём сегодняшнее значение
-    const todayDateKey = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    if (data.appleAds && data.appleAds.byDate) {
-      const todaySpend = data.appleAds.byDate[todayDateKey];
-      if (todaySpend !== undefined) {
-        updates.push({
-          range: `${CONFIG.sheet}!${todayColumn}${CONFIG.rows.appleAdsCost}`,
-          value: Math.round(todaySpend)
-        });
-      }
+  // ========== ДНЕВНЫЕ ДАННЫЕ ==========
+  // Обновляем данные за последние 8 дней
+  for (let i = 0; i <= 7; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const column = findColumnForDate(dateMap, date);
+    const dateKey = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    if (!column) continue;
+
+    // Apple Ads Cost (row 7)
+    if (data.appleAds && data.appleAds.byDate && data.appleAds.byDate[dateKey] !== undefined) {
+      updates.push({
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.appleAdsCost}`,
+        value: Math.round(data.appleAds.byDate[dateKey])
+      });
     }
 
     // Sales (row 19)
-    if (data.sales && data.sales[todayDateKey]) {
-      const salesValue = data.sales[todayDateKey].replace(/[$,]/g, '');
+    if (data.sales && data.sales[dateKey]) {
+      const val = parseFloat(data.sales[dateKey].replace(/[$,]/g, '')) || 0;
       updates.push({
-        range: `${CONFIG.sheet}!${todayColumn}${CONFIG.rows.sales}`,
-        value: salesValue
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.sales}`,
+        value: Math.round(val)
       });
     }
 
     // New Trials (row 55)
-    if (data.newTrials && data.newTrials[todayDateKey]) {
-      const trialsValue = data.newTrials[todayDateKey].replace(/,/g, '');
+    if (data.newTrials && data.newTrials[dateKey]) {
+      const val = parseInt(data.newTrials[dateKey].replace(/,/g, '')) || 0;
       updates.push({
-        range: `${CONFIG.sheet}!${todayColumn}${CONFIG.rows.newTrials}`,
-        value: trialsValue
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.newTrials}`,
+        value: val
       });
     }
 
     // New Yearly Subscribers (row 58)
-    if (data.yearlySubscribers && data.yearlySubscribers[todayDateKey]) {
-      const yearlySubs = data.yearlySubscribers[todayDateKey].replace(/,/g, '');
+    if (data.yearlySubscribers && data.yearlySubscribers[dateKey]) {
+      const val = parseInt(data.yearlySubscribers[dateKey].replace(/,/g, '')) || 0;
       updates.push({
-        range: `${CONFIG.sheet}!${todayColumn}${CONFIG.rows.newYearlySubscribers}`,
-        value: yearlySubs
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.newYearlySubscribers}`,
+        value: val
       });
     }
   }
 
-  // Также добавляем данные за предыдущие дни (для полноты)
-  for (let i = 1; i <= 7; i++) {
-    const prevDate = new Date(today);
-    prevDate.setDate(prevDate.getDate() - i);
-    const prevColumn = findColumnForDate(dateMap, prevDate);
-    const prevDateKey = prevDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // ========== TRIAL-TO-PAID (за последние 30 дней, исключая 0%) ==========
+  if (data.trialToPaid) {
+    for (const [dateKey, value] of Object.entries(data.trialToPaid)) {
+      if (!dateKey.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/)) continue;
+      if (value === '0%') continue; // Пропускаем нефинальные данные
 
-    if (prevColumn && data.appleAds && data.appleAds.byDate) {
-      const spend = data.appleAds.byDate[prevDateKey];
-      if (spend !== undefined) {
+      // Парсим дату
+      const parts = dateKey.split(' ');
+      const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
+      const day = parseInt(parts[1]);
+      const year = month >= new Date().getMonth() ? 2025 : 2026; // Простая логика года
+      const date = new Date(year, month, day);
+
+      const column = findColumnForDate(dateMap, date);
+      if (column) {
+        const pct = parseFloat(value.replace('%', '')) / 100;
         updates.push({
-          range: `${CONFIG.sheet}!${prevColumn}${CONFIG.rows.appleAdsCost}`,
-          value: Math.round(spend)
+          range: `${CONFIG.sheet}!${column}${CONFIG.rows.trialToPaidConversion}`,
+          value: pct
         });
       }
     }
   }
 
-  const updateCommands = {
-    spreadsheetId: CONFIG.spreadsheetId,
-    sheet: CONFIG.sheet,
-    dateMap: dateMap,
-    todayColumn: todayColumn,
-    updates: updates
-  };
+  // ========== КОГОРТЫ (месячные данные) ==========
+  if (data.cohorts && Array.isArray(data.cohorts)) {
+    for (const cohort of data.cohorts) {
+      if (!cohort.cohort || cohort.cohort === 'Total') continue;
 
-  const commandsFile = path.join(__dirname, 'data', `sheets-commands-${dateStr}.json`);
-  fs.writeFileSync(commandsFile, JSON.stringify(updateCommands, null, 2));
-  log(`Команды обновления сохранены в ${commandsFile}`);
+      const column = COHORT_COLUMNS[cohort.cohort];
+      if (!column) continue;
 
-  // Выводим команды в консоль для удобства
+      // Берём Sum (предпоследний столбец) из data
+      const sumValue = cohort.data ? cohort.data[cohort.data.length - 2] : null;
+      if (sumValue) {
+        const val = parseFloat(sumValue.replace(/[$,]/g, '')) || 0;
+        updates.push({
+          range: `${CONFIG.sheet}!${column}${CONFIG.rows.cohortRevenue}`,
+          value: Math.round(val)
+        });
+      }
+    }
+  }
+
+  // ========== ЗАПИСЫВАЕМ В GOOGLE SHEETS ==========
+  if (updates.length > 0) {
+    log(`Записываю ${updates.length} ячеек в Google Sheets...`);
+
+    // Batch update (chunks of 50)
+    const chunkSize = 50;
+    for (let i = 0; i < updates.length; i += chunkSize) {
+      const chunk = updates.slice(i, i + chunkSize);
+      await updater.batchUpdate(chunk);
+      log(`  Обновлено ${Math.min(i + chunkSize, updates.length)}/${updates.length}`);
+    }
+
+    log('Google Sheets обновлён успешно!');
+  } else {
+    log('Нет данных для обновления');
+  }
+
+  // Выводим в консоль
   console.log('\n--- GOOGLE SHEETS UPDATES ---');
   console.log(`Spreadsheet: ${CONFIG.spreadsheetId}`);
-  console.log(`Today column: ${todayColumn} (${formatDateDDMM(today)})`);
-  updates.forEach(u => {
+  console.log(`Total updates: ${updates.length}`);
+  updates.slice(0, 10).forEach(u => {
     console.log(`  ${u.range} = ${u.value}`);
   });
+  if (updates.length > 10) {
+    console.log(`  ... и ещё ${updates.length - 10} ячеек`);
+  }
   console.log('-----------------------------\n');
 
-  return outputFile;
+  return updates.length;
 }
 
 // ============ MAIN ============
@@ -668,8 +733,8 @@ async function main() {
     fs.writeFileSync(reportFile, report);
     log(`Отчёт сохранён: ${reportFile}`);
 
-    // Сохраняем данные
-    await saveDataForSheets(collectedData);
+    // Обновляем Google Sheets
+    await updateGoogleSheets(collectedData);
 
     // Выводим отчёт
     console.log('\n' + '='.repeat(50));
