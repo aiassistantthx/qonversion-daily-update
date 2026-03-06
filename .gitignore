@@ -1,0 +1,23 @@
+# Auth & credentials
+auth.json
+
+# Logs
+*.log
+launchd.log
+launchd-error.log
+cron.log
+
+# Screenshots (large binary files)
+screenshots/
+
+# Node modules
+node_modules/
+
+# Data files (contain sensitive info)
+data/
+
+# OS files
+.DS_Store
+
+# Test screenshots
+*.png
