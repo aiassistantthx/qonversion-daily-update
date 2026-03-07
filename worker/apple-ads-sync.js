@@ -240,229 +240,252 @@ async function getSearchTermReports(campaignId, startDate, endDate) {
 // Save campaign data
 async function saveCampaigns(rows, campaigns) {
   const campaignMap = new Map(campaigns.map(c => [c.id, c]));
+  let count = 0;
 
   for (const row of rows) {
     const meta = row.metadata;
-    const metrics = row.granularity?.[0]?.insights || row.total || {};
-    const date = row.granularity?.[0]?.date || meta.date;
     const campaign = campaignMap.get(meta.campaignId);
+    const granularityData = row.granularity || [];
 
-    if (!date) continue;
+    // Each granularity entry is a day's worth of data
+    for (const dayData of granularityData) {
+      const date = dayData.date;
+      if (!date) continue;
 
-    await pool.query(`
-      INSERT INTO apple_ads_campaigns (
-        date, campaign_id, campaign_name, campaign_status,
-        daily_budget, total_budget,
-        spend, impressions, taps, installs,
-        new_downloads, redownloads, lat_on_installs, lat_off_installs,
-        ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-      ON CONFLICT (date, campaign_id) DO UPDATE SET
-        campaign_name = EXCLUDED.campaign_name,
-        campaign_status = EXCLUDED.campaign_status,
-        spend = EXCLUDED.spend,
-        impressions = EXCLUDED.impressions,
-        taps = EXCLUDED.taps,
-        installs = EXCLUDED.installs,
-        new_downloads = EXCLUDED.new_downloads,
-        redownloads = EXCLUDED.redownloads,
-        lat_on_installs = EXCLUDED.lat_on_installs,
-        lat_off_installs = EXCLUDED.lat_off_installs,
-        ttr = EXCLUDED.ttr,
-        conversion_rate = EXCLUDED.conversion_rate,
-        avg_cpa = EXCLUDED.avg_cpa,
-        avg_cpt = EXCLUDED.avg_cpt,
-        avg_cpm = EXCLUDED.avg_cpm,
-        synced_at = NOW()
-    `, [
-      date,
-      meta.campaignId,
-      meta.campaignName || campaign?.name,
-      meta.campaignStatus || campaign?.status,
-      campaign?.dailyBudgetAmount?.amount,
-      campaign?.budgetAmount?.amount,
-      parseFloat(metrics.localSpend?.amount || 0),
-      parseInt(metrics.impressions || 0),
-      parseInt(metrics.taps || 0),
-      parseInt(metrics.installs || 0),
-      parseInt(metrics.newDownloads || 0),
-      parseInt(metrics.redownloads || 0),
-      parseInt(metrics.latOnInstalls || 0),
-      parseInt(metrics.latOffInstalls || 0),
-      parseFloat(metrics.ttr || 0),
-      parseFloat(metrics.conversionRate || 0),
-      parseFloat(metrics.avgCPA?.amount || 0),
-      parseFloat(metrics.avgCPT?.amount || 0),
-      parseFloat(metrics.avgCPM?.amount || 0),
-    ]);
+      await pool.query(`
+        INSERT INTO apple_ads_campaigns (
+          date, campaign_id, campaign_name, campaign_status,
+          daily_budget, total_budget,
+          spend, impressions, taps, installs,
+          new_downloads, redownloads, lat_on_installs, lat_off_installs,
+          ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT (date, campaign_id) DO UPDATE SET
+          campaign_name = EXCLUDED.campaign_name,
+          campaign_status = EXCLUDED.campaign_status,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          taps = EXCLUDED.taps,
+          installs = EXCLUDED.installs,
+          new_downloads = EXCLUDED.new_downloads,
+          redownloads = EXCLUDED.redownloads,
+          lat_on_installs = EXCLUDED.lat_on_installs,
+          lat_off_installs = EXCLUDED.lat_off_installs,
+          ttr = EXCLUDED.ttr,
+          conversion_rate = EXCLUDED.conversion_rate,
+          avg_cpa = EXCLUDED.avg_cpa,
+          avg_cpt = EXCLUDED.avg_cpt,
+          avg_cpm = EXCLUDED.avg_cpm,
+          synced_at = NOW()
+      `, [
+        date,
+        meta.campaignId,
+        meta.campaignName || campaign?.name,
+        meta.campaignStatus || campaign?.status,
+        meta.dailyBudget?.amount || campaign?.dailyBudgetAmount?.amount,
+        meta.totalBudget?.amount || campaign?.budgetAmount?.amount,
+        parseFloat(dayData.localSpend?.amount || 0),
+        parseInt(dayData.impressions || 0),
+        parseInt(dayData.taps || 0),
+        parseInt(dayData.totalInstalls || 0),
+        parseInt(dayData.totalNewDownloads || 0),
+        parseInt(dayData.totalRedownloads || 0),
+        parseInt(dayData.latOnInstalls || 0),
+        parseInt(dayData.latOffInstalls || 0),
+        parseFloat(dayData.ttr || 0),
+        parseFloat(dayData.totalInstallRate || 0),
+        parseFloat(dayData.totalAvgCPI?.amount || 0),
+        parseFloat(dayData.avgCPT?.amount || 0),
+        parseFloat(dayData.avgCPM?.amount || 0),
+      ]);
+      count++;
+    }
   }
+  return count;
 }
 
 // Save ad group data
 async function saveAdGroups(rows) {
+  let count = 0;
   for (const row of rows) {
     const meta = row.metadata;
-    const metrics = row.granularity?.[0]?.insights || row.total || {};
-    const date = row.granularity?.[0]?.date || meta.date;
+    const granularityData = row.granularity || [];
 
-    if (!date) continue;
+    for (const dayData of granularityData) {
+      const date = dayData.date;
+      if (!date) continue;
 
-    await pool.query(`
-      INSERT INTO apple_ads_adgroups (
-        date, campaign_id, adgroup_id, adgroup_name, adgroup_status, default_bid,
-        spend, impressions, taps, installs,
-        new_downloads, redownloads, lat_on_installs, lat_off_installs,
-        ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-      ON CONFLICT (date, campaign_id, adgroup_id) DO UPDATE SET
-        adgroup_name = EXCLUDED.adgroup_name,
-        adgroup_status = EXCLUDED.adgroup_status,
-        spend = EXCLUDED.spend,
-        impressions = EXCLUDED.impressions,
-        taps = EXCLUDED.taps,
-        installs = EXCLUDED.installs,
-        new_downloads = EXCLUDED.new_downloads,
-        redownloads = EXCLUDED.redownloads,
-        lat_on_installs = EXCLUDED.lat_on_installs,
-        lat_off_installs = EXCLUDED.lat_off_installs,
-        ttr = EXCLUDED.ttr,
-        conversion_rate = EXCLUDED.conversion_rate,
-        avg_cpa = EXCLUDED.avg_cpa,
-        avg_cpt = EXCLUDED.avg_cpt,
-        avg_cpm = EXCLUDED.avg_cpm,
-        synced_at = NOW()
-    `, [
-      date,
-      meta.campaignId,
-      meta.adGroupId,
-      meta.adGroupName,
-      meta.adGroupStatus,
-      meta.defaultBidAmount?.amount,
-      parseFloat(metrics.localSpend?.amount || 0),
-      parseInt(metrics.impressions || 0),
-      parseInt(metrics.taps || 0),
-      parseInt(metrics.installs || 0),
-      parseInt(metrics.newDownloads || 0),
-      parseInt(metrics.redownloads || 0),
-      parseInt(metrics.latOnInstalls || 0),
-      parseInt(metrics.latOffInstalls || 0),
-      parseFloat(metrics.ttr || 0),
-      parseFloat(metrics.conversionRate || 0),
-      parseFloat(metrics.avgCPA?.amount || 0),
-      parseFloat(metrics.avgCPT?.amount || 0),
-      parseFloat(metrics.avgCPM?.amount || 0),
-    ]);
+      await pool.query(`
+        INSERT INTO apple_ads_adgroups (
+          date, campaign_id, adgroup_id, adgroup_name, adgroup_status, default_bid,
+          spend, impressions, taps, installs,
+          new_downloads, redownloads, lat_on_installs, lat_off_installs,
+          ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT (date, campaign_id, adgroup_id) DO UPDATE SET
+          adgroup_name = EXCLUDED.adgroup_name,
+          adgroup_status = EXCLUDED.adgroup_status,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          taps = EXCLUDED.taps,
+          installs = EXCLUDED.installs,
+          new_downloads = EXCLUDED.new_downloads,
+          redownloads = EXCLUDED.redownloads,
+          lat_on_installs = EXCLUDED.lat_on_installs,
+          lat_off_installs = EXCLUDED.lat_off_installs,
+          ttr = EXCLUDED.ttr,
+          conversion_rate = EXCLUDED.conversion_rate,
+          avg_cpa = EXCLUDED.avg_cpa,
+          avg_cpt = EXCLUDED.avg_cpt,
+          avg_cpm = EXCLUDED.avg_cpm,
+          synced_at = NOW()
+      `, [
+        date,
+        meta.campaignId,
+        meta.adGroupId,
+        meta.adGroupName,
+        meta.adGroupStatus,
+        meta.defaultBidAmount?.amount,
+        parseFloat(dayData.localSpend?.amount || 0),
+        parseInt(dayData.impressions || 0),
+        parseInt(dayData.taps || 0),
+        parseInt(dayData.totalInstalls || 0),
+        parseInt(dayData.totalNewDownloads || 0),
+        parseInt(dayData.totalRedownloads || 0),
+        parseInt(dayData.latOnInstalls || 0),
+        parseInt(dayData.latOffInstalls || 0),
+        parseFloat(dayData.ttr || 0),
+        parseFloat(dayData.totalInstallRate || 0),
+        parseFloat(dayData.totalAvgCPI?.amount || 0),
+        parseFloat(dayData.avgCPT?.amount || 0),
+        parseFloat(dayData.avgCPM?.amount || 0),
+      ]);
+      count++;
+    }
   }
+  return count;
 }
 
 // Save keyword data
 async function saveKeywords(rows) {
+  let count = 0;
   for (const row of rows) {
     const meta = row.metadata;
-    const metrics = row.granularity?.[0]?.insights || row.total || {};
-    const date = row.granularity?.[0]?.date || meta.date;
+    const granularityData = row.granularity || [];
 
-    if (!date) continue;
+    for (const dayData of granularityData) {
+      const date = dayData.date;
+      if (!date) continue;
 
-    await pool.query(`
-      INSERT INTO apple_ads_keywords (
-        date, campaign_id, adgroup_id, keyword_id, keyword_text, match_type, keyword_status, bid_amount,
-        spend, impressions, taps, installs,
-        new_downloads, redownloads, lat_on_installs, lat_off_installs,
-        ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-      ON CONFLICT (date, campaign_id, adgroup_id, keyword_id) DO UPDATE SET
-        keyword_text = EXCLUDED.keyword_text,
-        match_type = EXCLUDED.match_type,
-        keyword_status = EXCLUDED.keyword_status,
-        bid_amount = EXCLUDED.bid_amount,
-        spend = EXCLUDED.spend,
-        impressions = EXCLUDED.impressions,
-        taps = EXCLUDED.taps,
-        installs = EXCLUDED.installs,
-        new_downloads = EXCLUDED.new_downloads,
-        redownloads = EXCLUDED.redownloads,
-        lat_on_installs = EXCLUDED.lat_on_installs,
-        lat_off_installs = EXCLUDED.lat_off_installs,
-        ttr = EXCLUDED.ttr,
-        conversion_rate = EXCLUDED.conversion_rate,
-        avg_cpa = EXCLUDED.avg_cpa,
-        avg_cpt = EXCLUDED.avg_cpt,
-        avg_cpm = EXCLUDED.avg_cpm,
-        synced_at = NOW()
-    `, [
-      date,
-      meta.campaignId,
-      meta.adGroupId,
-      meta.keywordId,
-      meta.keyword,
-      meta.matchType,
-      meta.keywordStatus,
-      meta.bidAmount?.amount,
-      parseFloat(metrics.localSpend?.amount || 0),
-      parseInt(metrics.impressions || 0),
-      parseInt(metrics.taps || 0),
-      parseInt(metrics.installs || 0),
-      parseInt(metrics.newDownloads || 0),
-      parseInt(metrics.redownloads || 0),
-      parseInt(metrics.latOnInstalls || 0),
-      parseInt(metrics.latOffInstalls || 0),
-      parseFloat(metrics.ttr || 0),
-      parseFloat(metrics.conversionRate || 0),
-      parseFloat(metrics.avgCPA?.amount || 0),
-      parseFloat(metrics.avgCPT?.amount || 0),
-      parseFloat(metrics.avgCPM?.amount || 0),
-    ]);
+      await pool.query(`
+        INSERT INTO apple_ads_keywords (
+          date, campaign_id, adgroup_id, keyword_id, keyword_text, match_type, keyword_status, bid_amount,
+          spend, impressions, taps, installs,
+          new_downloads, redownloads, lat_on_installs, lat_off_installs,
+          ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        ON CONFLICT (date, campaign_id, adgroup_id, keyword_id) DO UPDATE SET
+          keyword_text = EXCLUDED.keyword_text,
+          match_type = EXCLUDED.match_type,
+          keyword_status = EXCLUDED.keyword_status,
+          bid_amount = EXCLUDED.bid_amount,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          taps = EXCLUDED.taps,
+          installs = EXCLUDED.installs,
+          new_downloads = EXCLUDED.new_downloads,
+          redownloads = EXCLUDED.redownloads,
+          lat_on_installs = EXCLUDED.lat_on_installs,
+          lat_off_installs = EXCLUDED.lat_off_installs,
+          ttr = EXCLUDED.ttr,
+          conversion_rate = EXCLUDED.conversion_rate,
+          avg_cpa = EXCLUDED.avg_cpa,
+          avg_cpt = EXCLUDED.avg_cpt,
+          avg_cpm = EXCLUDED.avg_cpm,
+          synced_at = NOW()
+      `, [
+        date,
+        meta.campaignId,
+        meta.adGroupId,
+        meta.keywordId,
+        meta.keyword,
+        meta.matchType,
+        meta.keywordStatus,
+        meta.bidAmount?.amount,
+        parseFloat(dayData.localSpend?.amount || 0),
+        parseInt(dayData.impressions || 0),
+        parseInt(dayData.taps || 0),
+        parseInt(dayData.totalInstalls || 0),
+        parseInt(dayData.totalNewDownloads || 0),
+        parseInt(dayData.totalRedownloads || 0),
+        parseInt(dayData.latOnInstalls || 0),
+        parseInt(dayData.latOffInstalls || 0),
+        parseFloat(dayData.ttr || 0),
+        parseFloat(dayData.totalInstallRate || 0),
+        parseFloat(dayData.totalAvgCPI?.amount || 0),
+        parseFloat(dayData.avgCPT?.amount || 0),
+        parseFloat(dayData.avgCPM?.amount || 0),
+      ]);
+      count++;
+    }
   }
+  return count;
 }
 
 // Save search terms
 async function saveSearchTerms(rows) {
+  let count = 0;
   for (const row of rows) {
     const meta = row.metadata;
-    const metrics = row.granularity?.[0]?.insights || row.total || {};
-    const date = row.granularity?.[0]?.date || meta.date;
+    const granularityData = row.granularity || [];
 
-    if (!date || !meta.searchTermText) continue;
+    if (!meta.searchTermText) continue;
 
-    await pool.query(`
-      INSERT INTO apple_ads_search_terms (
-        date, campaign_id, adgroup_id, keyword_id, search_term,
-        spend, impressions, taps, installs,
-        new_downloads, redownloads,
-        ttr, conversion_rate, avg_cpa, avg_cpt
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      ON CONFLICT (date, campaign_id, adgroup_id, search_term) DO UPDATE SET
-        keyword_id = EXCLUDED.keyword_id,
-        spend = EXCLUDED.spend,
-        impressions = EXCLUDED.impressions,
-        taps = EXCLUDED.taps,
-        installs = EXCLUDED.installs,
-        new_downloads = EXCLUDED.new_downloads,
-        redownloads = EXCLUDED.redownloads,
-        ttr = EXCLUDED.ttr,
-        conversion_rate = EXCLUDED.conversion_rate,
-        avg_cpa = EXCLUDED.avg_cpa,
-        avg_cpt = EXCLUDED.avg_cpt,
-        synced_at = NOW()
-    `, [
-      date,
-      meta.campaignId,
-      meta.adGroupId,
-      meta.keywordId,
-      meta.searchTermText,
-      parseFloat(metrics.localSpend?.amount || 0),
-      parseInt(metrics.impressions || 0),
-      parseInt(metrics.taps || 0),
-      parseInt(metrics.installs || 0),
-      parseInt(metrics.newDownloads || 0),
-      parseInt(metrics.redownloads || 0),
-      parseFloat(metrics.ttr || 0),
-      parseFloat(metrics.conversionRate || 0),
-      parseFloat(metrics.avgCPA?.amount || 0),
-      parseFloat(metrics.avgCPT?.amount || 0),
-    ]);
+    for (const dayData of granularityData) {
+      const date = dayData.date;
+      if (!date) continue;
+
+      await pool.query(`
+        INSERT INTO apple_ads_search_terms (
+          date, campaign_id, adgroup_id, keyword_id, search_term,
+          spend, impressions, taps, installs,
+          new_downloads, redownloads,
+          ttr, conversion_rate, avg_cpa, avg_cpt
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        ON CONFLICT (date, campaign_id, adgroup_id, search_term) DO UPDATE SET
+          keyword_id = EXCLUDED.keyword_id,
+          spend = EXCLUDED.spend,
+          impressions = EXCLUDED.impressions,
+          taps = EXCLUDED.taps,
+          installs = EXCLUDED.installs,
+          new_downloads = EXCLUDED.new_downloads,
+          redownloads = EXCLUDED.redownloads,
+          ttr = EXCLUDED.ttr,
+          conversion_rate = EXCLUDED.conversion_rate,
+          avg_cpa = EXCLUDED.avg_cpa,
+          avg_cpt = EXCLUDED.avg_cpt,
+          synced_at = NOW()
+      `, [
+        date,
+        meta.campaignId,
+        meta.adGroupId,
+        meta.keywordId,
+        meta.searchTermText,
+        parseFloat(dayData.localSpend?.amount || 0),
+        parseInt(dayData.impressions || 0),
+        parseInt(dayData.taps || 0),
+        parseInt(dayData.totalInstalls || 0),
+        parseInt(dayData.totalNewDownloads || 0),
+        parseInt(dayData.totalRedownloads || 0),
+        parseFloat(dayData.ttr || 0),
+        parseFloat(dayData.totalInstallRate || 0),
+        parseFloat(dayData.totalAvgCPI?.amount || 0),
+        parseFloat(dayData.avgCPT?.amount || 0),
+      ]);
+      count++;
+    }
   }
+  return count;
 }
 
 // Log sync
@@ -495,9 +518,9 @@ async function fullSync(days = 90) {
     // Sync campaign reports
     console.log('📊 Syncing campaign reports...');
     const campaignReports = await getCampaignReports(startStr, endStr);
-    await saveCampaigns(campaignReports, campaigns);
-    await logSync('campaigns', startStr, endStr, campaignReports.length, 'completed');
-    console.log(`   ✓ Saved ${campaignReports.length} campaign records\n`);
+    const campaignCount = await saveCampaigns(campaignReports, campaigns);
+    await logSync('campaigns', startStr, endStr, campaignCount, 'completed');
+    console.log(`   ✓ Saved ${campaignCount} campaign records\n`);
 
     // Sync ad groups and keywords for each campaign
     let totalAdGroups = 0;
@@ -510,22 +533,22 @@ async function fullSync(days = 90) {
       try {
         // Ad Groups
         const adGroupReports = await getAdGroupReports(campaign.id, startStr, endStr);
-        await saveAdGroups(adGroupReports);
-        totalAdGroups += adGroupReports.length;
-        console.log(`   ✓ ${adGroupReports.length} ad group records`);
+        const agCount = await saveAdGroups(adGroupReports);
+        totalAdGroups += agCount;
+        console.log(`   ✓ ${agCount} ad group records`);
 
         // Keywords
         const keywordReports = await getKeywordReports(campaign.id, startStr, endStr);
-        await saveKeywords(keywordReports);
-        totalKeywords += keywordReports.length;
-        console.log(`   ✓ ${keywordReports.length} keyword records`);
+        const kwCount = await saveKeywords(keywordReports);
+        totalKeywords += kwCount;
+        console.log(`   ✓ ${kwCount} keyword records`);
 
         // Search Terms
         try {
           const searchTermReports = await getSearchTermReports(campaign.id, startStr, endStr);
-          await saveSearchTerms(searchTermReports);
-          totalSearchTerms += searchTermReports.length;
-          console.log(`   ✓ ${searchTermReports.length} search term records`);
+          const stCount = await saveSearchTerms(searchTermReports);
+          totalSearchTerms += stCount;
+          console.log(`   ✓ ${stCount} search term records`);
         } catch (e) {
           console.log(`   ⚠ Search terms: ${e.message.substring(0, 50)}`);
         }
@@ -541,7 +564,7 @@ async function fullSync(days = 90) {
     await logSync('search_terms', startStr, endStr, totalSearchTerms, 'completed');
 
     console.log('✅ Sync completed!');
-    console.log(`   Campaigns: ${campaignReports.length}`);
+    console.log(`   Campaigns: ${campaignCount}`);
     console.log(`   Ad Groups: ${totalAdGroups}`);
     console.log(`   Keywords: ${totalKeywords}`);
     console.log(`   Search Terms: ${totalSearchTerms}`);
