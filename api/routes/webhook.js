@@ -149,11 +149,21 @@ async function saveAttribution(userId, attribution) {
 // POST /webhook - handle Qonversion webhook events
 router.post('/', async (req, res) => {
   try {
+    const authHeader = req.headers['authorization'];
     const signature = req.headers['x-qonversion-signature'];
     const payload = req.body;
 
     // Log incoming webhook
     console.log(`Webhook received: ${payload.event || 'unknown'} for user ${payload.user_id || 'unknown'}`);
+
+    // Verify Authorization token (if configured)
+    if (process.env.WEBHOOK_AUTH_TOKEN) {
+      const expectedToken = process.env.WEBHOOK_AUTH_TOKEN;
+      if (authHeader !== expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+        console.error('Invalid authorization token');
+        return res.status(401).json({ error: 'Invalid authorization' });
+      }
+    }
 
     // Verify signature (optional, depends on WEBHOOK_SECRET)
     if (process.env.WEBHOOK_SECRET && !verifySignature(payload, signature)) {
