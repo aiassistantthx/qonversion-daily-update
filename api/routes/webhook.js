@@ -29,7 +29,7 @@ function parseWebhookPayload(payload) {
   const {
     id,
     user_id,
-    event,
+    event_name,  // Qonversion uses event_name, not event
     product_id,
     price,
     currency,
@@ -37,7 +37,7 @@ function parseWebhookPayload(payload) {
     platform,
     environment,
     created_at,
-    user,
+    asa_attribution,  // Apple Search Ads attribution at root level
   } = payload;
 
   // Revenue in USD (Qonversion provides this in cents for some events)
@@ -50,28 +50,26 @@ function parseWebhookPayload(payload) {
   }
 
   return {
-    eventId: id || `${user_id}_${event}_${created_at}`,
+    eventId: id || `${user_id}_${event_name}_${created_at}`,
     userId: user_id,
-    eventName: event,
+    eventName: event_name,
     productId: product_id,
     revenueUsd,
     platform: platform || 'unknown',
     environment: environment === 'sandbox' ? 'sandbox' : 'production',
     createdAt: created_at ? new Date(created_at * 1000) : new Date(),
     rawPayload: payload,
-    user,
+    asaAttribution: asa_attribution,  // Pass ASA attribution directly
   };
 }
 
-// Extract Apple Search Ads attribution from user data
-function extractAttribution(userData) {
-  if (!userData || !userData.custom_attributes) {
+// Extract Apple Search Ads attribution from payload
+function extractAttribution(asaAttribution) {
+  if (!asaAttribution) {
     return null;
   }
 
-  const asa = userData.custom_attributes.asa_attribution ||
-              userData.custom_attributes.apple_search_ads ||
-              userData.custom_attributes;
+  const asa = asaAttribution;
 
   // Apple Search Ads attribution fields
   const attribution = {
@@ -153,9 +151,8 @@ router.post('/', async (req, res) => {
     const signature = req.headers['x-qonversion-signature'];
     const payload = req.body;
 
-    // Log incoming webhook with full payload for debugging
-    console.log(`Webhook received: ${payload.event || payload.type || 'unknown'} for user ${payload.user_id || payload.user?.id || 'unknown'}`);
-    console.log('Payload keys:', Object.keys(payload).join(', '));
+    // Log incoming webhook
+    console.log(`Webhook received: ${payload.event_name || 'unknown'} for user ${payload.user_id || 'unknown'}`);
 
     // Verify Authorization token (if configured)
     if (process.env.WEBHOOK_AUTH_TOKEN) {
@@ -191,7 +188,7 @@ router.post('/', async (req, res) => {
     }
 
     // Extract and save attribution if available
-    const attribution = extractAttribution(eventData.user);
+    const attribution = extractAttribution(eventData.asaAttribution);
     if (attribution) {
       const savedAttr = await saveAttribution(eventData.userId, attribution);
       if (savedAttr) {
