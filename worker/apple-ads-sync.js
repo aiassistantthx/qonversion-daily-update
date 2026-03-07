@@ -577,7 +577,9 @@ async function fullSync(days = 90) {
 }
 
 // Run
-const days = parseInt(process.argv[2]) || 90;
+// Default: 7 days (incremental sync - update recent data)
+// Use: node apple-ads-sync.js 90 - for full historical sync
+const days = parseInt(process.argv[2]) || 7;
 
 fullSync(days)
   .then(() => {

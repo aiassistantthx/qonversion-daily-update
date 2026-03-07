@@ -5,9 +5,9 @@
   "main": "apple-ads-sync.js",
   "scripts": {
     "sync": "node apple-ads-sync.js",
-    "sync:90": "node apple-ads-sync.js 90",
-    "sync:30": "node apple-ads-sync.js 30",
-    "sync:7": "node apple-ads-sync.js 7"
+    "sync:daily": "node apple-ads-sync.js 7",
+    "sync:month": "node apple-ads-sync.js 30",
+    "sync:full": "node apple-ads-sync.js 90"
   },
   "dependencies": {
     "pg": "^8.11.3"
