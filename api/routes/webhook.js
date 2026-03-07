@@ -153,8 +153,9 @@ router.post('/', async (req, res) => {
     const signature = req.headers['x-qonversion-signature'];
     const payload = req.body;
 
-    // Log incoming webhook
-    console.log(`Webhook received: ${payload.event || 'unknown'} for user ${payload.user_id || 'unknown'}`);
+    // Log incoming webhook with full payload for debugging
+    console.log(`Webhook received: ${payload.event || payload.type || 'unknown'} for user ${payload.user_id || payload.user?.id || 'unknown'}`);
+    console.log('Payload keys:', Object.keys(payload).join(', '));
 
     // Verify Authorization token (if configured)
     if (process.env.WEBHOOK_AUTH_TOKEN) {
