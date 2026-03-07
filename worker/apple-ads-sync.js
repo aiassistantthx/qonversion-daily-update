@@ -193,16 +193,13 @@ async function getAdGroupReports(campaignId, startDate, endDate) {
     endTime: endDate,
     granularity: 'DAILY',
     selector: {
-      conditions: [
-        { field: 'campaignId', operator: 'EQUALS', values: [String(campaignId)] }
-      ],
       orderBy: [{ field: 'localSpend', sortOrder: 'DESCENDING' }],
     },
     returnRowTotals: false,
     returnRecordsWithNoMetrics: true,
   };
 
-  const response = await apiRequest('/reports/adgroups', 'POST', body);
+  const response = await apiRequest(`/reports/campaigns/${campaignId}/adgroups`, 'POST', body);
   return response.data?.reportingDataResponse?.row || [];
 }
 
@@ -213,16 +210,13 @@ async function getKeywordReports(campaignId, startDate, endDate) {
     endTime: endDate,
     granularity: 'DAILY',
     selector: {
-      conditions: [
-        { field: 'campaignId', operator: 'EQUALS', values: [String(campaignId)] }
-      ],
       orderBy: [{ field: 'localSpend', sortOrder: 'DESCENDING' }],
     },
     returnRowTotals: false,
     returnRecordsWithNoMetrics: true,
   };
 
-  const response = await apiRequest('/reports/keywords', 'POST', body);
+  const response = await apiRequest(`/reports/campaigns/${campaignId}/keywords`, 'POST', body);
   return response.data?.reportingDataResponse?.row || [];
 }
 
@@ -233,16 +227,13 @@ async function getSearchTermReports(campaignId, startDate, endDate) {
     endTime: endDate,
     granularity: 'DAILY',
     selector: {
-      conditions: [
-        { field: 'campaignId', operator: 'EQUALS', values: [String(campaignId)] }
-      ],
       orderBy: [{ field: 'localSpend', sortOrder: 'DESCENDING' }],
     },
     returnRowTotals: false,
     returnRecordsWithNoMetrics: false,
   };
 
-  const response = await apiRequest('/reports/searchterms', 'POST', body);
+  const response = await apiRequest(`/reports/campaigns/${campaignId}/searchterms`, 'POST', body);
   return response.data?.reportingDataResponse?.row || [];
 }
 
