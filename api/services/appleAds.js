@@ -1,25 +1,28 @@
 /**
  * Apple Search Ads API Service
  *
- * This module handles synchronization of campaign data from Apple Search Ads API.
- * The API requires OAuth2 authentication with client credentials.
- *
  * Documentation: https://developer.apple.com/documentation/apple_search_ads
  *
  * Required environment variables:
  * - APPLE_ADS_CLIENT_ID
- * - APPLE_ADS_CLIENT_SECRET
+ * - APPLE_ADS_TEAM_ID
+ * - APPLE_ADS_KEY_ID
+ * - APPLE_ADS_PRIVATE_KEY
  * - APPLE_ADS_ORG_ID
  */
 
+const crypto = require('crypto');
 const db = require('../db');
 
-const APPLE_ADS_API_URL = 'https://api.searchads.apple.com/api/v4';
+const APPLE_ADS_API_URL = 'https://api.searchads.apple.com/api/v5';
+const APPLE_AUTH_URL = 'https://appleid.apple.com/auth/oauth2/token';
 
 class AppleAdsService {
   constructor() {
     this.clientId = process.env.APPLE_ADS_CLIENT_ID;
-    this.clientSecret = process.env.APPLE_ADS_CLIENT_SECRET;
+    this.teamId = process.env.APPLE_ADS_TEAM_ID;
+    this.keyId = process.env.APPLE_ADS_KEY_ID;
+    this.privateKey = process.env.APPLE_ADS_PRIVATE_KEY?.replace(/\\n/g, '\n');
     this.orgId = process.env.APPLE_ADS_ORG_ID;
     this.accessToken = null;
     this.tokenExpiry = null;
@@ -29,31 +32,116 @@ class AppleAdsService {
    * Check if Apple Ads API is configured
    */
   isConfigured() {
-    return !!(this.clientId && this.clientSecret && this.orgId);
+    return !!(this.clientId && this.teamId && this.keyId && this.privateKey && this.orgId);
+  }
+
+  /**
+   * Create JWT for Apple Auth
+   */
+  createClientSecret() {
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = now + 86400; // 24 hours
+
+    const header = {
+      alg: 'ES256',
+      kid: this.keyId,
+    };
+
+    const payload = {
+      iss: this.teamId,
+      iat: now,
+      exp: expiry,
+      aud: 'https://appleid.apple.com',
+      sub: this.clientId,
+    };
+
+    // Base64url encode
+    const encode = (obj) => Buffer.from(JSON.stringify(obj))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+
+    const headerB64 = encode(header);
+    const payloadB64 = encode(payload);
+    const signatureInput = `${headerB64}.${payloadB64}`;
+
+    // Sign with ES256
+    const sign = crypto.createSign('SHA256');
+    sign.update(signatureInput);
+    const signature = sign.sign(this.privateKey);
+
+    // Convert DER signature to raw format for JWT
+    const derToRaw = (der) => {
+      let offset = 3;
+      const rLength = der[offset];
+      offset += 1;
+      let r = der.slice(offset, offset + rLength);
+      offset += rLength + 1;
+      const sLength = der[offset];
+      offset += 1;
+      let s = der.slice(offset, offset + sLength);
+
+      // Pad or trim to 32 bytes
+      if (r.length > 32) r = r.slice(r.length - 32);
+      if (s.length > 32) s = s.slice(s.length - 32);
+      if (r.length < 32) r = Buffer.concat([Buffer.alloc(32 - r.length), r]);
+      if (s.length < 32) s = Buffer.concat([Buffer.alloc(32 - s.length), s]);
+
+      return Buffer.concat([r, s]);
+    };
+
+    const rawSignature = derToRaw(signature);
+    const signatureB64 = rawSignature
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+
+    return `${signatureInput}.${signatureB64}`;
   }
 
   /**
    * Get OAuth2 access token
-   * Apple Ads uses client credentials flow
    */
   async getAccessToken() {
     if (!this.isConfigured()) {
-      throw new Error('Apple Ads API not configured. Set APPLE_ADS_CLIENT_ID, APPLE_ADS_CLIENT_SECRET, and APPLE_ADS_ORG_ID');
+      throw new Error('Apple Ads API not configured');
     }
 
-    // Return cached token if still valid
-    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+    // Return cached token if still valid (with 5 min buffer)
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry - 300000) {
       return this.accessToken;
     }
 
-    // TODO: Implement actual OAuth2 token retrieval
-    // Apple Search Ads uses a different auth flow that requires:
-    // 1. Creating a public/private key pair
-    // 2. Uploading public key to Apple
-    // 3. Generating JWT signed with private key
-    // 4. Exchanging JWT for access token
+    const clientSecret = this.createClientSecret();
 
-    throw new Error('Apple Ads OAuth2 not implemented. API keys required.');
+    const params = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: this.clientId,
+      client_secret: clientSecret,
+      scope: 'searchadsorg',
+    });
+
+    const response = await fetch(APPLE_AUTH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Apple Auth error: ${response.status} ${error}`);
+    }
+
+    const data = await response.json();
+    this.accessToken = data.access_token;
+    this.tokenExpiry = Date.now() + (data.expires_in * 1000);
+
+    console.log('Apple Ads access token obtained');
+    return this.accessToken;
   }
 
   /**
@@ -75,7 +163,8 @@ class AppleAdsService {
       options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${APPLE_ADS_API_URL}${endpoint}`, options);
+    const url = `${APPLE_ADS_API_URL}${endpoint}`;
+    const response = await fetch(url, options);
 
     if (!response.ok) {
       const error = await response.text();
@@ -90,33 +179,11 @@ class AppleAdsService {
    */
   async getCampaigns() {
     const response = await this.request('/campaigns');
-    return response.data;
-  }
-
-  /**
-   * Get ad groups for a campaign
-   */
-  async getAdGroups(campaignId) {
-    const response = await this.request(`/campaigns/${campaignId}/adgroups`);
-    return response.data;
-  }
-
-  /**
-   * Get keywords for an ad group
-   */
-  async getKeywords(campaignId, adgroupId) {
-    const response = await this.request(
-      `/campaigns/${campaignId}/adgroups/${adgroupId}/targetingkeywords`
-    );
-    return response.data;
+    return response.data || [];
   }
 
   /**
    * Get campaign reports for a date range
-   *
-   * @param {Date} startDate
-   * @param {Date} endDate
-   * @param {string} granularity - 'HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY'
    */
   async getCampaignReports(startDate, endDate, granularity = 'DAILY') {
     const body = {
@@ -132,28 +199,29 @@ class AppleAdsService {
     };
 
     const response = await this.request('/reports/campaigns', 'POST', body);
-    return response.data;
+    return response;
   }
 
   /**
    * Sync campaign data to database
-   *
-   * @param {Date} date - Date to sync
    */
   async syncCampaignData(date) {
     if (!this.isConfigured()) {
       console.log('Apple Ads API not configured, skipping sync');
-      return;
+      return { synced: 0 };
     }
 
     try {
+      const dateStr = date.toISOString().split('T')[0];
       const reports = await this.getCampaignReports(date, date);
 
-      for (const report of reports.reportingDataResponse.row) {
-        const metadata = report.metadata;
-        const insights = report.insights;
+      const rows = reports.data?.reportingDataResponse?.row || [];
+      let synced = 0;
 
-        // Campaign level data
+      for (const report of rows) {
+        const metadata = report.metadata;
+        const totals = report.total;
+
         await db.query(`
           INSERT INTO apple_ads_campaigns (
             date, campaign_id, campaign_name,
@@ -170,17 +238,19 @@ class AppleAdsService {
             installs = EXCLUDED.installs,
             updated_at = NOW()
         `, [
-          date,
+          dateStr,
           metadata.campaignId,
           metadata.campaignName,
-          parseFloat(insights.localSpend?.amount || 0),
-          parseInt(insights.impressions || 0),
-          parseInt(insights.taps || 0),
-          parseInt(insights.installs || 0),
+          parseFloat(totals?.localSpend?.amount || 0),
+          parseInt(totals?.impressions || 0),
+          parseInt(totals?.taps || 0),
+          parseInt(totals?.installs || 0),
         ]);
+        synced++;
       }
 
-      console.log(`Synced ${reports.reportingDataResponse.row.length} campaigns for ${date.toISOString().split('T')[0]}`);
+      console.log(`Synced ${synced} campaigns for ${dateStr}`);
+      return { synced, date: dateStr };
 
     } catch (error) {
       console.error('Failed to sync Apple Ads data:', error.message);
@@ -190,16 +260,38 @@ class AppleAdsService {
 
   /**
    * Sync last N days of campaign data
-   *
-   * @param {number} days - Number of days to sync (default: 7)
    */
   async syncRecentData(days = 7) {
+    const results = [];
     const today = new Date();
 
-    for (let i = 0; i < days; i++) {
+    for (let i = 1; i <= days; i++) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      await this.syncCampaignData(date);
+      const result = await this.syncCampaignData(date);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  /**
+   * Test connection to Apple Ads API
+   */
+  async testConnection() {
+    try {
+      await this.getAccessToken();
+      const campaigns = await this.getCampaigns();
+      return {
+        success: true,
+        campaignCount: campaigns.length,
+        campaigns: campaigns.map(c => ({ id: c.id, name: c.name, status: c.status })),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
     }
   }
 }
@@ -213,15 +305,24 @@ module.exports = appleAdsService;
 if (require.main === module) {
   require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
-  const days = parseInt(process.argv[2]) || 7;
+  const command = process.argv[2] || 'test';
 
-  appleAdsService.syncRecentData(days)
-    .then(() => {
-      console.log('Sync completed');
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('Sync failed:', error);
-      process.exit(1);
-    });
+  if (command === 'test') {
+    appleAdsService.testConnection()
+      .then((result) => {
+        console.log('Test result:', JSON.stringify(result, null, 2));
+        process.exit(result.success ? 0 : 1);
+      });
+  } else if (command === 'sync') {
+    const days = parseInt(process.argv[3]) || 7;
+    appleAdsService.syncRecentData(days)
+      .then((results) => {
+        console.log('Sync completed:', results);
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error('Sync failed:', error);
+        process.exit(1);
+      });
+  }
 }

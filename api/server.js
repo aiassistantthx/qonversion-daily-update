@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const db = require('./db');
 const webhookRouter = require('./routes/webhook');
+const appleAds = require('./services/appleAds');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,8 +58,39 @@ app.get('/', (req, res) => {
       'GET /health': 'Health check',
       'POST /webhook': 'Receive Qonversion webhooks',
       'GET /webhook/stats': 'Event statistics',
+      'GET /apple-ads/test': 'Test Apple Ads connection',
+      'POST /apple-ads/sync': 'Sync Apple Ads data',
     },
   });
+});
+
+// Apple Ads endpoints
+app.get('/apple-ads/test', async (req, res) => {
+  try {
+    const result = await appleAds.testConnection();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/apple-ads/sync', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const results = await appleAds.syncRecentData(days);
+    res.json({ success: true, results });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/apple-ads/campaigns', async (req, res) => {
+  try {
+    const campaigns = await appleAds.getCampaigns();
+    res.json({ campaigns });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Error handling middleware
