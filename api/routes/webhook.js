@@ -40,14 +40,16 @@ function parseWebhookPayload(payload) {
     asa_attribution,  // Apple Search Ads attribution at root level
   } = payload;
 
-  // Revenue in USD
+  // Revenue in USD - Qonversion sends revenue as object with value_usd
   let revenueUsd = 0;
-  if (revenue !== undefined && revenue !== null && revenue !== '') {
-    const parsed = parseFloat(revenue);
-    if (!isNaN(parsed)) revenueUsd = parsed;
-  } else if (price !== undefined && price !== null && price !== '') {
-    const parsed = parseFloat(price);
-    if (!isNaN(parsed)) revenueUsd = parsed;
+  if (revenue && typeof revenue === 'object' && revenue.value_usd) {
+    revenueUsd = parseFloat(revenue.value_usd) || 0;
+  } else if (price && typeof price === 'object' && price.value_usd) {
+    revenueUsd = parseFloat(price.value_usd) || 0;
+  } else if (typeof revenue === 'number') {
+    revenueUsd = revenue;
+  } else if (typeof price === 'number') {
+    revenueUsd = price;
   }
 
   return {
