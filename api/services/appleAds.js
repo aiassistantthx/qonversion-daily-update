@@ -22,10 +22,18 @@ class AppleAdsService {
     this.clientId = process.env.APPLE_ADS_CLIENT_ID;
     this.teamId = process.env.APPLE_ADS_TEAM_ID;
     this.keyId = process.env.APPLE_ADS_KEY_ID;
-    this.privateKey = process.env.APPLE_ADS_PRIVATE_KEY?.replace(/\\n/g, '\n');
     this.orgId = process.env.APPLE_ADS_ORG_ID;
     this.accessToken = null;
     this.tokenExpiry = null;
+
+    // Decode private key from base64 or use directly
+    const keyBase64 = process.env.APPLE_ADS_PRIVATE_KEY_BASE64;
+    const keyDirect = process.env.APPLE_ADS_PRIVATE_KEY;
+    if (keyBase64) {
+      this.privateKey = Buffer.from(keyBase64, 'base64').toString('utf8');
+    } else if (keyDirect) {
+      this.privateKey = keyDirect.replace(/\\n/g, '\n');
+    }
   }
 
   /**
