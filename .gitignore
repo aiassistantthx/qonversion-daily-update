@@ -1,6 +1,8 @@
 # Auth & credentials
 auth.json
 *.token.json
+credentials/
+*.pem
 
 # Environment
 .env
