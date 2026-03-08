@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
+  LineChart, Line, Bar, AreaChart, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
 } from 'recharts';
-import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search, Zap } from 'lucide-react';
+import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -314,7 +314,7 @@ function Dashboard() {
               <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Breakeven', fill: '#ef4444', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
-                formatter={(v: number) => [`${(v * 100).toFixed(1)}%`, '']}
+                formatter={(v) => [`${((Number(v) || 0) * 100).toFixed(1)}%`, '']}
                 labelFormatter={(age) => `Day ${age}`}
               />
               <Legend />

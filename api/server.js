@@ -136,6 +136,39 @@ app.get('/apple-ads/campaigns', async (req, res) => {
   }
 });
 
+// Debug endpoint to check subscription_events data
+app.get('/debug/subscription-events', async (req, res) => {
+  try {
+    const stats = await db.query(`
+      SELECT
+        COUNT(*) as total_events,
+        COUNT(campaign_id) as with_campaign_id,
+        COUNT(DISTINCT campaign_id) as unique_campaigns,
+        SUM(CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN 1 ELSE 0 END) as revenue_events,
+        SUM(CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') AND campaign_id IS NOT NULL THEN 1 ELSE 0 END) as revenue_events_with_campaign
+      FROM subscription_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+    `);
+
+    const campaigns = await db.query(`
+      SELECT campaign_id, COUNT(*) as events, SUM(COALESCE(price_usd, 0)) as revenue
+      FROM subscription_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND campaign_id IS NOT NULL
+      GROUP BY campaign_id
+      ORDER BY events DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      stats: stats.rows[0],
+      top_campaigns: campaigns.rows
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Database migration endpoint for ASA management tables
 app.post('/migrate/asa', async (req, res) => {
   const migrationSQL = `
