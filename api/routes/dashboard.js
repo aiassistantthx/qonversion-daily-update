@@ -290,4 +290,39 @@ router.get('/main', async (req, res) => {
   }
 });
 
+// Debug endpoint
+router.get('/debug', async (req, res) => {
+  try {
+    const eventsQuery = `
+      SELECT event_name, COUNT(*) as cnt
+      FROM qonversion_events
+      GROUP BY event_name
+      ORDER BY cnt DESC
+    `;
+    const events = await db.query(eventsQuery);
+
+    const dateRange = await db.query(`
+      SELECT MIN(event_date) as min_date, MAX(event_date) as max_date, COUNT(*) as total
+      FROM qonversion_events
+    `);
+
+    const products = await db.query(`
+      SELECT product_id, COUNT(*) as cnt
+      FROM qonversion_events
+      WHERE event_name IN ('subscription_started', 'Subscription Started')
+      GROUP BY product_id
+      ORDER BY cnt DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      events: events.rows,
+      dateRange: dateRange.rows[0],
+      products: products.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

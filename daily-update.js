@@ -121,17 +121,7 @@ async function getSales(page) {
 async function getTrialToPaidConversion(page) {
   log('Получаю Trial-to-Paid Conversion за последние 30 дней...');
 
-  // Формируем URL с диапазоном 30 дней
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() - 30);
-
-  const fromTs = Math.floor(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()) / 1000);
-  const toTs = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
-
-  const url = `https://dash.qonversion.io/analytics/trials?from=${fromTs}&to=${toTs}&project=PcnB70vn&account=8htsgud1`;
-
-  await page.goto(url, {
+  await page.goto('https://dash.qonversion.io/analytics/trials', {
     waitUntil: 'domcontentloaded',
     timeout: 60000
   });
@@ -140,9 +130,18 @@ async function getTrialToPaidConversion(page) {
   // Кликаем на Trial-to-Paid Conversion
   try {
     await page.click('text=Trial-to-Paid', { timeout: 5000 });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
   } catch (e) {
     log('Не удалось кликнуть на Trial-to-Paid');
+  }
+
+  // Выбираем период 30 дней (кнопка "30d")
+  try {
+    await page.click('button:has-text("30d")', { timeout: 5000 });
+    await page.waitForTimeout(3000);
+    log('Выбран период 30 дней');
+  } catch (e) {
+    log('Не удалось выбрать период 30d');
   }
 
   await page.screenshot({
@@ -150,7 +149,8 @@ async function getTrialToPaidConversion(page) {
     fullPage: true
   });
 
-  const data = await extractTableData(page);
+  // Собираем данные из таблицы с прокруткой
+  const data = await extractTableDataWithScroll(page);
   log(`Trial-to-Paid: ${JSON.stringify(data)}`);
   return data;
 }
@@ -360,6 +360,15 @@ function columnIndexToLetter(index) {
   return result;
 }
 
+// Преобразует буквенное обозначение колонки в номер (A = 1, AA = 27, AMY = 1039)
+function columnLetterToIndex(letter) {
+  let result = 0;
+  for (let i = 0; i < letter.length; i++) {
+    result = result * 26 + (letter.charCodeAt(i) - 64);
+  }
+  return result;
+}
+
 // Преобразует дату в формат DD.MM
 function formatDateDDMM(date) {
   const day = String(date.getDate()).padStart(2, '0');
@@ -418,6 +427,39 @@ async function extractTableData(page) {
 
     return result;
   });
+}
+
+// Собирает данные из таблицы с горизонтальной прокруткой (для 30+ дней)
+async function extractTableDataWithScroll(page) {
+  const allData = {};
+
+  // Сначала собираем видимые данные
+  const visibleData = await extractTableData(page);
+  Object.assign(allData, visibleData);
+
+  // Пробуем прокрутить таблицу вправо и собрать ещё данные
+  for (let scroll = 0; scroll < 5; scroll++) {
+    // Прокручиваем таблицу вправо
+    const scrolled = await page.evaluate(() => {
+      const tableContainer = document.querySelector('table')?.parentElement;
+      if (tableContainer && tableContainer.scrollWidth > tableContainer.clientWidth) {
+        const oldScroll = tableContainer.scrollLeft;
+        tableContainer.scrollLeft += 300;
+        return tableContainer.scrollLeft > oldScroll;
+      }
+      return false;
+    });
+
+    if (!scrolled) break;
+
+    await page.waitForTimeout(500);
+
+    // Собираем новые данные
+    const newData = await extractTableData(page);
+    Object.assign(allData, newData);
+  }
+
+  return allData;
 }
 
 // ============ REPORT GENERATOR ============
@@ -576,6 +618,47 @@ async function updateGoogleSheets(data) {
   // Строим карту дат -> колонок
   const dateMap = buildDateColumnMap();
 
+  // === АВТОМАТИЧЕСКОЕ РАСШИРЕНИЕ ТАБЛИЦЫ ===
+  // Вычисляем, какая колонка нужна для сегодняшней даты
+  const todayColumn = findColumnForDate(dateMap, today);
+  if (todayColumn) {
+    const todayColumnIndex = columnLetterToIndex(todayColumn);
+
+    // Последняя известная заполненная колонка (вчера)
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayColumn = findColumnForDate(dateMap, yesterday);
+    const lastFilledColumnIndex = yesterdayColumn ? columnLetterToIndex(yesterdayColumn) - 1 : todayColumnIndex - 2;
+
+    // Получаем информацию о таблице чтобы понять, нужна ли дата первой новой колонки
+    try {
+      const sheetInfo = await updater.getSheetInfo(CONFIG.sheet);
+
+      // Дата для первой новой колонки (если нужно добавлять)
+      // Колонка 1030 = 26.02, колонка 1031 = 27.02, ...
+      // Первая новая колонка = columnCount + 1
+      // Её дата = baseDate + (columnCount + 1 - baseColumnIndex)
+      const firstNewColumnIndex = sheetInfo.columnCount + 1;
+      const daysFromBase = firstNewColumnIndex - CONFIG.baseColumnIndex;
+      const firstNewColumnDate = new Date(2026, 1, 26); // Базовая дата 26.02.2026
+      firstNewColumnDate.setDate(firstNewColumnDate.getDate() + daysFromBase);
+
+      const result = await updater.ensureColumnsExist(
+        CONFIG.sheet,
+        todayColumnIndex,
+        lastFilledColumnIndex,
+        firstNewColumnDate
+      );
+
+      if (result.added > 0) {
+        log(`Добавлено ${result.added} колонок, скопировано форматирование в ${result.copied} колонок`);
+      }
+    } catch (err) {
+      log(`Ошибка расширения таблицы: ${err.message}`);
+      // Продолжаем, возможно колонок уже достаточно
+    }
+  }
+
   const updates = [];
 
   // ========== ДНЕВНЫЕ ДАННЫЕ ==========
@@ -634,7 +717,9 @@ async function updateGoogleSheets(data) {
       const parts = dateKey.split(' ');
       const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
       const day = parseInt(parts[1]);
-      const year = month >= new Date().getMonth() ? 2025 : 2026; // Простая логика года
+      // Год: если месяц > текущего месяца, значит это прошлый год
+      const currentMonth = new Date().getMonth();
+      const year = month > currentMonth ? 2025 : 2026;
       const date = new Date(year, month, day);
 
       const column = findColumnForDate(dateMap, date);
