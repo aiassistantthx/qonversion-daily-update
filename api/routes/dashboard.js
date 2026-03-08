@@ -323,6 +323,51 @@ router.get('/main', async (req, res) => {
   }
 });
 
+// Debug revenue for a month
+router.get('/debug-revenue/:month', async (req, res) => {
+  try {
+    const month = req.params.month; // e.g., '2026-03'
+
+    // Revenue by event type
+    const byEventResult = await db.query(`
+      SELECT
+        event_name,
+        COUNT(*) as events,
+        COALESCE(SUM(proceeds_usd), 0) as revenue
+      FROM qonversion_events
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND refund = false
+      GROUP BY event_name
+      ORDER BY revenue DESC
+    `, [month]);
+
+    // Total revenue
+    const totalResult = await db.query(`
+      SELECT COALESCE(SUM(proceeds_usd), 0) as total
+      FROM qonversion_events
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND refund = false
+    `, [month]);
+
+    // Check for refunds in this month
+    const refundsResult = await db.query(`
+      SELECT COUNT(*) as cnt, COALESCE(SUM(proceeds_usd), 0) as amount
+      FROM qonversion_events
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND refund = true
+    `, [month]);
+
+    res.json({
+      month,
+      totalRevenue: parseFloat(totalResult.rows[0]?.total) || 0,
+      byEvent: byEventResult.rows,
+      refunds: refundsResult.rows[0],
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Debug COP calculation for a specific date
 router.get('/debug-cop/:date', async (req, res) => {
   try {
