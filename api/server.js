@@ -321,14 +321,13 @@ app.post('/migrate/asa', async (req, res) => {
     ) c
     LEFT JOIN (
       SELECT
-        ua.campaign_id,
-        SUM(COALESCE(e.revenue_usd, 0)) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN e.event_name IN ('subscription_started', 'trial_converted', 'subscription_renewed') THEN e.user_id END) as paid_users_7d
-      FROM events e
-      JOIN user_attributions ua ON e.user_id = ua.user_id
-      WHERE e.created_at >= CURRENT_DATE - INTERVAL '7 days'
-        AND e.environment = 'production'
-      GROUP BY ua.campaign_id
+        campaign_id,
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_7d
+      FROM qonversion_events
+      WHERE install_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND media_source = 'Apple AdServices'
+      GROUP BY campaign_id
     ) r ON c.campaign_id = r.campaign_id;
 
     -- Keyword performance with revenue from Qonversion
@@ -381,7 +380,7 @@ app.post('/migrate/asa', async (req, res) => {
     ) k
     LEFT JOIN (
       SELECT
-        ua.keyword_id,
+        keyword_id,
         SUM(COALESCE(e.revenue_usd, 0)) as revenue_7d,
         COUNT(DISTINCT CASE WHEN e.event_name IN ('subscription_started', 'trial_converted', 'subscription_renewed') THEN e.user_id END) as paid_users_7d
       FROM events e

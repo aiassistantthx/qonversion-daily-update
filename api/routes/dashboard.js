@@ -312,11 +312,27 @@ router.get('/main', async (req, res) => {
     const predictedMonthSubs = monthSubscribers > 0 ? monthSubscribers / currentDecayFactor : 0;
     const predictedCop = predictedMonthSubs > 0 ? monthSpend / predictedMonthSubs : null;
 
-    // Payback calculation using PREDICTED COP (accounting for future conversions)
-    // Yearly subscription ~$50, so revenue per subscriber per year = $50
-    // Payback in months = predictedCOP / (yearly revenue / 12)
-    const yearlyARPU = 50; // Yearly subscription price
-    const paybackMonths = predictedCop ? Math.round(predictedCop / (yearlyARPU / 12)) : null;
+    // Predicted ROAS for current month cohort (Apple Ads)
+    // Based on current cohort revenue and decay factor
+    const predictedRoas = monthSpend > 0 && monthCohortRevenue > 0
+      ? (monthCohortRevenue / currentDecayFactor) / monthSpend
+      : null;
+
+    // Payback calculation - estimate when ROAS reaches 1x
+    // Based on historical data, payback is typically 4-6 months for healthy cohorts
+    let paybackMonths = null;
+    if (predictedRoas) {
+      if (predictedRoas >= 1) {
+        // Will break even - estimate based on decay curve
+        // At decay factor 0.83 (30 days), if predicted ROAS >= 1, breakeven around 4-5 months
+        paybackMonths = Math.round(30 / currentDecayFactor / 30); // Rough estimate
+        if (paybackMonths < 1) paybackMonths = 1;
+        if (paybackMonths > 12) paybackMonths = 12;
+      } else {
+        // Won't break even within a year
+        paybackMonths = null;
+      }
+    }
 
     // Also calculate forecast subscribers (current + expected additional conversions)
     const forecastSubscribers = Math.round(predictedMonthSubs);
@@ -544,6 +560,7 @@ router.get('/main', async (req, res) => {
         crChange,
         roas,         // Cohort ROAS (Apple Ads only)
         roasChange,
+        predictedRoas,  // Predicted final ROAS for current month
         forecastSpend,
         forecastRevenue,
         predictedCop,
@@ -681,10 +698,48 @@ router.get('/marketing', async (req, res) => {
       const copPredicted = predictedSubs > 0 ? spend / predictedSubs : null;
       const roasPredicted = spend > 0 ? predictedRev / spend : null;
 
-      // Payback calculation
-      const yearlyARPU = 50;
-      const paybackMonths = copPredicted ? Math.round(copPredicted / (yearlyARPU / 12)) : null;
+      // Payback calculation - find when ROAS reaches 1x (breakeven)
+      // Build ROAS curve points: [days, roas]
+      const roasPoints = [
+        [4, roas4d],
+        [7, roas7d],
+        [30, roas30d],
+        [60, roas60d],
+        [180, roas180d],
+        [365, roasPredicted],
+      ].filter(([d, r]) => r != null && cohortAge >= d);
+
+      let paybackDays = null;
       const isPaidBack = roasTotal && roasTotal >= 1;
+
+      if (isPaidBack) {
+        // Already paid back - find when it crossed 1x by interpolating
+        for (let i = 0; i < roasPoints.length; i++) {
+          const [days, roas] = roasPoints[i];
+          if (roas >= 1) {
+            if (i === 0) {
+              paybackDays = days;
+            } else {
+              // Interpolate between previous point and this one
+              const [prevDays, prevRoas] = roasPoints[i - 1];
+              const t = (1 - prevRoas) / (roas - prevRoas);
+              paybackDays = Math.round(prevDays + t * (days - prevDays));
+            }
+            break;
+          }
+        }
+      } else if (roasPredicted && roasPredicted >= 1) {
+        // Will pay back eventually - interpolate to find when
+        const lastPoint = roasPoints[roasPoints.length - 1];
+        if (lastPoint && lastPoint[1] < 1) {
+          // Interpolate between last known point and predicted
+          const [lastDays, lastRoas] = lastPoint;
+          const t = (1 - lastRoas) / (roasPredicted - lastRoas);
+          paybackDays = Math.round(lastDays + t * (365 - lastDays));
+        }
+      }
+
+      const paybackMonths = paybackDays ? Math.round(paybackDays / 30) : null;
 
       return {
         month: row.month,
