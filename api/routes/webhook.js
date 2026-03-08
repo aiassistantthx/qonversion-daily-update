@@ -121,6 +121,77 @@ async function saveEvent(eventData) {
   return result.rows[0];
 }
 
+// Save event to unified subscription_events table
+async function saveToSubscriptionEvents(eventData, attribution) {
+  const payload = eventData.rawPayload;
+
+  // Extract transaction_id from payload
+  const transactionId = payload.transaction?.transaction_id;
+  if (!transactionId) {
+    return null; // Skip events without transaction_id
+  }
+
+  const query = `
+    INSERT INTO subscription_events (
+      transaction_id, q_user_id, custom_user_id,
+      event_date, event_name,
+      product_id, subscription_group,
+      currency, price, price_usd, proceeds_usd, refund,
+      platform, device_id, locale, country, app_version,
+      install_date, media_source, campaign_id, campaign_name,
+      source, raw_payload
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+    ON CONFLICT (transaction_id) DO NOTHING
+    RETURNING id
+  `;
+
+  // Get campaign_name from apple_ads_campaigns if we have campaign_id
+  let campaignName = null;
+  if (attribution?.campaignId) {
+    try {
+      const campaignResult = await db.query(
+        'SELECT campaign_name FROM apple_ads_campaigns WHERE campaign_id = $1 LIMIT 1',
+        [attribution.campaignId]
+      );
+      if (campaignResult.rows[0]) {
+        campaignName = campaignResult.rows[0].campaign_name;
+      }
+    } catch (e) {
+      // Ignore campaign name lookup errors
+    }
+  }
+
+  const values = [
+    transactionId,
+    eventData.userId,
+    payload.custom_user_id || null,
+    eventData.createdAt,
+    eventData.eventName,
+    eventData.productId,
+    payload.subscription_group || null,
+    payload.price?.currency || null,
+    payload.price?.value || null,
+    payload.price?.value_usd || null,
+    payload.revenue?.is_proceed === 1 ? payload.revenue?.value_usd : null,
+    false,
+    eventData.platform,
+    payload.device_id || null,
+    payload.locale || null,
+    payload.country || null,
+    payload.app_version || null,
+    payload.user_install_date ? new Date(payload.user_install_date * 1000) : null,
+    attribution?.campaignId ? 'Apple AdServices' : null,
+    attribution?.campaignId || null,
+    campaignName,
+    'webhook',
+    JSON.stringify(payload),
+  ];
+
+  const result = await db.query(query, values);
+  return result.rows[0];
+}
+
 // Save user attribution (only if not exists)
 async function saveAttribution(userId, attribution) {
   const query = `
@@ -181,7 +252,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: user_id, event' });
     }
 
-    // Save event
+    // Save event to events table
     const savedEvent = await saveEvent(eventData);
 
     if (savedEvent) {
@@ -199,10 +270,17 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Save to unified subscription_events table
+    const savedSubscriptionEvent = await saveToSubscriptionEvents(eventData, attribution);
+    if (savedSubscriptionEvent) {
+      console.log(`Subscription event saved: ${eventData.rawPayload.transaction?.transaction_id}`);
+    }
+
     res.status(200).json({
       success: true,
       event_id: eventData.eventId,
       saved: !!savedEvent,
+      subscription_event_saved: !!savedSubscriptionEvent,
     });
 
   } catch (error) {
