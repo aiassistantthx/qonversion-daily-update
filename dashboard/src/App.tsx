@@ -14,7 +14,7 @@ const queryClient = new QueryClient({
 const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—';
 const fmtK = (n: number | null | undefined) => n != null ? `$${(n / 1000).toFixed(1)}K` : '—';
 const fmtPct = (n: number | null | undefined) => n != null ? `${n.toFixed(1)}%` : '—';
-const fmtDays = (n: number | null | undefined) => n != null ? `${n}d` : '—';
+const fmtMonths = (n: number | null | undefined) => n != null ? `${n}mo` : '—';
 
 interface DashboardData {
   currentMonth: {
@@ -28,7 +28,7 @@ interface DashboardData {
     crToPaid: number | null;
     forecastSpend: number;
     forecastRevenue: number;
-    forecastPaybackDays: number | null;
+    paybackMonths: number | null;
   };
   daily: Array<{
     date: string;
@@ -48,6 +48,7 @@ interface DashboardData {
     converted: number;
     subscribers: number;
     cop: number | null;
+    copPredicted?: number | null;
     crToPaid: number | null;
     roas: number | null;
   }>;
@@ -103,6 +104,7 @@ function Dashboard() {
     month: m.month,
     spend: m.spend / 1000,
     cop: m.cop,
+    copPredicted: m.copPredicted,
   }));
 
   return (
@@ -135,7 +137,7 @@ function Dashboard() {
         <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" />
         <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" />
         <KPICard title="CR to Paid" value={fmtPct(cm?.crToPaid)} subtitle="closed cohorts" />
-        <KPICard title="Forecast Payback" value={fmtDays(cm?.forecastPaybackDays)} icon={Clock} />
+        <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover COP" icon={Clock} />
       </div>
 
       {/* Forecast KPIs */}
@@ -190,13 +192,14 @@ function Dashboard() {
                 formatter={(v, name) => {
                   const val = Number(v) || 0;
                   if (name === 'Spend') return [`$${(val * 1000).toLocaleString()}`, String(name)];
-                  if (name === 'COP') return [val ? `$${val.toFixed(0)}` : '—', String(name)];
+                  if (name === 'COP' || name === 'COP Predicted') return [val ? `$${val.toFixed(0)}` : '—', String(name)];
                   return [String(v), String(name)];
                 }}
               />
               <Legend />
               <Bar yAxisId="left" dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Spend" />
-              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="COP" />
+              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="COP" connectNulls />
+              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} name="COP Predicted" connectNulls />
             </BarChart>
           </ResponsiveContainer>
         </div>

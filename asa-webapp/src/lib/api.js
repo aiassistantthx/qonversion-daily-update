@@ -1,0 +1,62 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/asa',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Campaigns
+export const getCampaigns = () => api.get('/campaigns').then(res => res.data);
+export const getCampaign = (id) => api.get(`/campaigns/${id}`).then(res => res.data);
+export const updateCampaignStatus = (id, status) => api.patch(`/campaigns/${id}/status`, { status }).then(res => res.data);
+export const updateCampaignBudget = (id, dailyBudget) => api.patch(`/campaigns/${id}/budget`, { dailyBudget }).then(res => res.data);
+
+// Ad Groups
+export const getAdGroups = (campaignId) => api.get(`/campaigns/${campaignId}/adgroups`).then(res => res.data);
+export const updateAdGroupStatus = (campaignId, adGroupId, status) =>
+  api.patch(`/campaigns/${campaignId}/adgroups/${adGroupId}/status`, { status }).then(res => res.data);
+export const updateAdGroupBid = (campaignId, adGroupId, bidAmount) =>
+  api.patch(`/campaigns/${campaignId}/adgroups/${adGroupId}/bid`, { bidAmount }).then(res => res.data);
+
+// Keywords
+export const getKeywords = (params) => api.get('/keywords', { params }).then(res => res.data);
+export const getKeywordsForAdGroup = (campaignId, adGroupId) =>
+  api.get(`/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`).then(res => res.data);
+export const updateKeywordBid = (keywordId, data) => api.patch(`/keywords/${keywordId}/bid`, data).then(res => res.data);
+export const updateKeywordStatus = (keywordId, data) => api.patch(`/keywords/${keywordId}/status`, data).then(res => res.data);
+export const bulkUpdateKeywordBids = (data) => api.patch('/keywords/bulk/bid', data).then(res => res.data);
+export const createKeywords = (data) => api.post('/keywords/bulk', data).then(res => res.data);
+
+// Rules
+export const getRules = (params) => api.get('/rules', { params }).then(res => res.data);
+export const getRule = (id) => api.get(`/rules/${id}`).then(res => res.data);
+export const createRule = (data) => api.post('/rules', data).then(res => res.data);
+export const updateRule = (id, data) => api.put(`/rules/${id}`, data).then(res => res.data);
+export const deleteRule = (id) => api.delete(`/rules/${id}`).then(res => res.data);
+export const executeRule = (id, dryRun = false) =>
+  api.post(`/rules/${id}/execute?dry_run=${dryRun}`).then(res => res.data);
+export const previewRule = (id) => api.get(`/rules/${id}/preview`).then(res => res.data);
+export const executeAllRules = (dryRun = false, frequency = null) => {
+  const params = { dry_run: dryRun };
+  if (frequency) params.frequency = frequency;
+  return api.post('/rules/execute-all', null, { params }).then(res => res.data);
+};
+
+// Templates
+export const getTemplates = (params) => api.get('/templates', { params }).then(res => res.data);
+export const getTemplate = (id) => api.get(`/templates/${id}`).then(res => res.data);
+export const createTemplate = (data) => api.post('/templates', data).then(res => res.data);
+export const updateTemplate = (id, data) => api.put(`/templates/${id}`, data).then(res => res.data);
+export const deleteTemplate = (id) => api.delete(`/templates/${id}`).then(res => res.data);
+
+// History
+export const getHistory = (params) => api.get('/history', { params }).then(res => res.data);
+export const getEntityHistory = (type, id) => api.get(`/history/entity/${type}/${id}`).then(res => res.data);
+
+// Sync
+export const triggerSync = (days = 7) => api.post(`/sync?days=${days}`).then(res => res.data);
+export const triggerIncrementalSync = () => api.post('/sync/incremental').then(res => res.data);
+
+export default api;

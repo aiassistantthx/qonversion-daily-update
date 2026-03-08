@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const appleAds = require('../services/appleAds');
+const rulesEngine = require('../services/rulesEngine');
 
 // ================================================
 // MIDDLEWARE
@@ -803,13 +804,11 @@ router.post('/rules/:id/execute', async (req, res) => {
     const { id } = req.params;
     const { dry_run = false } = req.query;
 
-    // This will be implemented by the rules engine
-    // For now, return placeholder
+    const result = await rulesEngine.executeRule(parseInt(id), dry_run === 'true');
+
     res.json({
       success: true,
-      message: 'Rule execution queued',
-      ruleId: id,
-      dryRun: dry_run === 'true'
+      ...result
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -824,39 +823,34 @@ router.get('/rules/:id/preview', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ruleResult = await db.query('SELECT * FROM asa_automation_rules WHERE id = $1', [id]);
-    if (ruleResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Rule not found' });
-    }
-
-    const rule = ruleResult.rows[0];
-
-    // Get entities that match the rule scope
-    let entities = [];
-
-    if (rule.scope === 'keyword') {
-      const result = await db.query(`
-        SELECT * FROM v_keyword_performance
-        WHERE keyword_status = 'ACTIVE'
-        LIMIT 100
-      `);
-      entities = result.rows;
-    } else if (rule.scope === 'campaign') {
-      const result = await db.query(`
-        SELECT * FROM v_campaign_performance
-        LIMIT 100
-      `);
-      entities = result.rows;
-    }
-
-    // TODO: Evaluate conditions against entities
-    // For now, return all entities
+    const result = await rulesEngine.previewRule(parseInt(id));
 
     res.json({
-      rule,
-      totalEntities: entities.length,
-      entities: entities.slice(0, 20),
-      message: 'Full condition evaluation requires rules engine service'
+      success: true,
+      preview: true,
+      ...result
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /asa/rules/execute-all
+ * Execute all enabled rules
+ */
+router.post('/rules/execute-all', async (req, res) => {
+  try {
+    const { dry_run = false, frequency } = req.query;
+
+    const result = await rulesEngine.executeAllRules(
+      dry_run === 'true',
+      frequency || null
+    );
+
+    res.json({
+      success: true,
+      ...result
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

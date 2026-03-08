@@ -201,7 +201,11 @@ router.get('/main', async (req, res) => {
     const avgDailyRevenue = currentDay > 0 ? monthRevenue / currentDay : 0;
     const forecastSpend = avgDailySpend * daysInMonth;
     const forecastRevenue = avgDailyRevenue * daysInMonth;
-    const forecastPaybackDays = cop && avgDailyRevenue > 0 ? Math.round(cop / (avgDailyRevenue / monthSubscribers || 1)) : null;
+
+    // Payback calculation: how long to recover COP from subscriber revenue
+    // Yearly subscription ~$50, so monthly revenue per subscriber = $50/12 = $4.17
+    const monthlyARPU = 50 / 12; // $4.17 per month per subscriber
+    const paybackMonths = cop ? Math.round(cop / monthlyARPU) : null; // Months to recover COP
 
     // ---- DAILY DATA (last 30 days) ----
     // Revenue by event_date, but cohort conversions by install_date
@@ -263,13 +267,13 @@ router.get('/main', async (req, res) => {
       const currentCop = subs > 0 ? spend / subs : null;
 
       // Predicted final COP based on decay curve
-      // If cohort is young, predict how many more conversions will come
       const decayFactor = getDecayFactor(cohortAge);
       const predictedFinalSubs = subs > 0 ? subs / decayFactor : 0;
       const predictedCop = predictedFinalSubs > 0 ? spend / predictedFinalSubs : null;
 
-      // For cohorts 30+ days old, use actual COP
-      const isClosed = cohortAge >= 30;
+      // Show actual COP for cohorts 7+ days old (mostly closed)
+      // Show predicted COP for cohorts < 7 days old (still many conversions coming)
+      const isClosedEnough = cohortAge >= 7;
 
       return {
         date: formatDate(row.day),
@@ -277,9 +281,9 @@ router.get('/main', async (req, res) => {
         spend,
         subscribers: subs,
         cohortAge,
-        cop: isClosed ? currentCop : null,  // Actual COP only for closed cohorts
-        copPredicted: !isClosed && currentCop ? predictedCop : null,  // Predicted for open cohorts
-        roas: cohortAge >= 7 && spend > 0 ? parseFloat(row.revenue) / spend : null,
+        cop: isClosedEnough && currentCop ? currentCop : null,  // Actual COP for 7+ day cohorts
+        copPredicted: !isClosedEnough && currentCop ? predictedCop : null,  // Predicted for <7 day cohorts
+        roas: isClosedEnough && spend > 0 ? parseFloat(row.revenue) / spend : null,
       };
     }).reverse();
 
@@ -340,6 +344,16 @@ router.get('/main', async (req, res) => {
       const trials = parseInt(row.trials) || 0;
       const converted = parseInt(row.converted) || 0;
       const revenue = parseFloat(row.revenue) || 0;
+      const currentCop = subs > 0 ? spend / subs : null;
+
+      // For current month, calculate predicted COP
+      // Assume average cohort age of ~15 days for current month
+      const isCurrentMonth = row.month === currentMonth;
+      const avgCohortAge = isCurrentMonth ? 4 : 30; // Current month cohorts are young
+      const decayFactor = getDecayFactor(avgCohortAge);
+      const predictedSubs = subs > 0 ? subs / decayFactor : 0;
+      const predictedCop = predictedSubs > 0 ? spend / predictedSubs : null;
+
       return {
         month: row.month,
         revenue,
@@ -347,7 +361,8 @@ router.get('/main', async (req, res) => {
         trials,
         converted,
         subscribers: subs,
-        cop: subs > 0 ? spend / subs : null,
+        cop: !isCurrentMonth && currentCop ? currentCop : null, // Actual COP for past months
+        copPredicted: isCurrentMonth && currentCop ? predictedCop : null, // Predicted for current month
         crToPaid: trials > 0 ? (converted / trials) * 100 : null,
         roas: spend > 0 ? revenue / spend : null,
       };
@@ -365,7 +380,7 @@ router.get('/main', async (req, res) => {
         crToPaid,
         forecastSpend,
         forecastRevenue,
-        forecastPaybackDays,
+        paybackMonths,
       },
       daily: dailyData,
       monthly: monthlyData,
