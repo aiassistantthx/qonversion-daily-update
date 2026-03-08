@@ -33,12 +33,13 @@ router.get('/main', async (req, res) => {
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
-    // Revenue this month (from qonversion_events)
+    // Revenue this month (only actual revenue events)
     const revenueQuery = `
       SELECT COALESCE(SUM(proceeds_usd), 0) as revenue
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
     const revenueResult = await db.query(revenueQuery, [currentMonth]);
     const monthRevenue = parseFloat(revenueResult.rows[0]?.revenue) || 0;
@@ -178,7 +179,10 @@ router.get('/main', async (req, res) => {
       WITH daily_revenue AS (
         SELECT
           DATE(event_date) as day,
-          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue
+          SUM(proceeds_usd) FILTER (
+            WHERE refund = false
+            AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          ) as revenue
         FROM qonversion_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
         GROUP BY DATE(event_date)
@@ -240,7 +244,10 @@ router.get('/main', async (req, res) => {
       WITH monthly_revenue AS (
         SELECT
           TO_CHAR(event_date, 'YYYY-MM') as month,
-          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue
+          SUM(proceeds_usd) FILTER (
+            WHERE refund = false
+            AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          ) as revenue
         FROM qonversion_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
         GROUP BY TO_CHAR(event_date, 'YYYY-MM')
