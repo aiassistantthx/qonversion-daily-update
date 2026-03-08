@@ -764,6 +764,465 @@ router.get('/marketing', async (req, res) => {
   }
 });
 
+// ============================================
+// ROAS EVOLUTION - How ROAS grows over cohort age
+// ============================================
+router.get('/roas-evolution', async (req, res) => {
+  try {
+    const monthsBack = parseInt(req.query.months) || 12;
+
+    // Get ROAS at different ages for each cohort month
+    const result = await db.query(`
+      WITH cohort_data AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          DATE_PART('day', event_date - install_date)::int as days_to_event,
+          DATE_PART('day', CURRENT_DATE - install_date)::int as cohort_age,
+          q_user_id,
+          price_usd,
+          refund,
+          event_name
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND media_source = 'Apple AdServices'
+      ),
+      monthly_spend AS (
+        SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        GROUP BY TO_CHAR(date, 'YYYY-MM')
+      ),
+      roas_by_age AS (
+        SELECT
+          cohort_month,
+          MAX(cohort_age) as max_age,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 14 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_14d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 90 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_90d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 120 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_120d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 150 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_150d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d,
+          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_total
+        FROM cohort_data
+        GROUP BY cohort_month
+      )
+      SELECT
+        ra.cohort_month,
+        ms.spend,
+        ra.max_age,
+        COALESCE(ra.rev_7d, 0) as rev_7d,
+        COALESCE(ra.rev_14d, 0) as rev_14d,
+        COALESCE(ra.rev_30d, 0) as rev_30d,
+        COALESCE(ra.rev_60d, 0) as rev_60d,
+        COALESCE(ra.rev_90d, 0) as rev_90d,
+        COALESCE(ra.rev_120d, 0) as rev_120d,
+        COALESCE(ra.rev_150d, 0) as rev_150d,
+        COALESCE(ra.rev_180d, 0) as rev_180d,
+        COALESCE(ra.rev_total, 0) as rev_total
+      FROM roas_by_age ra
+      JOIN monthly_spend ms ON ra.cohort_month = ms.month
+      ORDER BY ra.cohort_month
+    `);
+
+    // Transform to chart-friendly format
+    const cohorts = result.rows.map(row => {
+      const spend = parseFloat(row.spend) || 1;
+      const maxAge = parseInt(row.max_age) || 0;
+
+      return {
+        month: row.cohort_month,
+        maxAge,
+        spend,
+        roas: {
+          d7: maxAge >= 7 ? parseFloat(row.rev_7d) / spend : null,
+          d14: maxAge >= 14 ? parseFloat(row.rev_14d) / spend : null,
+          d30: maxAge >= 30 ? parseFloat(row.rev_30d) / spend : null,
+          d60: maxAge >= 60 ? parseFloat(row.rev_60d) / spend : null,
+          d90: maxAge >= 90 ? parseFloat(row.rev_90d) / spend : null,
+          d120: maxAge >= 120 ? parseFloat(row.rev_120d) / spend : null,
+          d150: maxAge >= 150 ? parseFloat(row.rev_150d) / spend : null,
+          d180: maxAge >= 180 ? parseFloat(row.rev_180d) / spend : null,
+          total: parseFloat(row.rev_total) / spend,
+        },
+      };
+    });
+
+    // Also create data for line chart (age on X axis, multiple cohort lines)
+    const ages = [7, 14, 30, 60, 90, 120, 150, 180];
+    const chartData = ages.map(age => {
+      const point = { age };
+      cohorts.forEach(c => {
+        const key = `d${age}`;
+        if (c.roas[key] != null) {
+          point[c.month] = c.roas[key];
+        }
+      });
+      return point;
+    });
+
+    res.json({ cohorts, chartData, ages });
+  } catch (error) {
+    console.error('ROAS evolution error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// KEYWORDS PERFORMANCE - COP and ROAS by keyword
+// ============================================
+router.get('/keywords', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 90;
+
+    // Get keyword performance with conversions
+    const result = await db.query(`
+      WITH keyword_spend AS (
+        SELECT
+          keyword_id,
+          keyword_text,
+          campaign_id,
+          SUM(spend) as spend,
+          SUM(installs) as installs,
+          SUM(taps) as taps,
+          SUM(impressions) as impressions
+        FROM apple_ads_keywords
+        WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND keyword_id IS NOT NULL
+        GROUP BY keyword_id, keyword_text, campaign_id
+      ),
+      campaign_names AS (
+        SELECT DISTINCT campaign_id, campaign_name
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+      ),
+      keyword_conversions AS (
+        SELECT
+          keyword_id,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (
+            WHERE event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          ) as conversions,
+          SUM(price_usd) FILTER (
+            WHERE refund = false
+            AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          ) as revenue
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND keyword_id IS NOT NULL
+        GROUP BY keyword_id
+      )
+      SELECT
+        ks.keyword_id,
+        ks.keyword_text,
+        cn.campaign_name,
+        ks.spend,
+        ks.installs,
+        ks.taps,
+        ks.impressions,
+        COALESCE(kc.trials, 0) as trials,
+        COALESCE(kc.conversions, 0) as conversions,
+        COALESCE(kc.revenue, 0) as revenue
+      FROM keyword_spend ks
+      LEFT JOIN campaign_names cn ON ks.campaign_id = cn.campaign_id
+      LEFT JOIN keyword_conversions kc ON ks.keyword_id = kc.keyword_id
+      WHERE ks.spend > 10
+      ORDER BY ks.spend DESC
+      LIMIT 100
+    `);
+
+    const keywords = result.rows.map(row => {
+      const spend = parseFloat(row.spend) || 0;
+      const conversions = parseInt(row.conversions) || 0;
+      const revenue = parseFloat(row.revenue) || 0;
+      const trials = parseInt(row.trials) || 0;
+      const installs = parseInt(row.installs) || 0;
+
+      return {
+        keywordId: row.keyword_id,
+        keyword: row.keyword_text,
+        campaign: row.campaign_name,
+        spend,
+        installs,
+        taps: parseInt(row.taps) || 0,
+        impressions: parseInt(row.impressions) || 0,
+        trials,
+        conversions,
+        revenue,
+        cpi: installs > 0 ? spend / installs : null,
+        cpt: trials > 0 ? spend / trials : null,
+        cop: conversions > 0 ? spend / conversions : null,
+        roas: spend > 0 ? revenue / spend : null,
+        trialRate: installs > 0 ? (trials / installs) * 100 : null,
+        crToPaid: trials > 0 ? (conversions / trials) * 100 : null,
+      };
+    });
+
+    // Calculate totals
+    const totals = {
+      spend: keywords.reduce((s, k) => s + k.spend, 0),
+      installs: keywords.reduce((s, k) => s + k.installs, 0),
+      trials: keywords.reduce((s, k) => s + k.trials, 0),
+      conversions: keywords.reduce((s, k) => s + k.conversions, 0),
+      revenue: keywords.reduce((s, k) => s + k.revenue, 0),
+    };
+    totals.cop = totals.conversions > 0 ? totals.spend / totals.conversions : null;
+    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
+
+    res.json({ keywords, totals, days });
+  } catch (error) {
+    console.error('Keywords error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// REVENUE FORECAST - Predict future revenue
+// ============================================
+router.get('/forecast', async (req, res) => {
+  try {
+    // Get current active subscribers and their renewal dates
+    const activeSubsResult = await db.query(`
+      WITH latest_events AS (
+        SELECT
+          q_user_id,
+          product_id,
+          event_date,
+          price_usd,
+          ROW_NUMBER() OVER (PARTITION BY q_user_id ORDER BY event_date DESC) as rn
+        FROM qonversion_events
+        WHERE event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+          AND product_id LIKE '%yearly%'
+          AND refund = false
+      )
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as sub_month,
+        COUNT(*) as subscribers,
+        AVG(price_usd) as avg_price,
+        SUM(price_usd) as total_revenue
+      FROM latest_events
+      WHERE rn = 1
+        AND event_date >= CURRENT_DATE - INTERVAL '12 months'
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+      ORDER BY sub_month
+    `);
+
+    // Get monthly revenue trend
+    const monthlyRevenueResult = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        SUM(price_usd) FILTER (WHERE refund = false) as revenue,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name IN ('Subscription Started', 'Trial Converted')
+        ) as new_subs,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Subscription Renewed'
+        ) as renewals
+      FROM qonversion_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
+        AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+      ORDER BY month
+    `);
+
+    // Calculate expected renewals for next 12 months
+    // Subscribers from X months ago should renew in (12 - X) months
+    const today = new Date();
+    const renewalForecast = [];
+
+    for (let i = 1; i <= 12; i++) {
+      const forecastMonth = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const forecastMonthStr = `${forecastMonth.getFullYear()}-${String(forecastMonth.getMonth() + 1).padStart(2, '0')}`;
+
+      // Subscribers from 12 months before this forecast month should renew
+      const renewalSourceMonth = new Date(forecastMonth.getFullYear() - 1, forecastMonth.getMonth(), 1);
+      const renewalSourceStr = `${renewalSourceMonth.getFullYear()}-${String(renewalSourceMonth.getMonth() + 1).padStart(2, '0')}`;
+
+      const sourceData = activeSubsResult.rows.find(r => r.sub_month === renewalSourceStr);
+      const expectedRenewals = sourceData ? parseInt(sourceData.subscribers) : 0;
+      const avgPrice = sourceData ? parseFloat(sourceData.avg_price) : 50;
+
+      // Assume 70% renewal rate
+      const renewalRate = 0.70;
+      const expectedRevenue = expectedRenewals * renewalRate * avgPrice;
+
+      renewalForecast.push({
+        month: forecastMonthStr,
+        expectedRenewals: Math.round(expectedRenewals * renewalRate),
+        expectedRevenue: Math.round(expectedRevenue),
+        sourceMonth: renewalSourceStr,
+        sourceSubs: expectedRenewals,
+      });
+    }
+
+    // Get current month subscribers for new revenue forecast
+    const currentMonthSubs = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as subs
+      FROM qonversion_events
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+        AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+    `);
+
+    const avgNewSubsPerMonth = monthlyRevenueResult.rows.length > 0
+      ? monthlyRevenueResult.rows.reduce((s, r) => s + parseInt(r.new_subs || 0), 0) / monthlyRevenueResult.rows.length
+      : 0;
+
+    res.json({
+      historical: monthlyRevenueResult.rows.map(r => ({
+        month: r.month,
+        revenue: parseFloat(r.revenue) || 0,
+        newSubs: parseInt(r.new_subs) || 0,
+        renewals: parseInt(r.renewals) || 0,
+      })),
+      renewalForecast,
+      avgNewSubsPerMonth: Math.round(avgNewSubsPerMonth),
+      currentMonthSubs: parseInt(currentMonthSubs.rows[0]?.subs) || 0,
+    });
+  } catch (error) {
+    console.error('Forecast error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// FUNNEL - Conversion funnel metrics
+// ============================================
+router.get('/funnel', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+
+    const result = await db.query(`
+      WITH funnel_data AS (
+        SELECT
+          media_source,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted') as converted,
+          COUNT(DISTINCT q_user_id) FILTER (
+            WHERE event_name = 'Subscription Started' AND product_id LIKE '%yearly%'
+          ) as direct_yearly,
+          SUM(price_usd) FILTER (
+            WHERE refund = false
+            AND event_name IN ('Subscription Started', 'Trial Converted')
+          ) as revenue
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND install_date <= CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY media_source
+      ),
+      installs AS (
+        SELECT
+          CASE WHEN media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END as source,
+          SUM(installs) as installs
+        FROM (
+          SELECT 'Apple AdServices' as media_source, SUM(installs) as installs
+          FROM apple_ads_campaigns
+          WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+            AND date <= CURRENT_DATE - INTERVAL '7 days'
+        ) aa
+        GROUP BY source
+      )
+      SELECT
+        CASE WHEN fd.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END as source,
+        COALESCE(i.installs, 0) as installs,
+        COALESCE(fd.trials, 0) as trials,
+        COALESCE(fd.converted, 0) as converted,
+        COALESCE(fd.direct_yearly, 0) as direct_yearly,
+        COALESCE(fd.revenue, 0) as revenue
+      FROM funnel_data fd
+      LEFT JOIN installs i ON (CASE WHEN fd.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END) = i.source
+    `);
+
+    const funnel = result.rows.map(r => ({
+      source: r.source || 'Unknown',
+      installs: parseInt(r.installs) || 0,
+      trials: parseInt(r.trials) || 0,
+      converted: parseInt(r.converted) || 0,
+      directYearly: parseInt(r.direct_yearly) || 0,
+      totalPaid: (parseInt(r.converted) || 0) + (parseInt(r.direct_yearly) || 0),
+      revenue: parseFloat(r.revenue) || 0,
+    }));
+
+    // Add rates
+    funnel.forEach(f => {
+      f.trialRate = f.installs > 0 ? (f.trials / f.installs) * 100 : null;
+      f.crToPaid = f.trials > 0 ? (f.converted / f.trials) * 100 : null;
+      f.directRate = f.installs > 0 ? (f.directYearly / f.installs) * 100 : null;
+    });
+
+    res.json({ funnel, days });
+  } catch (error) {
+    console.error('Funnel error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// RETENTION - User retention by cohort
+// ============================================
+router.get('/retention', async (req, res) => {
+  try {
+    const monthsBack = parseInt(req.query.months) || 6;
+
+    // For subscription apps, retention = still subscribed
+    // We track: Day 0 (subscribed), Day 30, Day 60, Day 90, Day 180, Day 365 (renewed)
+    const result = await db.query(`
+      WITH cohorts AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          q_user_id,
+          MIN(event_date) as first_purchase_date
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM'), q_user_id
+      ),
+      renewals AS (
+        SELECT q_user_id, event_date as renewal_date
+        FROM qonversion_events
+        WHERE event_name = 'Subscription Renewed'
+          AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+      ),
+      refunds AS (
+        SELECT DISTINCT q_user_id
+        FROM qonversion_events
+        WHERE refund = true
+          AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+      )
+      SELECT
+        c.cohort_month,
+        COUNT(DISTINCT c.q_user_id) as total_subscribers,
+        COUNT(DISTINCT c.q_user_id) FILTER (WHERE c.q_user_id NOT IN (SELECT q_user_id FROM refunds)) as active_after_refunds,
+        COUNT(DISTINCT r.q_user_id) as renewed,
+        DATE_PART('day', CURRENT_DATE - MAX(c.first_purchase_date))::int as cohort_age
+      FROM cohorts c
+      LEFT JOIN renewals r ON c.q_user_id = r.q_user_id
+      GROUP BY c.cohort_month
+      ORDER BY c.cohort_month
+    `);
+
+    const retention = result.rows.map(r => ({
+      month: r.cohort_month,
+      totalSubscribers: parseInt(r.total_subscribers) || 0,
+      activeAfterRefunds: parseInt(r.active_after_refunds) || 0,
+      renewed: parseInt(r.renewed) || 0,
+      cohortAge: parseInt(r.cohort_age) || 0,
+      refundRate: parseInt(r.total_subscribers) > 0
+        ? ((parseInt(r.total_subscribers) - parseInt(r.active_after_refunds)) / parseInt(r.total_subscribers) * 100)
+        : 0,
+      renewalRate: parseInt(r.active_after_refunds) > 0 && parseInt(r.cohort_age) >= 365
+        ? (parseInt(r.renewed) / parseInt(r.active_after_refunds) * 100)
+        : null,
+    }));
+
+    res.json({ retention });
+  } catch (error) {
+    console.error('Retention error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Debug revenue for a month
 router.get('/debug-revenue/:month', async (req, res) => {
   try {

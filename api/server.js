@@ -384,7 +384,7 @@ app.post('/migrate/asa', async (req, res) => {
         SUM(CASE WHEN se.refund = false THEN COALESCE(se.price_usd, 0) ELSE 0 END) as revenue_7d,
         COUNT(DISTINCT CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN se.q_user_id END) as paid_users_7d
       FROM subscription_events se
-      JOIN user_attributions ua ON se.q_user_id = ua.user_id
+      JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
       WHERE se.event_date >= CURRENT_DATE - INTERVAL '7 days'
         AND ua.keyword_id IS NOT NULL
       GROUP BY ua.keyword_id
