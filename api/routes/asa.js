@@ -72,12 +72,13 @@ router.get('/campaigns', async (req, res) => {
     const performanceQuery = await db.query(`
       SELECT * FROM v_campaign_performance
     `);
-    const performanceMap = new Map(performanceQuery.rows.map(p => [p.campaign_id, p]));
+    // Use string keys to ensure type matching
+    const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.campaign_id), p]));
 
     // Enrich campaigns with performance data
     const enriched = filtered.map(campaign => ({
       ...campaign,
-      performance: performanceMap.get(campaign.id) || null
+      performance: performanceMap.get(String(campaign.id)) || null
     }));
 
     res.json({
