@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
-  LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
+  LineChart, Line, BarChart, Bar, AreaChart, Area, ComposedChart,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
 } from 'recharts';
-import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock } from 'lucide-react';
+import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search, Zap } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -15,6 +16,13 @@ const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString(u
 const fmtK = (n: number | null | undefined) => n != null ? `$${(n / 1000).toFixed(1)}K` : '—';
 const fmtPct = (n: number | null | undefined) => n != null ? `${n.toFixed(1)}%` : '—';
 const fmtMonths = (n: number | null | undefined) => n != null ? `${n}mo` : '—';
+
+// Color palette for cohort lines
+const COHORT_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#eab308'
+];
 
 interface DashboardData {
   currentMonth: {
@@ -45,7 +53,6 @@ interface DashboardData {
     revenue: number;
     spend: number;
     subscribers: number;
-    cohortAge?: number;
     cop: number | null;
     copPredicted?: number | null;
     roas: number | null;
@@ -78,13 +85,82 @@ interface MarketingData {
   }>;
 }
 
+interface RoasEvolutionData {
+  cohorts: Array<{
+    month: string;
+    maxAge: number;
+    spend: number;
+    roas: { d7: number | null; d14: number | null; d30: number | null; d60: number | null; d90: number | null; d120: number | null; d150: number | null; d180: number | null; total: number };
+  }>;
+  chartData: Array<{ age: number; [key: string]: number | null }>;
+  ages: number[];
+}
+
+interface KeywordsData {
+  keywords: Array<{
+    keywordId: string;
+    keyword: string;
+    campaign: string;
+    spend: number;
+    installs: number;
+    trials: number;
+    conversions: number;
+    revenue: number;
+    cpi: number | null;
+    cop: number | null;
+    roas: number | null;
+    trialRate: number | null;
+    crToPaid: number | null;
+  }>;
+  totals: {
+    spend: number;
+    installs: number;
+    trials: number;
+    conversions: number;
+    revenue: number;
+    cop: number | null;
+    roas: number | null;
+  };
+  days: number;
+}
+
+interface ForecastData {
+  historical: Array<{
+    month: string;
+    revenue: number;
+    newSubs: number;
+    renewals: number;
+  }>;
+  renewalForecast: Array<{
+    month: string;
+    expectedRenewals: number;
+    expectedRevenue: number;
+  }>;
+  avgNewSubsPerMonth: number;
+}
+
+interface FunnelData {
+  funnel: Array<{
+    source: string;
+    installs: number;
+    trials: number;
+    converted: number;
+    directYearly: number;
+    totalPaid: number;
+    revenue: number;
+    trialRate: number | null;
+    crToPaid: number | null;
+  }>;
+  days: number;
+}
+
 function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
   title: string;
   value: string;
   subtitle?: string;
   icon?: React.ElementType;
   change?: number | null;
-  invertChange?: boolean; // For metrics where lower is better (like COP)
+  invertChange?: boolean;
 }) {
   const changeColor = change != null
     ? (invertChange ? (change < 0 ? '#10b981' : '#ef4444') : (change > 0 ? '#10b981' : '#ef4444'))
@@ -111,6 +187,8 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
 }
 
 function Dashboard() {
+  const [keywordDays, setKeywordDays] = useState(90);
+
   const { data, refetch, isFetching } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: () => fetch(`${API_URL}/dashboard/main`).then(r => r.json()),
@@ -121,19 +199,39 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/marketing?months=12`).then(r => r.json()),
   });
 
+  const { data: roasEvolution } = useQuery<RoasEvolutionData>({
+    queryKey: ['roas-evolution'],
+    queryFn: () => fetch(`${API_URL}/dashboard/roas-evolution?months=12`).then(r => r.json()),
+  });
+
+  const { data: keywordsData } = useQuery<KeywordsData>({
+    queryKey: ['keywords', keywordDays],
+    queryFn: () => fetch(`${API_URL}/dashboard/keywords?days=${keywordDays}`).then(r => r.json()),
+  });
+
+  const { data: forecastData } = useQuery<ForecastData>({
+    queryKey: ['forecast'],
+    queryFn: () => fetch(`${API_URL}/dashboard/forecast`).then(r => r.json()),
+  });
+
+  const { data: funnelData } = useQuery<FunnelData>({
+    queryKey: ['funnel'],
+    queryFn: () => fetch(`${API_URL}/dashboard/funnel?days=30`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = data?.monthly || [];
   const marketing = marketingData?.data || [];
+  const keywords = keywordsData?.keywords || [];
+  const keywordTotals = keywordsData?.totals;
 
-  // Filter daily data for chart with COP and predicted COP
   const dailyChartData = daily.slice(-30).map(d => ({
     date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     revenue: d.revenue,
     spend: d.spend,
     cop: d.cop,
     copPredicted: d.copPredicted,
-    roas: d.roas ? d.roas * 100 : null,
   }));
 
   const monthlyChartData = monthly.map(m => ({
@@ -143,24 +241,41 @@ function Dashboard() {
     copPredicted: m.copPredicted,
   }));
 
+  // ROAS Evolution chart data - multiple cohort lines
+  const roasChartData = roasEvolution?.chartData || [];
+  const cohortMonths = roasEvolution?.cohorts?.map(c => c.month) || [];
+
+  // Forecast chart data
+  const forecastChartData = [
+    ...(forecastData?.historical || []).map(h => ({
+      month: h.month,
+      revenue: h.revenue,
+      newSubs: h.newSubs,
+      renewals: h.renewals,
+      type: 'actual',
+    })),
+    ...(forecastData?.renewalForecast || []).map(f => ({
+      month: f.month,
+      revenue: f.expectedRevenue,
+      renewals: f.expectedRenewals,
+      type: 'forecast',
+    })),
+  ];
+
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Dashboard</h1>
-        </div>
+        <h1 style={styles.title}>Analytics Dashboard</h1>
         <div style={styles.headerRight}>
-          <div style={styles.dateRange}>
-            {cm?.month || '—'}
-          </div>
+          <div style={styles.dateRange}>{cm?.month || '—'}</div>
           <button style={styles.refreshBtn} onClick={() => refetch()}>
             <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
       </div>
 
-      {/* Current Month KPIs - Row 1 */}
+      {/* KPI Cards Row 1 */}
       <div style={styles.kpiGrid}>
         <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} change={cm?.spendChange} />
         <KPICard title="Revenue" value={fmtK(cm?.revenue || 0)} icon={TrendingUp} change={cm?.revenueChange} />
@@ -168,7 +283,7 @@ function Dashboard() {
         <KPICard title="COP" value={fmt(cm?.cop)} subtitle="excl. last 4 days" icon={Target} change={cm?.copChange} invertChange />
       </div>
 
-      {/* Current Month KPIs - Row 2 */}
+      {/* KPI Cards Row 2 */}
       <div style={styles.kpiGrid}>
         <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" />
         <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" />
@@ -176,7 +291,7 @@ function Dashboard() {
         <KPICard title="ROAS" value={cm?.roas != null ? `${cm.roas.toFixed(2)}x` : '—'} subtitle="Apple Ads cohort" icon={TrendingUp} change={cm?.roasChange} />
       </div>
 
-      {/* Forecast KPIs */}
+      {/* KPI Cards Row 3 - Forecasts */}
       <div style={styles.kpiGrid}>
         <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" />
         <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" />
@@ -184,67 +299,149 @@ function Dashboard() {
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
 
-      {/* Daily Chart */}
+      {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>
-        <h3 style={styles.chartTitle}>Last 30 Days</h3>
-        <div style={styles.chartContainer}>
+        <h3 style={styles.chartTitle}>ROAS Evolution by Cohort Age</h3>
+        <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+          How ROAS grows as cohorts mature. Each line = one monthly cohort.
+        </p>
+        <div style={{ ...styles.chartContainer, height: 350 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={dailyChartData}>
+            <LineChart data={roasChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
-              <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
+              <XAxis dataKey="age" tick={{ fill: '#6b7280', fontSize: 11 }} label={{ value: 'Days', position: 'bottom', fill: '#6b7280' }} />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} domain={[0, 'auto']} />
+              <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Breakeven', fill: '#ef4444', fontSize: 11 }} />
               <Tooltip
-                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                formatter={(v, name) => {
-                  const val = Number(v) || 0;
-                  if (name === 'revenue' || name === 'spend') return [`$${val.toLocaleString()}`, name];
-                  if (name === 'cop' || name === 'COP') return [val ? `$${val.toFixed(0)}` : '—', 'COP'];
-                  if (name === 'copPredicted' || name === 'COP Predicted') return [val ? `$${val.toFixed(0)}` : '—', 'COP Predicted'];
-                  if (name === 'roas') return [val ? `${val.toFixed(0)}%` : '—', 'ROAS %'];
-                  return [String(v), String(name)];
-                }}
+                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+                formatter={(v: number) => [`${(v * 100).toFixed(1)}%`, '']}
+                labelFormatter={(age) => `Day ${age}`}
               />
               <Legend />
-              <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={false} name="Revenue" />
-              <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#ef4444" strokeWidth={2} dot={false} name="Spend" />
-              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
-              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
+              {cohortMonths.slice(-8).map((month, i) => (
+                <Line
+                  key={month}
+                  type="monotone"
+                  dataKey={month}
+                  stroke={COHORT_COLORS[i % COHORT_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  connectNulls
+                  name={month}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Monthly Chart */}
+      {/* Daily Chart */}
+      <div style={styles.chartCard}>
+        <h3 style={styles.chartTitle}>Last 30 Days - Revenue, Spend & COP</h3>
+        <div style={styles.chartContainer}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={dailyChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
+              <Legend />
+              <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
+              <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
+              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
+              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Funnel Comparison */}
+      {funnelData && (
+        <div style={styles.chartCard}>
+          <h3 style={styles.chartTitle}>Conversion Funnel (Last 30 Days)</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+            {funnelData.funnel.map(f => (
+              <div key={f.source} style={{ padding: 16, background: '#f9fafb', borderRadius: 8 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: f.source === 'Apple Ads' ? '#3b82f6' : '#10b981' }}>
+                  {f.source}
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Installs</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>{f.installs.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Trials</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>{f.trials}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{fmtPct(f.trialRate)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Paid</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>{f.totalPaid}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>CR {fmtPct(f.crToPaid)}</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, fontSize: 13 }}>
+                  Revenue: <strong>{fmt(f.revenue)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Revenue Forecast */}
+      {forecastData && (
+        <div style={styles.chartCard}>
+          <h3 style={styles.chartTitle}>Revenue Forecast (12 months)</h3>
+          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+            Historical revenue + expected renewals. Assumes 70% renewal rate.
+          </p>
+          <div style={{ ...styles.chartContainer, height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={forecastChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 11 }} />
+                <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  fill="#3b82f6"
+                  fillOpacity={0.3}
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  name="Revenue"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Spend & COP */}
       <div style={styles.chartCard}>
         <h3 style={styles.chartTitle}>Monthly Spend & COP</h3>
         <div style={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyChartData}>
+            <ComposedChart data={monthlyChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 11 }} />
               <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}k`} />
               <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-              <Tooltip
-                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                formatter={(v, name) => {
-                  const val = Number(v) || 0;
-                  if (name === 'Spend') return [`$${(val * 1000).toLocaleString()}`, String(name)];
-                  if (name === 'COP' || name === 'COP Predicted') return [val ? `$${val.toFixed(0)}` : '—', String(name)];
-                  return [String(v), String(name)];
-                }}
-              />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
               <Legend />
-              <Bar yAxisId="left" dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Spend" />
+              <Bar yAxisId="left" dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Spend ($K)" />
               <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="COP" connectNulls />
               <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} name="COP Predicted" connectNulls />
-            </BarChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Monthly Table */}
-      <div style={styles.tableCard}>
+      <div style={{ ...styles.tableCard, marginBottom: 16 }}>
         <h3 style={styles.chartTitle}>Monthly Data</h3>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -281,8 +478,8 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Marketing Analytics - Apple Ads Only */}
-      <div style={styles.tableCard}>
+      {/* Marketing Analytics */}
+      <div style={{ ...styles.tableCard, marginBottom: 16 }}>
         <h3 style={styles.chartTitle}>Marketing Analytics (Apple Ads)</h3>
         <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
           COP and ROAS by cohort age. Shows how metrics evolve as cohorts mature.
@@ -333,6 +530,73 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* Keywords Performance */}
+      <div style={styles.tableCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ ...styles.chartTitle, marginBottom: 4 }}>Keywords Performance</h3>
+            <p style={{ fontSize: 12, color: '#6b7280' }}>
+              Top keywords by spend. Total: {fmt(keywordTotals?.spend)} spend, {keywordTotals?.conversions} conversions, COP {fmt(keywordTotals?.cop)}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select
+              value={keywordDays}
+              onChange={(e) => setKeywordDays(Number(e.target.value))}
+              style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 13 }}
+            >
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', maxHeight: 500 }}>
+          <table style={styles.table}>
+            <thead style={{ position: 'sticky', top: 0, background: '#fff' }}>
+              <tr>
+                <th style={styles.th}>Keyword</th>
+                <th style={styles.th}>Campaign</th>
+                <th style={styles.thRight}>Spend</th>
+                <th style={styles.thRight}>Installs</th>
+                <th style={styles.thRight}>Trials</th>
+                <th style={styles.thRight}>Conversions</th>
+                <th style={styles.thRight}>CPI</th>
+                <th style={styles.thRight}>COP</th>
+                <th style={styles.thRight}>ROAS</th>
+                <th style={styles.thRight}>CR %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {keywords.slice(0, 50).map((kw, i) => (
+                <tr key={kw.keywordId || i} style={styles.tr}>
+                  <td style={{ ...styles.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Search size={12} style={{ marginRight: 6, color: '#9ca3af' }} />
+                    {kw.keyword || '—'}
+                  </td>
+                  <td style={{ ...styles.td, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280', fontSize: 12 }}>
+                    {kw.campaign || '—'}
+                  </td>
+                  <td style={styles.tdRight}>{fmt(kw.spend)}</td>
+                  <td style={styles.tdRight}>{kw.installs}</td>
+                  <td style={styles.tdRight}>{kw.trials}</td>
+                  <td style={styles.tdRight}>{kw.conversions}</td>
+                  <td style={styles.tdRight}>{kw.cpi ? fmt(kw.cpi) : '—'}</td>
+                  <td style={{ ...styles.tdRight, color: kw.cop && kw.cop < 50 ? '#10b981' : kw.cop && kw.cop > 80 ? '#ef4444' : '#111827' }}>
+                    {kw.cop ? fmt(kw.cop) : '—'}
+                  </td>
+                  <td style={{ ...styles.tdRight, color: kw.roas && kw.roas * 0.82 >= 1 ? '#10b981' : '#ef4444' }}>
+                    {kw.roas ? `${(kw.roas * 0.82).toFixed(2)}x` : '—'}
+                  </td>
+                  <td style={styles.tdRight}>{fmtPct(kw.crToPaid)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -345,7 +609,7 @@ function Dashboard() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    maxWidth: 1200,
+    maxWidth: 1400,
     margin: '0 auto',
     padding: 24,
     fontFamily: "'Inter', -apple-system, sans-serif",
