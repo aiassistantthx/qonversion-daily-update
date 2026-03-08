@@ -136,6 +136,36 @@ app.get('/apple-ads/campaigns', async (req, res) => {
   }
 });
 
+// Database migration endpoint (protected)
+app.post('/migrate/asa', async (req, res) => {
+  const fs = require('fs');
+  const migrationPath = path.join(__dirname, '..', 'db', 'asa_management_schema.sql');
+
+  try {
+    // Check if migration file exists
+    if (!fs.existsSync(migrationPath)) {
+      return res.status(404).json({ error: 'Migration file not found' });
+    }
+
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+
+    // Execute migration
+    await db.query(sql);
+
+    res.json({
+      success: true,
+      message: 'ASA management schema migrated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({
+      error: error.message,
+      hint: 'Some tables may already exist. Check if migration was partially applied.'
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
