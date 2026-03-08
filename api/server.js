@@ -332,7 +332,7 @@ app.post('/migrate/asa', async (req, res) => {
       WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
         AND campaign_id IS NOT NULL
       GROUP BY campaign_id
-    ) r ON c.campaign_id::TEXT = r.campaign_id;
+    ) r ON c.campaign_id::TEXT = r.campaign_id::TEXT;
 
     -- Keyword performance with revenue from Qonversion
     CREATE OR REPLACE VIEW v_keyword_performance AS
