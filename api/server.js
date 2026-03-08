@@ -268,6 +268,10 @@ app.post('/migrate/asa', async (req, res) => {
     CREATE INDEX IF NOT EXISTS idx_alerts_created ON asa_alerts(created_at);
 
     -- Views
+    DROP VIEW IF EXISTS v_campaign_performance CASCADE;
+    DROP VIEW IF EXISTS v_keyword_performance CASCADE;
+    DROP VIEW IF EXISTS v_recent_rule_activity CASCADE;
+
     CREATE OR REPLACE VIEW v_recent_rule_activity AS
     SELECT
       r.id as rule_id,
