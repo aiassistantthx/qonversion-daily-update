@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/asa': {
-        target: 'http://localhost:3000',
+        target: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
         changeOrigin: true,
       },
     },

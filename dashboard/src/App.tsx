@@ -20,12 +20,17 @@ interface DashboardData {
   currentMonth: {
     month: string;
     spend: number;
+    spendChange: number | null;
     revenue: number;
+    revenueChange: number | null;
     subscribers: number;
+    subscribersChange: number | null;
     cop: number | null;
+    copChange: number | null;
     cop3d: number | null;
     cop7d: number | null;
     crToPaid: number | null;
+    crChange: number | null;
     forecastSpend: number;
     forecastRevenue: number;
     predictedCop: number | null;
@@ -56,13 +61,19 @@ interface DashboardData {
   }>;
 }
 
-function KPICard({ title, value, subtitle, icon: Icon, trend }: {
+function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
   title: string;
   value: string;
   subtitle?: string;
   icon?: React.ElementType;
-  trend?: 'up' | 'down' | null;
+  change?: number | null;
+  invertChange?: boolean; // For metrics where lower is better (like COP)
 }) {
+  const changeColor = change != null
+    ? (invertChange ? (change < 0 ? '#10b981' : '#ef4444') : (change > 0 ? '#10b981' : '#ef4444'))
+    : undefined;
+  const changeSign = change != null && change > 0 ? '+' : '';
+
   return (
     <div style={styles.card}>
       <div style={styles.cardHeader}>
@@ -71,9 +82,9 @@ function KPICard({ title, value, subtitle, icon: Icon, trend }: {
       </div>
       <div style={styles.cardValue}>
         {value}
-        {trend && (
-          <span style={{ marginLeft: 8, color: trend === 'up' ? '#10b981' : '#ef4444' }}>
-            {trend === 'up' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+        {change != null && (
+          <span style={{ marginLeft: 8, fontSize: 14, fontWeight: 500, color: changeColor }}>
+            {changeSign}{change.toFixed(0)}%
           </span>
         )}
       </div>
@@ -128,17 +139,17 @@ function Dashboard() {
 
       {/* Current Month KPIs - Row 1 */}
       <div style={styles.kpiGrid}>
-        <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} />
-        <KPICard title="Revenue" value={fmtK(cm?.revenue || 0)} icon={TrendingUp} />
-        <KPICard title="New Subscribers" value={String(cm?.subscribers || 0)} icon={Users} />
-        <KPICard title="COP" value={fmt(cm?.cop)} subtitle="excl. last 4 days" icon={Target} />
+        <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} change={cm?.spendChange} />
+        <KPICard title="Revenue" value={fmtK(cm?.revenue || 0)} icon={TrendingUp} change={cm?.revenueChange} />
+        <KPICard title="New Subscribers" value={String(cm?.subscribers || 0)} icon={Users} change={cm?.subscribersChange} />
+        <KPICard title="COP" value={fmt(cm?.cop)} subtitle="excl. last 4 days" icon={Target} change={cm?.copChange} invertChange />
       </div>
 
       {/* Current Month KPIs - Row 2 */}
       <div style={styles.kpiGrid}>
         <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" />
         <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" />
-        <KPICard title="CR to Paid" value={fmtPct(cm?.crToPaid)} subtitle="closed cohorts" />
+        <KPICard title="CR to Paid" value={fmtPct(cm?.crToPaid)} subtitle="excl. last 4 days" change={cm?.crChange} />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover COP" icon={Clock} />
       </div>
 

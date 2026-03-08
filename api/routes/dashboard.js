@@ -61,6 +61,11 @@ router.get('/main', async (req, res) => {
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const currentDay = today.getDate();
 
+    // Previous month for comparison
+    const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+    const prevMonthDays = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
+
     // ---- CURRENT MONTH METRICS ----
 
     // Spend this month (from apple_ads_campaigns)
@@ -181,20 +186,20 @@ router.get('/main', async (req, res) => {
     const cop7d = cop7dSubs > 0 ? cop7dSpend / cop7dSubs : null;
 
     // COHORT CR to paid (trial_converted / trial_started, by install_date cohort)
-    // Only count closed cohorts (installed 7+ days ago to allow full trial period)
+    // Exclude last 4 days (trial is 3 days, need time for conversion)
     const crQuery = `
       WITH cohort_trials AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
           AND event_name = 'Trial Started'
       ),
       cohort_converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
           AND event_name = 'Trial Converted'
       )
       SELECT cohort_trials.cnt as trials, cohort_converted.cnt as converted
@@ -204,6 +209,72 @@ router.get('/main', async (req, res) => {
     const trials = parseInt(crResult.rows[0]?.trials) || 0;
     const converted = parseInt(crResult.rows[0]?.converted) || 0;
     const crToPaid = trials > 0 ? (converted / trials) * 100 : null;
+
+    // ---- PREVIOUS MONTH METRICS (for comparison) ----
+    // Spend
+    const prevSpendResult = await db.query(spendQuery, [prevMonth]);
+    const prevMonthSpend = parseFloat(prevSpendResult.rows[0]?.spend) || 0;
+
+    // Revenue
+    const prevRevenueResult = await db.query(revenueQuery, [prevMonth]);
+    const prevMonthRevenue = parseFloat(prevRevenueResult.rows[0]?.revenue) || 0;
+
+    // Subscribers
+    const prevSubscribersResult = await db.query(subscribersQuery, [prevMonth]);
+    const prevMonthSubscribers = parseInt(prevSubscribersResult.rows[0]?.subscribers) || 0;
+
+    // COP (full month, closed cohorts)
+    const prevCopQuery = `
+      WITH cohort_conversions AS (
+        SELECT COUNT(DISTINCT q_user_id) as subscribers
+        FROM qonversion_events
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND (
+            event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          )
+      ),
+      monthly_spend AS (
+        SELECT COALESCE(SUM(spend), 0) as spend
+        FROM apple_ads_campaigns
+        WHERE TO_CHAR(date, 'YYYY-MM') = $1
+      )
+      SELECT spend, subscribers FROM monthly_spend, cohort_conversions
+    `;
+    const prevCopResult = await db.query(prevCopQuery, [prevMonth]);
+    const prevCopSpend = parseFloat(prevCopResult.rows[0]?.spend) || 0;
+    const prevCopSubs = parseInt(prevCopResult.rows[0]?.subscribers) || 0;
+    const prevCop = prevCopSubs > 0 ? prevCopSpend / prevCopSubs : null;
+
+    // CR to Paid (full previous month)
+    const prevCrQuery = `
+      WITH cohort_trials AS (
+        SELECT COUNT(DISTINCT q_user_id) as cnt
+        FROM qonversion_events
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND event_name = 'Trial Started'
+      ),
+      cohort_converted AS (
+        SELECT COUNT(DISTINCT q_user_id) as cnt
+        FROM qonversion_events
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND event_name = 'Trial Converted'
+      )
+      SELECT cohort_trials.cnt as trials, cohort_converted.cnt as converted
+      FROM cohort_trials, cohort_converted
+    `;
+    const prevCrResult = await db.query(prevCrQuery, [prevMonth]);
+    const prevTrials = parseInt(prevCrResult.rows[0]?.trials) || 0;
+    const prevConverted = parseInt(prevCrResult.rows[0]?.converted) || 0;
+    const prevCrToPaid = prevTrials > 0 ? (prevConverted / prevTrials) * 100 : null;
+
+    // Calculate % changes (normalized to same day of month for fair comparison)
+    const normFactor = currentDay / prevMonthDays;
+    const spendChange = prevMonthSpend > 0 ? ((monthSpend / (prevMonthSpend * normFactor)) - 1) * 100 : null;
+    const revenueChange = prevMonthRevenue > 0 ? ((monthRevenue / (prevMonthRevenue * normFactor)) - 1) * 100 : null;
+    const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribers / (prevMonthSubscribers * normFactor)) - 1) * 100 : null;
+    const copChange = prevCop && cop ? ((cop / prevCop) - 1) * 100 : null;
+    const crChange = prevCrToPaid && crToPaid ? ((crToPaid / prevCrToPaid) - 1) * 100 : null;
 
     // Forecasts
     const avgDailySpend = currentDay > 0 ? monthSpend / currentDay : 0;
@@ -435,12 +506,17 @@ router.get('/main', async (req, res) => {
       currentMonth: {
         month: currentMonth,
         spend: monthSpend,
+        spendChange,
         revenue: monthRevenue,
+        revenueChange,
         subscribers: monthSubscribers,
+        subscribersChange,
         cop,
+        copChange,
         cop3d,
         cop7d,
         crToPaid,
+        crChange,
         forecastSpend,
         forecastRevenue,
         predictedCop,
