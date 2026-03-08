@@ -56,10 +56,10 @@ export default function Dashboard() {
 
   // Calculate totals from campaign performance
   const campaigns = campaignsData?.data || [];
-  const totalSpend = campaigns.reduce((sum, c) => sum + (c.performance?.spend_7d || 0), 0);
-  const totalImpressions = campaigns.reduce((sum, c) => sum + (c.performance?.impressions_7d || 0), 0);
-  const totalTaps = campaigns.reduce((sum, c) => sum + (c.performance?.taps_7d || 0), 0);
-  const totalInstalls = campaigns.reduce((sum, c) => sum + (c.performance?.installs_7d || 0), 0);
+  const totalSpend = campaigns.reduce((sum, c) => sum + parseFloat(c.performance?.spend_7d || 0), 0);
+  const totalImpressions = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.impressions_7d || 0), 0);
+  const totalTaps = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.taps_7d || 0), 0);
+  const totalInstalls = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.installs_7d || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -125,7 +125,7 @@ export default function Dashboard() {
                       <StatusBadge status={campaign.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      ${(campaign.performance?.spend_7d || 0).toFixed(2)}
+                      ${parseFloat(campaign.performance?.spend_7d || 0).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
                       {campaign.performance?.cpa_7d

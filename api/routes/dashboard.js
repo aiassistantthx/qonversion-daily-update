@@ -957,10 +957,19 @@ router.get('/debug', async (req, res) => {
       LIMIT 10
     `);
 
+    const mediaSources = await db.query(`
+      SELECT media_source, COUNT(*) as events, COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE install_date >= CURRENT_DATE - INTERVAL '90 days'
+      GROUP BY media_source
+      ORDER BY users DESC
+    `);
+
     res.json({
       events: events.rows,
       dateRange: dateRange.rows[0],
       products: products.rows,
+      mediaSources: mediaSources.rows,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
