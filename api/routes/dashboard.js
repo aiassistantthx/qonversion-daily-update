@@ -722,6 +722,25 @@ router.get('/debug-revenue/:month', async (req, res) => {
   }
 });
 
+// Debug media sources
+router.get('/debug-media-sources', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT
+        media_source,
+        COUNT(*) as events,
+        COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE install_date >= CURRENT_DATE - INTERVAL '90 days'
+      GROUP BY media_source
+      ORDER BY users DESC
+    `);
+    res.json({ sources: result.rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Debug COP calculation for a specific date
 router.get('/debug-cop/:date', async (req, res) => {
   try {
