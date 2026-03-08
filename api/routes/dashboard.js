@@ -870,15 +870,44 @@ router.get('/roas-evolution', async (req, res) => {
 });
 
 // ============================================
-// KEYWORDS PERFORMANCE - COP and ROAS by keyword
+// KEYWORDS PERFORMANCE - Apple Ads keywords data
+// Note: Conversions estimated using average trial and conversion rates
 // ============================================
 router.get('/keywords', async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 90;
 
-    // Get keyword performance with conversions
+    // Get average conversion rates for estimation
+    const ratesResult = await db.query(`
+      SELECT
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        ) as conversions
+      FROM qonversion_events
+      WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
+        AND media_source = 'Apple AdServices'
+    `);
+
+    const avgTrials = parseInt(ratesResult.rows[0]?.trials) || 1;
+    const avgConversions = parseInt(ratesResult.rows[0]?.conversions) || 1;
+
+    // Get total installs from Apple Ads for the period
+    const installsResult = await db.query(`
+      SELECT SUM(installs) as total_installs
+      FROM apple_ads_campaigns
+      WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+    `);
+    const totalInstalls = parseInt(installsResult.rows[0]?.total_installs) || 1;
+
+    // Trial rate and conversion rate
+    const trialRate = avgTrials / totalInstalls;
+    const conversionRate = avgConversions / avgTrials;
+
+    // Get keyword performance from Apple Ads
     const result = await db.query(`
-      WITH keyword_spend AS (
+      WITH keyword_data AS (
         SELECT
           keyword_id,
           keyword_text,
@@ -889,56 +918,39 @@ router.get('/keywords', async (req, res) => {
           SUM(impressions) as impressions
         FROM apple_ads_keywords
         WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
-          AND keyword_id IS NOT NULL
+          AND keyword_text IS NOT NULL
         GROUP BY keyword_id, keyword_text, campaign_id
       ),
       campaign_names AS (
         SELECT DISTINCT campaign_id, campaign_name
         FROM apple_ads_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
-      ),
-      keyword_conversions AS (
-        SELECT
-          keyword_id,
-          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
-          COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'Trial Converted'
-            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
-          ) as conversions,
-          SUM(price_usd) FILTER (
-            WHERE refund = false
-            AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
-          ) as revenue
-        FROM qonversion_events
-        WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
-          AND keyword_id IS NOT NULL
-        GROUP BY keyword_id
       )
       SELECT
-        ks.keyword_id,
-        ks.keyword_text,
+        kd.keyword_id,
+        kd.keyword_text,
         cn.campaign_name,
-        ks.spend,
-        ks.installs,
-        ks.taps,
-        ks.impressions,
-        COALESCE(kc.trials, 0) as trials,
-        COALESCE(kc.conversions, 0) as conversions,
-        COALESCE(kc.revenue, 0) as revenue
-      FROM keyword_spend ks
-      LEFT JOIN campaign_names cn ON ks.campaign_id = cn.campaign_id
-      LEFT JOIN keyword_conversions kc ON ks.keyword_id = kc.keyword_id
-      WHERE ks.spend > 10
-      ORDER BY ks.spend DESC
+        kd.spend,
+        kd.installs,
+        kd.taps,
+        kd.impressions
+      FROM keyword_data kd
+      LEFT JOIN campaign_names cn ON kd.campaign_id = cn.campaign_id
+      WHERE kd.spend > 10
+      ORDER BY kd.spend DESC
       LIMIT 100
     `);
 
     const keywords = result.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
-      const conversions = parseInt(row.conversions) || 0;
-      const revenue = parseFloat(row.revenue) || 0;
-      const trials = parseInt(row.trials) || 0;
       const installs = parseInt(row.installs) || 0;
+      const taps = parseInt(row.taps) || 0;
+
+      // Estimate trials and conversions based on average rates
+      const estTrials = Math.round(installs * trialRate);
+      const estConversions = Math.round(estTrials * conversionRate);
+      const avgPrice = 50; // Average yearly subscription price
+      const estRevenue = estConversions * avgPrice;
 
       return {
         keywordId: row.keyword_id,
@@ -946,17 +958,18 @@ router.get('/keywords', async (req, res) => {
         campaign: row.campaign_name,
         spend,
         installs,
-        taps: parseInt(row.taps) || 0,
+        taps,
         impressions: parseInt(row.impressions) || 0,
-        trials,
-        conversions,
-        revenue,
+        trials: estTrials,
+        conversions: estConversions,
+        revenue: estRevenue,
         cpi: installs > 0 ? spend / installs : null,
-        cpt: trials > 0 ? spend / trials : null,
-        cop: conversions > 0 ? spend / conversions : null,
-        roas: spend > 0 ? revenue / spend : null,
-        trialRate: installs > 0 ? (trials / installs) * 100 : null,
-        crToPaid: trials > 0 ? (conversions / trials) * 100 : null,
+        cpt: estTrials > 0 ? spend / estTrials : null,
+        cop: estConversions > 0 ? spend / estConversions : null,
+        roas: spend > 0 ? estRevenue / spend : null,
+        trialRate: trialRate * 100,
+        crToPaid: conversionRate * 100,
+        isEstimated: true,  // Flag to indicate values are estimated
       };
     });
 
@@ -967,6 +980,8 @@ router.get('/keywords', async (req, res) => {
       trials: keywords.reduce((s, k) => s + k.trials, 0),
       conversions: keywords.reduce((s, k) => s + k.conversions, 0),
       revenue: keywords.reduce((s, k) => s + k.revenue, 0),
+      trialRate: trialRate * 100,
+      crToPaid: conversionRate * 100,
     };
     totals.cop = totals.conversions > 0 ? totals.spend / totals.conversions : null;
     totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
