@@ -699,15 +699,18 @@ router.get('/marketing', async (req, res) => {
       const roasPredicted = spend > 0 ? predictedRev / spend : null;
 
       // Payback calculation - find when ROAS reaches 1x (breakeven)
-      // Build ROAS curve points: [days, roas]
+      // Build ROAS curve points: [days, roas] - include current total as last known point
       const roasPoints = [
         [4, roas4d],
         [7, roas7d],
         [30, roas30d],
         [60, roas60d],
         [180, roas180d],
+        [cohortAge, roasTotal],  // Current total ROAS at current age
         [365, roasPredicted],
-      ].filter(([d, r]) => r != null && cohortAge >= d);
+      ]
+        .filter(([d, r]) => r != null && d <= Math.max(cohortAge, 365))
+        .sort((a, b) => a[0] - b[0]);
 
       let paybackDays = null;
       const isPaidBack = roasTotal && roasTotal >= 1;

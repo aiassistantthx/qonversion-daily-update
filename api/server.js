@@ -321,13 +321,13 @@ app.post('/migrate/asa', async (req, res) => {
     ) c
     LEFT JOIN (
       SELECT
-        campaign_id,
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_7d
-      FROM qonversion_events
-      WHERE install_date >= CURRENT_DATE - INTERVAL '7 days'
-        AND media_source = 'Apple AdServices'
-      GROUP BY campaign_id
+        ua.campaign_id,
+        SUM(CASE WHEN qe.refund = false THEN COALESCE(qe.price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN qe.event_name IN ('Subscription Started', 'Trial Converted') THEN qe.q_user_id END) as paid_users_7d
+      FROM qonversion_events qe
+      JOIN user_attributions ua ON qe.q_user_id = ua.user_id
+      WHERE qe.event_date >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY ua.campaign_id
     ) r ON c.campaign_id = r.campaign_id;
 
     -- Keyword performance with revenue from Qonversion
@@ -380,14 +380,14 @@ app.post('/migrate/asa', async (req, res) => {
     ) k
     LEFT JOIN (
       SELECT
-        keyword_id,
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_7d
-      FROM qonversion_events
-      WHERE install_date >= CURRENT_DATE - INTERVAL '7 days'
-        AND media_source = 'Apple AdServices'
-        AND keyword_id IS NOT NULL
-      GROUP BY keyword_id
+        ua.keyword_id,
+        SUM(CASE WHEN qe.refund = false THEN COALESCE(qe.price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN qe.event_name IN ('Subscription Started', 'Trial Converted') THEN qe.q_user_id END) as paid_users_7d
+      FROM qonversion_events qe
+      JOIN user_attributions ua ON qe.q_user_id = ua.user_id
+      WHERE qe.event_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND ua.keyword_id IS NOT NULL
+      GROUP BY ua.keyword_id
     ) r ON k.keyword_id = r.keyword_id;
   `;
 
