@@ -363,16 +363,31 @@ router.get('/main', async (req, res) => {
       const revenue = parseFloat(row.revenue) || 0;
       const currentCop = subs > 0 ? spend / subs : null;
 
-      // Calculate months ago for this cohort
+      // Calculate cohort age properly
+      // Monthly data only includes closed cohorts (installed 7+ days ago)
+      // So we calculate age from the END of the month to today
       const [year, month] = row.month.split('-').map(Number);
-      const monthDate = new Date(year, month - 1, 15); // Mid-month
-      const monthsAgo = Math.floor((today - monthDate) / (1000 * 60 * 60 * 24 * 30));
+      const isCurrentMonth = row.month === currentMonth;
 
-      // Average cohort age in days (mid-month approximation)
-      const avgCohortAgeDays = monthsAgo * 30 + 15;
+      let avgCohortAgeDays;
+      if (isCurrentMonth) {
+        // For current month, data only includes first few days (closed cohorts)
+        // Average cohort age = days since start of month + 7 (closed cohort offset) / 2
+        // But this data is too incomplete for prediction - skip prediction
+        avgCohortAgeDays = 7; // Minimum closed cohort age
+      } else {
+        // For past months, calculate days from mid-month to today
+        const monthEndDate = new Date(year, month, 0); // Last day of month
+        const monthMidDate = new Date(year, month - 1, 15);
+        const daysSinceMonthEnd = Math.floor((today - monthEndDate) / (1000 * 60 * 60 * 24));
+        avgCohortAgeDays = daysSinceMonthEnd + 15; // Mid-month approximation
+      }
+
+      // Only predict COP for months with enough data (at least 30 days old)
       const decayFactor = getDecayFactor(avgCohortAgeDays);
       const predictedSubs = subs > 0 ? subs / decayFactor : 0;
-      const predictedCop = predictedSubs > 0 ? spend / predictedSubs : null;
+      // Don't show predicted COP for current month (data too incomplete)
+      const predictedCop = !isCurrentMonth && predictedSubs > 0 ? spend / predictedSubs : null;
 
       return {
         month: row.month,
@@ -382,7 +397,7 @@ router.get('/main', async (req, res) => {
         converted,
         subscribers: subs,
         cop: currentCop,  // Always show actual COP
-        copPredicted: predictedCop,  // Always show predicted COP
+        copPredicted: predictedCop,  // Predicted COP (null for current month)
         crToPaid: trials > 0 ? (converted / trials) * 100 : null,
         roas: spend > 0 ? revenue / spend : null,
       };
