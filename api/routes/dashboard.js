@@ -531,6 +531,8 @@ router.get('/debug-cop/:date', async (req, res) => {
 // Analyze conversion delay distribution (days from install to conversion)
 router.get('/debug-conversion-delay', async (req, res) => {
   try {
+    const minAge = parseInt(req.query.minAge) || 60; // Minimum cohort age in days
+
     // Distribution by days to convert
     const byDayResult = await db.query(`
       SELECT
@@ -539,7 +541,7 @@ router.get('/debug-conversion-delay', async (req, res) => {
       FROM qonversion_events
       WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
         AND install_date >= '2025-01-01'
-        AND install_date <= CURRENT_DATE - INTERVAL '60 days'
+        AND install_date <= CURRENT_DATE - INTERVAL '${minAge} days'
       GROUP BY days_to_convert
       ORDER BY days_to_convert
     `);
@@ -585,6 +587,62 @@ router.get('/debug-conversion-delay', async (req, res) => {
       totalUsers,
       byDay: distribution.slice(0, 60), // First 60 days
       byWeek,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Analyze conversion delay by cohort month (to validate consistency)
+router.get('/debug-cohort-decay', async (req, res) => {
+  try {
+    // For each cohort month, calculate cumulative conversion % at key milestones
+    const result = await db.query(`
+      WITH cohort_conversions AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          DATE_PART('day', event_date - install_date)::int as days_to_convert,
+          COUNT(DISTINCT q_user_id) as users
+        FROM qonversion_events
+        WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+          AND install_date >= '2025-01-01'
+          AND install_date <= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM'), DATE_PART('day', event_date - install_date)::int
+      ),
+      cohort_totals AS (
+        SELECT cohort_month, SUM(users) as total_users
+        FROM cohort_conversions
+        GROUP BY cohort_month
+      ),
+      milestones AS (
+        SELECT
+          cc.cohort_month,
+          ct.total_users,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 0) as by_day_0,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 3) as by_day_3,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 7) as by_day_7,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 14) as by_day_14,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 30) as by_day_30,
+          SUM(cc.users) FILTER (WHERE cc.days_to_convert <= 60) as by_day_60
+        FROM cohort_conversions cc
+        JOIN cohort_totals ct ON cc.cohort_month = ct.cohort_month
+        GROUP BY cc.cohort_month, ct.total_users
+      )
+      SELECT
+        cohort_month,
+        total_users,
+        ROUND((by_day_0::numeric / total_users) * 100, 1) as pct_day_0,
+        ROUND((by_day_3::numeric / total_users) * 100, 1) as pct_day_3,
+        ROUND((by_day_7::numeric / total_users) * 100, 1) as pct_day_7,
+        ROUND((by_day_14::numeric / total_users) * 100, 1) as pct_day_14,
+        ROUND((by_day_30::numeric / total_users) * 100, 1) as pct_day_30,
+        ROUND((COALESCE(by_day_60, by_day_30)::numeric / total_users) * 100, 1) as pct_day_60
+      FROM milestones
+      ORDER BY cohort_month
+    `);
+
+    res.json({
+      cohorts: result.rows,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
