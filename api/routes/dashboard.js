@@ -519,6 +519,69 @@ router.get('/debug-cop/:date', async (req, res) => {
   }
 });
 
+// Analyze conversion delay distribution (days from install to conversion)
+router.get('/debug-conversion-delay', async (req, res) => {
+  try {
+    // Distribution by days to convert
+    const byDayResult = await db.query(`
+      SELECT
+        DATE_PART('day', event_date - install_date)::int as days_to_convert,
+        COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+        AND install_date >= '2025-01-01'
+        AND install_date <= CURRENT_DATE - INTERVAL '60 days'
+      GROUP BY days_to_convert
+      ORDER BY days_to_convert
+    `);
+
+    // Calculate cumulative percentage
+    const totalUsers = byDayResult.rows.reduce((sum, r) => sum + parseInt(r.users), 0);
+    let cumulative = 0;
+    const distribution = byDayResult.rows.map(r => {
+      cumulative += parseInt(r.users);
+      return {
+        day: parseInt(r.days_to_convert),
+        users: parseInt(r.users),
+        pct: ((parseInt(r.users) / totalUsers) * 100).toFixed(2),
+        cumPct: ((cumulative / totalUsers) * 100).toFixed(2),
+      };
+    });
+
+    // Group by week for longer tail
+    const byWeekResult = await db.query(`
+      SELECT
+        FLOOR(DATE_PART('day', event_date - install_date) / 7)::int as week,
+        COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+        AND install_date >= '2025-01-01'
+        AND install_date <= CURRENT_DATE - INTERVAL '60 days'
+      GROUP BY week
+      ORDER BY week
+    `);
+
+    cumulative = 0;
+    const byWeek = byWeekResult.rows.map(r => {
+      cumulative += parseInt(r.users);
+      return {
+        week: parseInt(r.week),
+        users: parseInt(r.users),
+        pct: ((parseInt(r.users) / totalUsers) * 100).toFixed(2),
+        cumPct: ((cumulative / totalUsers) * 100).toFixed(2),
+      };
+    });
+
+    res.json({
+      totalUsers,
+      byDay: distribution.slice(0, 60), // First 60 days
+      byWeek,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Debug endpoint
 router.get('/debug', async (req, res) => {
   try {
