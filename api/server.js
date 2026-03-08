@@ -358,14 +358,15 @@ app.post('/migrate/asa', async (req, res) => {
     ) c
     LEFT JOIN (
       SELECT
-        campaign_id,
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_7d
-      FROM subscription_events
-      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
-        AND campaign_id IS NOT NULL
-      GROUP BY campaign_id
-    ) r ON c.campaign_id::TEXT = r.campaign_id::TEXT;
+        ua.campaign_id,
+        SUM(CASE WHEN se.refund = false THEN COALESCE(se.price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN se.q_user_id END) as paid_users_7d
+      FROM subscription_events se
+      JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
+      WHERE se.event_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND ua.campaign_id IS NOT NULL
+      GROUP BY ua.campaign_id
+    ) r ON c.campaign_id = r.campaign_id;
 
     -- Keyword performance with revenue from Qonversion
     CREATE OR REPLACE VIEW v_keyword_performance AS
