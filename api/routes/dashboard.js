@@ -35,7 +35,7 @@ router.get('/main', async (req, res) => {
 
     // Revenue this month (only actual revenue events)
     const revenueQuery = `
-      SELECT COALESCE(SUM(proceeds_usd), 0) as revenue
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
@@ -179,7 +179,7 @@ router.get('/main', async (req, res) => {
       WITH daily_revenue AS (
         SELECT
           DATE(event_date) as day,
-          SUM(proceeds_usd) FILTER (
+          SUM(price_usd) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
@@ -244,7 +244,7 @@ router.get('/main', async (req, res) => {
       WITH monthly_revenue AS (
         SELECT
           TO_CHAR(event_date, 'YYYY-MM') as month,
-          SUM(proceeds_usd) FILTER (
+          SUM(price_usd) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
@@ -340,7 +340,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
       SELECT
         event_name,
         COUNT(*) as events,
-        COALESCE(SUM(proceeds_usd), 0) as revenue
+        COALESCE(SUM(price_usd), 0) as revenue
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
@@ -350,7 +350,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
 
     // Total revenue
     const totalResult = await db.query(`
-      SELECT COALESCE(SUM(proceeds_usd), 0) as total
+      SELECT COALESCE(SUM(price_usd), 0) as total
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
@@ -358,7 +358,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
 
     // Check for refunds in this month
     const refundsResult = await db.query(`
-      SELECT COUNT(*) as cnt, COALESCE(SUM(proceeds_usd), 0) as amount
+      SELECT COUNT(*) as cnt, COALESCE(SUM(price_usd), 0) as amount
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = true
