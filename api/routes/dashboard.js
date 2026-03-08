@@ -77,7 +77,7 @@ router.get('/main', async (req, res) => {
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
-    // Revenue this month (only actual revenue events)
+    // Revenue this month (only actual revenue events) - total revenue
     const revenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM qonversion_events
@@ -87,6 +87,19 @@ router.get('/main', async (req, res) => {
     `;
     const revenueResult = await db.query(revenueQuery, [currentMonth]);
     const monthRevenue = parseFloat(revenueResult.rows[0]?.revenue) || 0;
+
+    // Cohort revenue from Apple Ads users (for ROAS calculation)
+    // Revenue from users who installed THIS month AND came from Apple Ads
+    const cohortRevenueQuery = `
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM qonversion_events
+      WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+        AND media_source = 'Apple AdServices'
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `;
+    const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
+    const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
     // New subscribers this month (trial_converted + subscription_started for yearly)
     const subscribersQuery = `
@@ -219,6 +232,10 @@ router.get('/main', async (req, res) => {
     const prevRevenueResult = await db.query(revenueQuery, [prevMonth]);
     const prevMonthRevenue = parseFloat(prevRevenueResult.rows[0]?.revenue) || 0;
 
+    // Cohort revenue from Apple Ads (for ROAS comparison)
+    const prevCohortRevenueResult = await db.query(cohortRevenueQuery, [prevMonth]);
+    const prevMonthCohortRevenue = parseFloat(prevCohortRevenueResult.rows[0]?.revenue) || 0;
+
     // Subscribers
     const prevSubscribersResult = await db.query(subscribersQuery, [prevMonth]);
     const prevMonthSubscribers = parseInt(prevSubscribersResult.rows[0]?.subscribers) || 0;
@@ -268,6 +285,10 @@ router.get('/main', async (req, res) => {
     const prevConverted = parseInt(prevCrResult.rows[0]?.converted) || 0;
     const prevCrToPaid = prevTrials > 0 ? (prevConverted / prevTrials) * 100 : null;
 
+    // Calculate ROAS (cohort-based, Apple Ads only)
+    const roas = monthSpend > 0 ? monthCohortRevenue / monthSpend : null;
+    const prevRoas = prevMonthSpend > 0 ? prevMonthCohortRevenue / prevMonthSpend : null;
+
     // Calculate % changes (normalized to same day of month for fair comparison)
     const normFactor = currentDay / prevMonthDays;
     const spendChange = prevMonthSpend > 0 ? ((monthSpend / (prevMonthSpend * normFactor)) - 1) * 100 : null;
@@ -275,6 +296,8 @@ router.get('/main', async (req, res) => {
     const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribers / (prevMonthSubscribers * normFactor)) - 1) * 100 : null;
     const copChange = prevCop && cop ? ((cop / prevCop) - 1) * 100 : null;
     const crChange = prevCrToPaid && crToPaid ? ((crToPaid / prevCrToPaid) - 1) * 100 : null;
+    // ROAS change - NOT normalized by day (ratio metric)
+    const roasChange = prevRoas && roas ? ((roas / prevRoas) - 1) * 100 : null;
 
     // Forecasts
     const avgDailySpend = currentDay > 0 ? monthSpend / currentDay : 0;
@@ -376,11 +399,12 @@ router.get('/main', async (req, res) => {
     }).reverse();
 
     // ---- MONTHLY DATA (COHORT-BASED) ----
-    // ROAS is cohort-based: revenue from users who installed in that month
+    // ROAS is cohort-based: revenue from Apple Ads users who installed in that month
+    // Filter by media_source = 'Apple AdServices' for accurate ROAS calculation
     const monthsBack = parseInt(req.query.months) || 12;
     const monthlyQuery = `
       WITH cohort_revenue AS (
-        -- Revenue from users by their install month (cohort revenue)
+        -- Revenue from Apple Ads users by their install month (cohort revenue)
         SELECT
           TO_CHAR(install_date, 'YYYY-MM') as month,
           SUM(price_usd) FILTER (
@@ -389,6 +413,7 @@ router.get('/main', async (req, res) => {
           ) as revenue
         FROM qonversion_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND media_source = 'Apple AdServices'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       cohort_metrics AS (
@@ -482,15 +507,18 @@ router.get('/main', async (req, res) => {
         ...monthlyData[currentMonthIdx],
         spend: monthSpend,
         revenue: monthRevenue,
+        cohortRevenue: monthCohortRevenue,  // Apple Ads cohort revenue
         subscribers: monthSubscribers,
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop, // Use the correctly calculated predicted COP
+        roas: roas,  // Cohort ROAS (Apple Ads only)
       };
     } else {
       // Add current month if not in array
       monthlyData.push({
         month: currentMonth,
         revenue: monthRevenue,
+        cohortRevenue: monthCohortRevenue,
         spend: monthSpend,
         trials: 0,
         converted: 0,
@@ -498,7 +526,7 @@ router.get('/main', async (req, res) => {
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop,
         crToPaid: crToPaid,
-        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,
+        roas: roas,  // Cohort ROAS (Apple Ads only)
       });
     }
 
@@ -509,6 +537,7 @@ router.get('/main', async (req, res) => {
         spendChange,
         revenue: monthRevenue,
         revenueChange,
+        cohortRevenue: monthCohortRevenue,  // Apple Ads users revenue (for ROAS)
         subscribers: monthSubscribers,
         subscribersChange,
         cop,
@@ -517,6 +546,8 @@ router.get('/main', async (req, res) => {
         cop7d,
         crToPaid,
         crChange,
+        roas,         // Cohort ROAS (Apple Ads only)
+        roasChange,
         forecastSpend,
         forecastRevenue,
         predictedCop,
@@ -535,7 +566,7 @@ router.get('/main', async (req, res) => {
 // ============================================
 // MARKETING ANALYTICS ENDPOINT
 // COP and ROAS at different cohort ages (4, 7, 30, 60, 180 days)
-// Only Apple Ads users (have attribution data)
+// Only Apple Ads users (media_source = 'Apple AdServices')
 // ============================================
 router.get('/marketing', async (req, res) => {
   try {
@@ -543,6 +574,7 @@ router.get('/marketing', async (req, res) => {
     const monthsBack = parseInt(req.query.months) || 6;
 
     // Get monthly marketing metrics at different cohort ages
+    // IMPORTANT: Filter only Apple Ads users (media_source = 'Apple AdServices')
     const result = await db.query(`
       WITH monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
@@ -562,6 +594,7 @@ router.get('/marketing', async (req, res) => {
           refund
         FROM qonversion_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND media_source = 'Apple AdServices'
       ),
       conversions_by_age AS (
         SELECT

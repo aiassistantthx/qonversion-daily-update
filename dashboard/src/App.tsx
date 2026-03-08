@@ -23,6 +23,7 @@ interface DashboardData {
     spendChange: number | null;
     revenue: number;
     revenueChange: number | null;
+    cohortRevenue: number;  // Apple Ads users revenue
     subscribers: number;
     subscribersChange: number | null;
     cop: number | null;
@@ -31,6 +32,8 @@ interface DashboardData {
     cop7d: number | null;
     crToPaid: number | null;
     crChange: number | null;
+    roas: number | null;
+    roasChange: number | null;
     forecastSpend: number;
     forecastRevenue: number;
     predictedCop: number | null;
@@ -150,15 +153,15 @@ function Dashboard() {
         <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" />
         <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" />
         <KPICard title="CR to Paid" value={fmtPct(cm?.crToPaid)} subtitle="excl. last 4 days" change={cm?.crChange} />
-        <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover COP" icon={Clock} />
+        <KPICard title="ROAS" value={cm?.roas != null ? `${cm.roas.toFixed(2)}x` : '—'} subtitle="Apple Ads cohort" icon={TrendingUp} change={cm?.roasChange} />
       </div>
 
       {/* Forecast KPIs */}
       <div style={styles.kpiGrid}>
         <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" />
         <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" />
-        <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="accounting for pending conversions" icon={Target} />
-        <KPICard title="Forecast Subs" value={String(cm?.forecastSubscribers || 0)} subtitle="after all conversions" icon={Users} />
+        <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} />
+        <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
 
       {/* Daily Chart */}
