@@ -321,14 +321,14 @@ app.post('/migrate/asa', async (req, res) => {
     ) c
     LEFT JOIN (
       SELECT
-        ua.campaign_id,
-        SUM(CASE WHEN qe.refund = false THEN COALESCE(qe.price_usd, 0) ELSE 0 END) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN qe.event_name IN ('Subscription Started', 'Trial Converted') THEN qe.q_user_id END) as paid_users_7d
-      FROM qonversion_events qe
-      JOIN user_attributions ua ON qe.q_user_id = ua.user_id
-      WHERE qe.event_date >= CURRENT_DATE - INTERVAL '7 days'
-      GROUP BY ua.campaign_id
-    ) r ON c.campaign_id = r.campaign_id;
+        campaign_id,
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_7d
+      FROM subscription_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND campaign_id IS NOT NULL
+      GROUP BY campaign_id
+    ) r ON c.campaign_id::TEXT = r.campaign_id;
 
     -- Keyword performance with revenue from Qonversion
     CREATE OR REPLACE VIEW v_keyword_performance AS
@@ -381,11 +381,11 @@ app.post('/migrate/asa', async (req, res) => {
     LEFT JOIN (
       SELECT
         ua.keyword_id,
-        SUM(CASE WHEN qe.refund = false THEN COALESCE(qe.price_usd, 0) ELSE 0 END) as revenue_7d,
-        COUNT(DISTINCT CASE WHEN qe.event_name IN ('Subscription Started', 'Trial Converted') THEN qe.q_user_id END) as paid_users_7d
-      FROM qonversion_events qe
-      JOIN user_attributions ua ON qe.q_user_id = ua.user_id
-      WHERE qe.event_date >= CURRENT_DATE - INTERVAL '7 days'
+        SUM(CASE WHEN se.refund = false THEN COALESCE(se.price_usd, 0) ELSE 0 END) as revenue_7d,
+        COUNT(DISTINCT CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN se.q_user_id END) as paid_users_7d
+      FROM subscription_events se
+      JOIN user_attributions ua ON se.q_user_id = ua.user_id
+      WHERE se.event_date >= CURRENT_DATE - INTERVAL '7 days'
         AND ua.keyword_id IS NOT NULL
       GROUP BY ua.keyword_id
     ) r ON k.keyword_id = r.keyword_id;
