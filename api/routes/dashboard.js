@@ -553,6 +553,7 @@ router.get('/marketing', async (req, res) => {
       cohort_data AS (
         SELECT
           TO_CHAR(install_date, 'YYYY-MM') as month,
+          DATE_PART('day', event_date - install_date)::int as days_to_event,
           DATE_PART('day', CURRENT_DATE - install_date)::int as cohort_age,
           q_user_id,
           event_name,
@@ -565,44 +566,54 @@ router.get('/marketing', async (req, res) => {
       conversions_by_age AS (
         SELECT
           month,
-          -- Conversions at different ages
+          MAX(cohort_age) as cohort_age,
+          -- Conversions within X days of install
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE cohort_age >= 4 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+            WHERE days_to_event <= 4 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_4d,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE cohort_age >= 7 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+            WHERE days_to_event <= 7 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_7d,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE cohort_age >= 30 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+            WHERE days_to_event <= 30 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_30d,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE cohort_age >= 60 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+            WHERE days_to_event <= 60 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_60d,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE cohort_age >= 180 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+            WHERE days_to_event <= 180 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_180d,
-          -- Revenue at different ages
-          SUM(price_usd) FILTER (WHERE cohort_age >= 4 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_4d,
-          SUM(price_usd) FILTER (WHERE cohort_age >= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
-          SUM(price_usd) FILTER (WHERE cohort_age >= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
-          SUM(price_usd) FILTER (WHERE cohort_age >= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
-          SUM(price_usd) FILTER (WHERE cohort_age >= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d
+          -- Total conversions (all time)
+          COUNT(DISTINCT q_user_id) FILTER (
+            WHERE event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          ) as subs_total,
+          -- Revenue within X days of install
+          SUM(price_usd) FILTER (WHERE days_to_event <= 4 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_4d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d,
+          -- Total revenue (all time)
+          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_total
         FROM cohort_data
         GROUP BY month
       )
       SELECT
         ms.month,
         ms.spend,
+        COALESCE(ca.cohort_age, 0) as cohort_age,
         COALESCE(ca.subs_4d, 0) as subs_4d,
         COALESCE(ca.subs_7d, 0) as subs_7d,
         COALESCE(ca.subs_30d, 0) as subs_30d,
         COALESCE(ca.subs_60d, 0) as subs_60d,
         COALESCE(ca.subs_180d, 0) as subs_180d,
+        COALESCE(ca.subs_total, 0) as subs_total,
         COALESCE(ca.rev_4d, 0) as rev_4d,
         COALESCE(ca.rev_7d, 0) as rev_7d,
         COALESCE(ca.rev_30d, 0) as rev_30d,
         COALESCE(ca.rev_60d, 0) as rev_60d,
-        COALESCE(ca.rev_180d, 0) as rev_180d
+        COALESCE(ca.rev_180d, 0) as rev_180d,
+        COALESCE(ca.rev_total, 0) as rev_total
       FROM monthly_spend ms
       LEFT JOIN conversions_by_age ca ON ms.month = ca.month
       ORDER BY ms.month DESC
@@ -610,50 +621,33 @@ router.get('/marketing', async (req, res) => {
 
     const data = result.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
+      const cohortAge = parseInt(row.cohort_age) || 0;
 
-      // Calculate COP at each age
-      const cop4d = row.subs_4d > 0 ? spend / row.subs_4d : null;
-      const cop7d = row.subs_7d > 0 ? spend / row.subs_7d : null;
-      const cop30d = row.subs_30d > 0 ? spend / row.subs_30d : null;
-      const cop60d = row.subs_60d > 0 ? spend / row.subs_60d : null;
-      const cop180d = row.subs_180d > 0 ? spend / row.subs_180d : null;
+      // Calculate COP at each age (only show if cohort is old enough)
+      const cop4d = cohortAge >= 4 && row.subs_4d > 0 ? spend / row.subs_4d : null;
+      const cop7d = cohortAge >= 7 && row.subs_7d > 0 ? spend / row.subs_7d : null;
+      const cop30d = cohortAge >= 30 && row.subs_30d > 0 ? spend / row.subs_30d : null;
+      const cop60d = cohortAge >= 60 && row.subs_60d > 0 ? spend / row.subs_60d : null;
+      const cop180d = cohortAge >= 180 && row.subs_180d > 0 ? spend / row.subs_180d : null;
+      const copTotal = row.subs_total > 0 ? spend / row.subs_total : null;
 
-      // Calculate ROAS at each age
-      const roas4d = spend > 0 ? parseFloat(row.rev_4d) / spend : null;
-      const roas7d = spend > 0 ? parseFloat(row.rev_7d) / spend : null;
-      const roas30d = spend > 0 ? parseFloat(row.rev_30d) / spend : null;
-      const roas60d = spend > 0 ? parseFloat(row.rev_60d) / spend : null;
-      const roas180d = spend > 0 ? parseFloat(row.rev_180d) / spend : null;
+      // Calculate ROAS at each age (only show if cohort is old enough)
+      const roas4d = cohortAge >= 4 && spend > 0 ? parseFloat(row.rev_4d) / spend : null;
+      const roas7d = cohortAge >= 7 && spend > 0 ? parseFloat(row.rev_7d) / spend : null;
+      const roas30d = cohortAge >= 30 && spend > 0 ? parseFloat(row.rev_30d) / spend : null;
+      const roas60d = cohortAge >= 60 && spend > 0 ? parseFloat(row.rev_60d) / spend : null;
+      const roas180d = cohortAge >= 180 && spend > 0 ? parseFloat(row.rev_180d) / spend : null;
+      const roasTotal = spend > 0 ? parseFloat(row.rev_total) / spend : null;
 
       // Predict final COP and ROAS based on decay curve
-      // Use the oldest available data point to predict
-      const [year, month] = row.month.split('-').map(Number);
-      const monthDate = new Date(year, month - 1, 15);
-      const today = new Date();
-      const avgCohortAge = Math.floor((today - monthDate) / (1000 * 60 * 60 * 24));
-      const decayFactor = getDecayFactor(avgCohortAge);
+      // Use the current cohort age to determine decay factor
+      const decayFactor = getDecayFactor(cohortAge);
+      const subsTotal = parseInt(row.subs_total) || 0;
+      const revTotal = parseFloat(row.rev_total) || 0;
 
-      // Predict using the best available data
-      let predictedSubs, predictedRev;
-      if (row.subs_180d > 0) {
-        predictedSubs = row.subs_180d / getDecayFactor(180);
-        predictedRev = parseFloat(row.rev_180d) / getDecayFactor(180);
-      } else if (row.subs_60d > 0) {
-        predictedSubs = row.subs_60d / getDecayFactor(60);
-        predictedRev = parseFloat(row.rev_60d) / getDecayFactor(60);
-      } else if (row.subs_30d > 0) {
-        predictedSubs = row.subs_30d / getDecayFactor(30);
-        predictedRev = parseFloat(row.rev_30d) / getDecayFactor(30);
-      } else if (row.subs_7d > 0) {
-        predictedSubs = row.subs_7d / getDecayFactor(7);
-        predictedRev = parseFloat(row.rev_7d) / getDecayFactor(7);
-      } else if (row.subs_4d > 0) {
-        predictedSubs = row.subs_4d / getDecayFactor(4);
-        predictedRev = parseFloat(row.rev_4d) / getDecayFactor(4);
-      } else {
-        predictedSubs = 0;
-        predictedRev = 0;
-      }
+      // Predict final values
+      const predictedSubs = subsTotal > 0 ? subsTotal / decayFactor : 0;
+      const predictedRev = revTotal > 0 ? revTotal / decayFactor : 0;
 
       const copPredicted = predictedSubs > 0 ? spend / predictedSubs : null;
       const roasPredicted = spend > 0 ? predictedRev / spend : null;
@@ -661,15 +655,16 @@ router.get('/marketing', async (req, res) => {
       // Payback calculation
       const yearlyARPU = 50;
       const paybackMonths = copPredicted ? Math.round(copPredicted / (yearlyARPU / 12)) : null;
-      const isPaidBack = roas180d && roas180d >= 1;
+      const isPaidBack = roasTotal && roasTotal >= 1;
 
       return {
         month: row.month,
         spend,
-        cohortAge: avgCohortAge,
-        cop: { d4: cop4d, d7: cop7d, d30: cop30d, d60: cop60d, d180: cop180d, predicted: copPredicted },
-        roas: { d4: roas4d, d7: roas7d, d30: roas30d, d60: roas60d, d180: roas180d, predicted: roasPredicted },
-        subs: { d4: row.subs_4d, d7: row.subs_7d, d30: row.subs_30d, d60: row.subs_60d, d180: row.subs_180d },
+        cohortAge,
+        cop: { d4: cop4d, d7: cop7d, d30: cop30d, d60: cop60d, d180: cop180d, total: copTotal, predicted: copPredicted },
+        roas: { d4: roas4d, d7: roas7d, d30: roas30d, d60: roas60d, d180: roas180d, total: roasTotal, predicted: roasPredicted },
+        subs: { d4: parseInt(row.subs_4d), d7: parseInt(row.subs_7d), d30: parseInt(row.subs_30d), d60: parseInt(row.subs_60d), d180: parseInt(row.subs_180d), total: parseInt(row.subs_total) },
+        revenue: { d4: parseFloat(row.rev_4d), d7: parseFloat(row.rev_7d), d30: parseFloat(row.rev_30d), d60: parseFloat(row.rev_60d), d180: parseFloat(row.rev_180d), total: parseFloat(row.rev_total) },
         paybackMonths,
         isPaidBack,
       };
