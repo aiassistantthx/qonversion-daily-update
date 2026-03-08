@@ -249,13 +249,13 @@ router.get('/main', async (req, res) => {
     const dailyResult = await db.query(dailyQuery);
 
     // Calculate COHORT COP for each day with predicted final COP
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayForCohort = new Date();
+    todayForCohort.setHours(0, 0, 0, 0);
 
     const dailyData = dailyResult.rows.map(row => {
       const dayDate = new Date(row.day);
       dayDate.setHours(0, 0, 0, 0);
-      const cohortAge = Math.floor((today - dayDate) / (1000 * 60 * 60 * 24));
+      const cohortAge = Math.floor((todayForCohort - dayDate) / (1000 * 60 * 60 * 24));
       const spend = parseFloat(row.spend) || 0;
       const subs = parseInt(row.subscribers) || 0;
 

@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('./db');
 const webhookRouter = require('./routes/webhook');
 const dashboardRouter = require('./routes/dashboard');
+const asaRouter = require('./routes/asa');
 const appleAds = require('./services/appleAds');
 
 const app = express();
@@ -13,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 // CORS middleware
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -63,11 +64,14 @@ app.use('/webhook', webhookRouter);
 // Dashboard routes
 app.use('/dashboard', dashboardRouter);
 
+// ASA Management routes
+app.use('/asa', asaRouter);
+
 // API info endpoint
 app.get('/', (req, res) => {
   res.json({
     name: 'Qonversion Attribution API',
-    version: '2.0.0',
+    version: '3.0.0',
     endpoints: {
       'GET /': 'This info',
       'GET /health': 'Health check',
@@ -85,6 +89,20 @@ app.get('/', (req, res) => {
       'GET /dashboard/retention': 'Retention heatmap',
       'GET /dashboard/payback': 'Payback curves',
       'GET /dashboard/health': 'Health score',
+      // ASA Management
+      'GET /asa/campaigns': 'List campaigns',
+      'PUT /asa/campaigns/:id': 'Update campaign',
+      'PATCH /asa/campaigns/:id/status': 'Pause/enable campaign',
+      'GET /asa/keywords': 'List keywords with filters',
+      'POST /asa/keywords/bulk': 'Create keywords',
+      'PATCH /asa/keywords/:id/bid': 'Update keyword bid',
+      'PATCH /asa/keywords/bulk/bid': 'Bulk update keyword bids',
+      'GET /asa/rules': 'List automation rules',
+      'POST /asa/rules': 'Create automation rule',
+      'POST /asa/rules/:id/execute': 'Execute rule manually',
+      'GET /asa/templates': 'List campaign templates',
+      'GET /asa/history': 'Get change history',
+      'POST /asa/sync': 'Full data sync',
     },
   });
 });

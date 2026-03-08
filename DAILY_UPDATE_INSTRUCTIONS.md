@@ -5,55 +5,144 @@ https://docs.google.com/spreadsheets/d/1XGhckU9SJfGXK94JFVBIpAuoCBoybBSKVnT0Q4mq
 
 Лист: `fact`
 
-## Шаги обновления
+## Автоматическое обновление
 
-### 1. Добавить новый день
-- Добавить колонку для текущего дня (если ещё нет)
+Скрипт запускается автоматически каждый день в **9:00** через launchd.
 
-### 2. New Trials (строка 55)
-- Источник: https://dash.qonversion.io/analytics/trials → New Trials
-- Обновить данные за последние 7 дней
+### Запуск вручную
 
-### 3. Apple Ads Cost (строка 7)
-- Источник: Apple Search Ads или Qonversion интеграция
-- Обновить расходы на рекламу
+```bash
+# Стандартный запуск (последние 10 дней)
+cd ~/scripts/qonversion && node daily-update-api.js
 
-### 4. Sales (строка 19)
-- Источник: Qonversion → Revenue/Proceeds
-- Обновить продажи
+# За последние 30 дней
+node daily-update-api.js --days=30
 
-### 5. New Yearly Subscribers (строка 58)
-- Источник: Qonversion
-- Фильтр по продуктам:
-  - `chat.yearly.null.v1.0423`
-  - `chat.yearly.null.v2.1006`
-  - `chat.yearly.null.v3.0725`
+# Кастомный диапазон дат
+node daily-update-api.js --from=2026-02-01 --to=2026-03-08
 
-### 6. Trial-to-Paid Conversion (строка 64)
-- Источник: https://dash.qonversion.io/analytics/trials/trial-to-paid
-- **Важно:** НЕ обновлять последние 4 дня (данные ещё не финальные)
+# Тестовый режим (без записи в таблицу)
+node daily-update-api.js --dry-run
 
-### 7. Cohort Revenue (строка 93)
-- Источник: https://dash.qonversion.io/cohorts?project=PcnB70vn&metric=revenue&valueType=relative&revenueType=gross&from=1646092800&to=1772841599&relativeInterval=last48Months&account=8htsgud1
+# Подробный вывод
+node daily-update-api.js --verbose
+```
 
-#### Корректировки:
+### Логи и отчёты
+
+- **Лог:** `~/scripts/qonversion/daily-update.log`
+- **Cron лог:** `~/scripts/qonversion/cron.log`
+- **Отчёты:** `~/scripts/qonversion/reports/report-YYYY-MM-DD.md`
+- **Данные:** `~/scripts/qonversion/data/api-update-YYYY-MM-DD.json`
+
+## Источники данных
+
+### API (основной источник)
+```
+http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io/dashboard/main
+```
+
+Возвращает:
+- `daily[]` - ежедневные данные (spend, revenue, subscribers)
+- `monthly[]` - месячные данные (trials, converted, subscribers)
+- `currentMonth` - метрики текущего месяца
+
+### Таблицы в БД
+- `qonversion_events` - события подписок из Qonversion webhook
+- `apple_ads_campaigns` - расходы Apple Ads
+
+## Строки в таблице
+
+| Строка | Метрика | Источник |
+|--------|---------|----------|
+| 7 | Apple Ads Cost (Spend) | API: `daily[].spend` |
+| 19 | Sales (Revenue) | API: `daily[].revenue` |
+| 55 | New Trials | API: `monthly[].trials` |
+| 58 | New Yearly Subscribers | API: `daily[].subscribers` |
+| 64 | Trial-to-Paid Conversion | API: `currentMonth.crToPaid` |
+| 93 | Cohort Revenue | API: `monthly[]` |
+
+## Unit Economics метрики
+
+Скрипт автоматически рассчитывает:
+
+| Метрика | Формула | Описание |
+|---------|---------|----------|
+| CAC | Spend / Subscribers | Cost of Acquisition |
+| ARPU | Revenue / Subscribers | Avg Revenue Per User |
+| ROAS | Revenue / Spend | Return on Ad Spend |
+| LTV/CAC | ARPU / CAC | Эффективность привлечения |
+| CR to Paid | Converted / Trials | Конверсия триала в платку |
+
+### Пример вывода
+
+```
+==================================================
+UNIT ECONOMICS SUMMARY
+==================================================
+Month: 2026-03
+  Spend:        $13915.90
+  Revenue:      $28397.89
+  Subscribers:  309
+  CAC:          $58.28
+  ARPU:         $91.90
+  ROAS:         2.04x
+  LTV/CAC:      1.58
+  CR to Paid:   9.77%
+==================================================
+```
+
+## Корректировки когорт
+
 - **July 2025**: вычесть $4,225 из когортной выручки
 - **Feb 2022**: вычесть $2,700 из итоговой суммы
 
-## Проверка и отчёт
+## Важные правила
 
-После обновления:
-1. Проверить отклонения за 7 дней
-2. Проверить отклонения за 30 дней
-3. Убедиться что всё вписывается в общую картину
-4. Сохранить изменения
-5. Подготовить отчёт:
-   - Что изменилось
-   - Есть ли аномалии
-   - Или всё стабильно
+1. **Apple Ads Cost = 0** — скрипт НЕ записывает нули, чтобы не затирать реальные данные
+2. **Trial-to-Paid** — последние 4 дня не учитываются (данные ещё не финальные)
+3. **Колонки** — автоматически расширяются при необходимости
 
-## Запуск
+## Структура колонок
+
+- Базовая колонка: `AMP` = 26.02.2026 (индекс 1030)
+- Каждый следующий день = +1 колонка
+- Пример: Mar 8 = `AMZ` (1040)
+
+## Troubleshooting
+
+### Данные не обновились
+```bash
+# Проверить логи
+tail -50 ~/scripts/qonversion/daily-update.log
+
+# Проверить статус launchd
+launchctl list | grep qonversion
+```
+
+### Перезапустить launchd agent
+```bash
+launchctl unload ~/Library/LaunchAgents/com.qonversion.daily-update.plist
+launchctl load ~/Library/LaunchAgents/com.qonversion.daily-update.plist
+```
+
+### Проверить API
+```bash
+curl -s http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io/health
+curl -s http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io/dashboard/main | head -100
+```
+
+## Legacy скрипт (Playwright)
+
+Старый скрипт `daily-update.js` использует Playwright для парсинга UI Qonversion.
+Используется как fallback если API недоступен.
 
 ```bash
+# Требует auth.json (сессия браузера)
 cd ~/scripts/qonversion && node daily-update.js
+```
+
+Если сессия истекла:
+```bash
+node login.js  # откроется браузер для авторизации
 ```

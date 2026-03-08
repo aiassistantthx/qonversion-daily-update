@@ -2,23 +2,18 @@
 
 # Daily Update Runner for Qonversion → Google Sheets
 # Запускается автоматически каждый день в 9:00
+# Использует API версию (без Playwright)
 
 SCRIPT_DIR="$HOME/scripts/qonversion"
 LOG_FILE="$SCRIPT_DIR/cron.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
-echo "[$DATE] Starting daily update..." >> "$LOG_FILE"
+echo "[$DATE] Starting daily update (API version)..." >> "$LOG_FILE"
 
 cd "$SCRIPT_DIR"
 
-# Проверяем что auth.json существует
-if [ ! -f "auth.json" ]; then
-    echo "[$DATE] ERROR: auth.json not found. Run 'node login.js' first." >> "$LOG_FILE"
-    exit 1
-fi
-
-# Запускаем основной скрипт
-/opt/homebrew/bin/node daily-update.js >> "$LOG_FILE" 2>&1
+# Запускаем API-версию скрипта с данными за последние 10 дней
+/opt/homebrew/bin/node daily-update-api.js --days=10 >> "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?
 DATE_END=$(date '+%Y-%m-%d %H:%M:%S')
