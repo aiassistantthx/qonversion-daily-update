@@ -526,4 +526,132 @@ router.get('/debug', async (req, res) => {
   }
 });
 
+// ============================================
+// FINMODEL ENDPOINT - данные для Google Sheets AI_finmodel
+// ============================================
+
+router.get('/finmodel', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 10;
+
+    // Daily data for fin model (last N days)
+    const dailyQuery = `
+      WITH daily_spend AS (
+        SELECT date as day, SUM(spend) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+        GROUP BY date
+      ),
+      daily_revenue AS (
+        SELECT
+          DATE(event_date) as day,
+          SUM(price_usd) FILTER (
+            WHERE refund = false
+            AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          ) as revenue
+        FROM qonversion_events
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${days} days'
+        GROUP BY DATE(event_date)
+      ),
+      daily_trials AS (
+        SELECT
+          DATE(install_date) as day,
+          COUNT(DISTINCT q_user_id) as trials
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND event_name = 'Trial Started'
+        GROUP BY DATE(install_date)
+      ),
+      daily_yearly_subs AS (
+        SELECT
+          DATE(event_date) as day,
+          COUNT(DISTINCT q_user_id) as yearly_subs
+        FROM qonversion_events
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND (
+            (event_name = 'Trial Converted' AND product_id LIKE '%yearly%')
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          )
+        GROUP BY DATE(event_date)
+      ),
+      trial_to_paid AS (
+        SELECT
+          DATE(install_date) as day,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted') as converted
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${days + 7} days'
+          AND install_date <= CURRENT_DATE - INTERVAL '4 days'
+        GROUP BY DATE(install_date)
+      ),
+      all_days AS (
+        SELECT generate_series(
+          CURRENT_DATE - INTERVAL '${days} days',
+          CURRENT_DATE,
+          '1 day'::interval
+        )::date as day
+      )
+      SELECT
+        ad.day,
+        COALESCE(ds.spend, 0) as spend,
+        COALESCE(dr.revenue, 0) as revenue,
+        COALESCE(dt.trials, 0) as trials,
+        COALESCE(dys.yearly_subs, 0) as yearly_subs,
+        ttp.trials as ttp_trials,
+        ttp.converted as ttp_converted,
+        CASE
+          WHEN ttp.trials > 0 THEN ROUND((ttp.converted::numeric / ttp.trials) * 100, 2)
+          ELSE NULL
+        END as trial_to_paid_pct
+      FROM all_days ad
+      LEFT JOIN daily_spend ds ON ad.day = ds.day
+      LEFT JOIN daily_revenue dr ON ad.day = dr.day
+      LEFT JOIN daily_trials dt ON ad.day = dt.day
+      LEFT JOIN daily_yearly_subs dys ON ad.day = dys.day
+      LEFT JOIN trial_to_paid ttp ON ad.day = ttp.day
+      ORDER BY ad.day DESC
+    `;
+    const dailyResult = await db.query(dailyQuery);
+
+    // Monthly cohort revenue (last 12 months)
+    const cohortQuery = `
+      SELECT
+        TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+        TO_CHAR(install_date, 'Mon YYYY') as cohort_label,
+        SUM(price_usd) FILTER (WHERE refund = false) as total_revenue
+      FROM qonversion_events
+      WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+      GROUP BY TO_CHAR(install_date, 'YYYY-MM'), TO_CHAR(install_date, 'Mon YYYY')
+      ORDER BY cohort_month DESC
+    `;
+    const cohortResult = await db.query(cohortQuery);
+
+    const dailyData = dailyResult.rows.map(row => ({
+      date: formatDate(row.day),
+      dateKey: new Date(row.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      spend: Math.round(parseFloat(row.spend) || 0),
+      revenue: Math.round(parseFloat(row.revenue) || 0),
+      trials: parseInt(row.trials) || 0,
+      yearlySubs: parseInt(row.yearly_subs) || 0,
+      trialToPaidPct: row.trial_to_paid_pct ? parseFloat(row.trial_to_paid_pct) / 100 : null,
+    }));
+
+    const cohortData = cohortResult.rows.map(row => ({
+      month: row.cohort_month,
+      label: row.cohort_label,
+      revenue: Math.round(parseFloat(row.total_revenue) || 0),
+    }));
+
+    res.json({
+      daily: dailyData,
+      cohorts: cohortData,
+      generated: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Finmodel error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
