@@ -397,11 +397,39 @@ router.get('/main', async (req, res) => {
         converted,
         subscribers: subs,
         cop: currentCop,  // Always show actual COP
-        copPredicted: predictedCop,  // Predicted COP (null for current month)
+        copPredicted: predictedCop,  // Predicted COP (null for current month - will be replaced below)
         crToPaid: trials > 0 ? (converted / trials) * 100 : null,
         roas: spend > 0 ? revenue / spend : null,
       };
     }).reverse();
+
+    // Replace current month in monthly data with full data (not just closed cohorts)
+    const currentMonthIdx = monthlyData.findIndex(m => m.month === currentMonth);
+    if (currentMonthIdx >= 0) {
+      // Replace with full current month data
+      monthlyData[currentMonthIdx] = {
+        ...monthlyData[currentMonthIdx],
+        spend: monthSpend,
+        revenue: monthRevenue,
+        subscribers: monthSubscribers,
+        cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
+        copPredicted: predictedCop, // Use the correctly calculated predicted COP
+      };
+    } else {
+      // Add current month if not in array
+      monthlyData.push({
+        month: currentMonth,
+        revenue: monthRevenue,
+        spend: monthSpend,
+        trials: 0,
+        converted: 0,
+        subscribers: monthSubscribers,
+        cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
+        copPredicted: predictedCop,
+        crToPaid: crToPaid,
+        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,
+      });
+    }
 
     res.json({
       currentMonth: {
