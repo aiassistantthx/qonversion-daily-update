@@ -229,27 +229,30 @@ function Dashboard() {
               <tr>
                 <th style={styles.th}>Month</th>
                 <th style={styles.thRight}>Spend</th>
-                <th style={styles.thRight}>Revenue</th>
+                <th style={styles.thRight}>Sales</th>
                 <th style={styles.thRight}>Subs</th>
                 <th style={styles.thRight}>COP</th>
                 <th style={styles.thRight}>CR %</th>
-                <th style={styles.thRight}>ROAS</th>
+                <th style={styles.thRight}>ROAS (net)</th>
               </tr>
             </thead>
             <tbody>
-              {monthly.map(row => (
-                <tr key={row.month} style={styles.tr}>
-                  <td style={styles.td}>{row.month}</td>
-                  <td style={styles.tdRight}>{fmt(row.spend)}</td>
-                  <td style={styles.tdRight}>{fmt(row.revenue)}</td>
-                  <td style={styles.tdRight}>{row.subscribers}</td>
-                  <td style={styles.tdRight}>{row.cop ? fmt(row.cop) : '—'}</td>
-                  <td style={styles.tdRight}>{row.crToPaid ? `${row.crToPaid.toFixed(1)}%` : '—'}</td>
-                  <td style={{ ...styles.tdRight, color: row.roas && row.roas > 1 ? '#10b981' : '#ef4444' }}>
-                    {row.roas ? `${row.roas.toFixed(2)}x` : '—'}
-                  </td>
-                </tr>
-              ))}
+              {monthly.map(row => {
+                const roasNet = row.roas ? row.roas * 0.82 : null;
+                return (
+                  <tr key={row.month} style={styles.tr}>
+                    <td style={styles.td}>{row.month}</td>
+                    <td style={styles.tdRight}>{fmt(row.spend)}</td>
+                    <td style={styles.tdRight}>{fmt(row.revenue)}</td>
+                    <td style={styles.tdRight}>{row.subscribers}</td>
+                    <td style={styles.tdRight}>{row.cop ? fmt(row.cop) : '—'}</td>
+                    <td style={styles.tdRight}>{row.crToPaid ? `${row.crToPaid.toFixed(1)}%` : '—'}</td>
+                    <td style={{ ...styles.tdRight, color: roasNet && roasNet > 1 ? '#10b981' : '#ef4444' }}>
+                      {roasNet ? `${roasNet.toFixed(2)}x` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

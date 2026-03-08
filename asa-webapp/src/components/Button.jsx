@@ -37,7 +37,7 @@ export function Button({
       {...props}
     >
       {loading && (
-        <svg className="animate-spin h-4 w-4\" viewBox="0 0 24 24">
+        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
           <circle
             className="opacity-25"
             cx="12"

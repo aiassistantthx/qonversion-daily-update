@@ -83,10 +83,10 @@ function CampaignRow({ campaign, expanded, onToggle }) {
             </div>
           )}
         </TableCell>
-        <TableCell className="text-right">${(campaign.performance?.spend_7d || 0).toFixed(2)}</TableCell>
-        <TableCell className="text-right">{campaign.performance?.impressions_7d?.toLocaleString() || 0}</TableCell>
-        <TableCell className="text-right">{campaign.performance?.taps_7d?.toLocaleString() || 0}</TableCell>
-        <TableCell className="text-right">{campaign.performance?.installs_7d || 0}</TableCell>
+        <TableCell className="text-right">${parseFloat(campaign.performance?.spend_7d || 0).toFixed(2)}</TableCell>
+        <TableCell className="text-right">{parseInt(campaign.performance?.impressions_7d || 0).toLocaleString()}</TableCell>
+        <TableCell className="text-right">{parseInt(campaign.performance?.taps_7d || 0).toLocaleString()}</TableCell>
+        <TableCell className="text-right">{parseInt(campaign.performance?.installs_7d || 0)}</TableCell>
         <TableCell className="text-right">
           {campaign.performance?.cpa_7d ? `$${parseFloat(campaign.performance.cpa_7d).toFixed(2)}` : '-'}
         </TableCell>
