@@ -388,7 +388,7 @@ app.post('/migrate/asa', async (req, res) => {
       WHERE se.event_date >= CURRENT_DATE - INTERVAL '7 days'
         AND ua.keyword_id IS NOT NULL
       GROUP BY ua.keyword_id
-    ) r ON k.keyword_id = r.keyword_id;
+    ) r ON k.keyword_id::TEXT = r.keyword_id::TEXT;
   `;
 
   try {
