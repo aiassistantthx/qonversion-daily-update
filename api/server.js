@@ -266,6 +266,22 @@ app.post('/migrate/asa', async (req, res) => {
     CREATE INDEX IF NOT EXISTS idx_history_entity ON asa_change_history(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_history_changed_at ON asa_change_history(changed_at);
     CREATE INDEX IF NOT EXISTS idx_alerts_created ON asa_alerts(created_at);
+
+    -- Views
+    CREATE OR REPLACE VIEW v_recent_rule_activity AS
+    SELECT
+      r.id as rule_id,
+      r.name as rule_name,
+      r.scope,
+      r.action_type,
+      r.enabled,
+      COUNT(e.id) as total_executions,
+      COUNT(CASE WHEN e.executed_at >= CURRENT_DATE THEN 1 END) as today_executions,
+      COUNT(CASE WHEN e.executed_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as week_executions,
+      MAX(e.executed_at) as last_execution
+    FROM asa_automation_rules r
+    LEFT JOIN asa_rule_executions e ON r.id = e.rule_id AND e.status = 'executed'
+    GROUP BY r.id, r.name, r.scope, r.action_type, r.enabled;
   `;
 
   try {
