@@ -150,19 +150,34 @@ app.get('/debug/subscription-events', async (req, res) => {
       WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
     `);
 
-    const campaigns = await db.query(`
-      SELECT campaign_id, COUNT(*) as events, SUM(COALESCE(price_usd, 0)) as revenue
-      FROM subscription_events
-      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
-        AND campaign_id IS NOT NULL
-      GROUP BY campaign_id
-      ORDER BY events DESC
-      LIMIT 10
+    // Check events joined with user_attributions
+    const attributed = await db.query(`
+      SELECT
+        COUNT(*) as total_matched,
+        COUNT(DISTINCT ua.campaign_id) as unique_campaigns,
+        SUM(CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN 1 ELSE 0 END) as paid_events_matched,
+        SUM(CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN COALESCE(se.price_usd, 0) ELSE 0 END) as paid_revenue
+      FROM subscription_events se
+      JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
+      WHERE se.event_date >= CURRENT_DATE - INTERVAL '7 days'
+        AND ua.campaign_id IS NOT NULL
+    `);
+
+    // Sample of user_attributions
+    const sample_ua = await db.query(`
+      SELECT user_id, campaign_id FROM user_attributions LIMIT 3
+    `);
+
+    // Sample of subscription_events
+    const sample_se = await db.query(`
+      SELECT q_user_id, event_name, campaign_id FROM subscription_events WHERE event_date >= CURRENT_DATE - INTERVAL '7 days' LIMIT 3
     `);
 
     res.json({
       stats: stats.rows[0],
-      top_campaigns: campaigns.rows
+      attributed: attributed.rows[0],
+      sample_user_attributions: sample_ua.rows,
+      sample_subscription_events: sample_se.rows
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
