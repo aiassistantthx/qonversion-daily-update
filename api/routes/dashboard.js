@@ -399,12 +399,11 @@ router.get('/main', async (req, res) => {
     }).reverse();
 
     // ---- MONTHLY DATA (COHORT-BASED) ----
-    // ROAS is cohort-based: revenue from Apple Ads users who installed in that month
-    // Filter by media_source = 'Apple AdServices' for accurate ROAS calculation
+    // ROAS here is total (all traffic), marketing section below shows Apple Ads only
     const monthsBack = parseInt(req.query.months) || 12;
     const monthlyQuery = `
       WITH cohort_revenue AS (
-        -- Revenue from Apple Ads users by their install month (cohort revenue)
+        -- Revenue from ALL users by their install month (cohort revenue)
         SELECT
           TO_CHAR(install_date, 'YYYY-MM') as month,
           SUM(price_usd) FILTER (
@@ -413,7 +412,6 @@ router.get('/main', async (req, res) => {
           ) as revenue
         FROM qonversion_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
-          AND media_source = 'Apple AdServices'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       cohort_metrics AS (
@@ -507,18 +505,16 @@ router.get('/main', async (req, res) => {
         ...monthlyData[currentMonthIdx],
         spend: monthSpend,
         revenue: monthRevenue,
-        cohortRevenue: monthCohortRevenue,  // Apple Ads cohort revenue
         subscribers: monthSubscribers,
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop, // Use the correctly calculated predicted COP
-        roas: roas,  // Cohort ROAS (Apple Ads only)
+        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,  // Total ROAS (all traffic)
       };
     } else {
       // Add current month if not in array
       monthlyData.push({
         month: currentMonth,
         revenue: monthRevenue,
-        cohortRevenue: monthCohortRevenue,
         spend: monthSpend,
         trials: 0,
         converted: 0,
@@ -526,7 +522,7 @@ router.get('/main', async (req, res) => {
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop,
         crToPaid: crToPaid,
-        roas: roas,  // Cohort ROAS (Apple Ads only)
+        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,  // Total ROAS (all traffic)
       });
     }
 

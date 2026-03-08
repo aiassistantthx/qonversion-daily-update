@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Megaphone,
+  Layers,
   KeyRound,
   Cog,
   FileText,
@@ -12,6 +13,7 @@ import {
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { path: '/adgroups', label: 'Ad Groups', icon: Layers },
   { path: '/keywords', label: 'Keywords', icon: KeyRound },
   { path: '/rules', label: 'Rules', icon: Cog },
   { path: '/templates', label: 'Templates', icon: FileText },
