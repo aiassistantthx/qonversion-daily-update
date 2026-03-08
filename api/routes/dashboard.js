@@ -267,13 +267,10 @@ router.get('/main', async (req, res) => {
       const currentCop = subs > 0 ? spend / subs : null;
 
       // Predicted final COP based on decay curve
+      // Shows what COP will be once all conversions arrive
       const decayFactor = getDecayFactor(cohortAge);
       const predictedFinalSubs = subs > 0 ? subs / decayFactor : 0;
       const predictedCop = predictedFinalSubs > 0 ? spend / predictedFinalSubs : null;
-
-      // Show actual COP for cohorts 7+ days old (mostly closed)
-      // Show predicted COP for cohorts < 7 days old (still many conversions coming)
-      const isClosedEnough = cohortAge >= 7;
 
       return {
         date: formatDate(row.day),
@@ -281,9 +278,9 @@ router.get('/main', async (req, res) => {
         spend,
         subscribers: subs,
         cohortAge,
-        cop: isClosedEnough && currentCop ? currentCop : null,  // Actual COP for 7+ day cohorts
-        copPredicted: !isClosedEnough && currentCop ? predictedCop : null,  // Predicted for <7 day cohorts
-        roas: isClosedEnough && spend > 0 ? parseFloat(row.revenue) / spend : null,
+        cop: currentCop,  // Always show actual COP (will decrease over time)
+        copPredicted: predictedCop,  // Always show predicted final COP
+        roas: cohortAge >= 4 && spend > 0 ? parseFloat(row.revenue) / spend : null,
       };
     }).reverse();
 
