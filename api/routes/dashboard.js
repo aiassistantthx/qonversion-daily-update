@@ -56,19 +56,21 @@ router.get('/main', async (req, res) => {
     const subscribersResult = await db.query(subscribersQuery, [currentMonth]);
     const monthSubscribers = parseInt(subscribersResult.rows[0]?.subscribers) || 0;
 
-    // COP calculation (excluding last 4 days for closed cohorts)
+    // COHORT COP calculation (excluding last 4 days for closed cohorts)
+    // Group by install_date (cohort), not event_date
     const copQuery = `
-      WITH daily_data AS (
+      WITH cohort_conversions AS (
         SELECT
-          DATE(event_date) as day,
-          COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'Trial Converted'
-            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
-          ) as subscribers
+          DATE(install_date) as cohort_day,
+          COUNT(DISTINCT q_user_id) as subscribers
         FROM qonversion_events
-        WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-          AND DATE(event_date) <= CURRENT_DATE - INTERVAL '4 days'
-        GROUP BY DATE(event_date)
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
+          AND (
+            event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          )
+        GROUP BY DATE(install_date)
       ),
       daily_spend AS (
         SELECT date as day, SUM(spend) as spend
@@ -79,16 +81,16 @@ router.get('/main', async (req, res) => {
       )
       SELECT
         COALESCE(SUM(ds.spend), 0) as total_spend,
-        COALESCE(SUM(dd.subscribers), 0) as total_subscribers
+        COALESCE(SUM(cc.subscribers), 0) as total_subscribers
       FROM daily_spend ds
-      LEFT JOIN daily_data dd ON ds.day = dd.day
+      LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day
     `;
     const copResult = await db.query(copQuery, [currentMonth]);
     const copSpend = parseFloat(copResult.rows[0]?.total_spend) || 0;
     const copSubs = parseInt(copResult.rows[0]?.total_subscribers) || 0;
     const cop = copSubs > 0 ? copSpend / copSubs : null;
 
-    // COP 3d (last 3 closed days, excluding last 4)
+    // COHORT COP 3d (cohorts from 7 to 4 days ago - closed cohorts)
     const cop3dQuery = `
       WITH period AS (
         SELECT
@@ -98,7 +100,7 @@ router.get('/main', async (req, res) => {
       subs AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events, period
-        WHERE DATE(event_date) BETWEEN start_date AND end_date
+        WHERE DATE(install_date) BETWEEN start_date AND end_date
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
@@ -113,7 +115,7 @@ router.get('/main', async (req, res) => {
     const cop3dSubs = parseInt(cop3dResult.rows[0]?.subs) || 0;
     const cop3d = cop3dSubs > 0 ? cop3dSpend / cop3dSubs : null;
 
-    // COP 7d
+    // COHORT COP 7d (cohorts from 11 to 4 days ago - closed cohorts)
     const cop7dQuery = `
       WITH period AS (
         SELECT
@@ -123,7 +125,7 @@ router.get('/main', async (req, res) => {
       subs AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events, period
-        WHERE DATE(event_date) BETWEEN start_date AND end_date
+        WHERE DATE(install_date) BETWEEN start_date AND end_date
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
@@ -138,23 +140,25 @@ router.get('/main', async (req, res) => {
     const cop7dSubs = parseInt(cop7dResult.rows[0]?.subs) || 0;
     const cop7d = cop7dSubs > 0 ? cop7dSpend / cop7dSubs : null;
 
-    // CR to paid (trial_converted / trial_started, closed cohorts)
+    // COHORT CR to paid (trial_converted / trial_started, by install_date cohort)
+    // Only count closed cohorts (installed 7+ days ago to allow full trial period)
     const crQuery = `
-      WITH trials AS (
+      WITH cohort_trials AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events
-        WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-          AND DATE(event_date) <= CURRENT_DATE - INTERVAL '7 days'
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
           AND event_name = 'Trial Started'
       ),
-      converted AS (
+      cohort_converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events
-        WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-          AND DATE(event_date) <= CURRENT_DATE - INTERVAL '4 days'
+        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
           AND event_name = 'Trial Converted'
       )
-      SELECT trials.cnt as trials, converted.cnt as converted FROM trials, converted
+      SELECT cohort_trials.cnt as trials, cohort_converted.cnt as converted
+      FROM cohort_trials, cohort_converted
     `;
     const crResult = await db.query(crQuery, [currentMonth]);
     const trials = parseInt(crResult.rows[0]?.trials) || 0;
@@ -169,18 +173,27 @@ router.get('/main', async (req, res) => {
     const forecastPaybackDays = cop && avgDailyRevenue > 0 ? Math.round(cop / (avgDailyRevenue / monthSubscribers || 1)) : null;
 
     // ---- DAILY DATA (last 30 days) ----
+    // Revenue by event_date, but cohort conversions by install_date
     const dailyQuery = `
-      WITH daily_events AS (
+      WITH daily_revenue AS (
         SELECT
           DATE(event_date) as day,
-          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue,
-          COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'Trial Converted'
-            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
-          ) as subscribers
+          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue
         FROM qonversion_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
         GROUP BY DATE(event_date)
+      ),
+      cohort_conversions AS (
+        SELECT
+          DATE(install_date) as cohort_day,
+          COUNT(DISTINCT q_user_id) as subscribers
+        FROM qonversion_events
+        WHERE install_date >= CURRENT_DATE - INTERVAL '34 days'
+          AND (
+            event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          )
+        GROUP BY DATE(install_date)
       ),
       daily_spend AS (
         SELECT date as day, SUM(spend) as spend
@@ -189,41 +202,51 @@ router.get('/main', async (req, res) => {
         GROUP BY date
       )
       SELECT
-        COALESCE(de.day, ds.day) as day,
-        COALESCE(de.revenue, 0) as revenue,
-        COALESCE(de.subscribers, 0) as subscribers,
+        ds.day,
+        COALESCE(dr.revenue, 0) as revenue,
+        COALESCE(cc.subscribers, 0) as subscribers,
         COALESCE(ds.spend, 0) as spend
-      FROM daily_events de
-      FULL OUTER JOIN daily_spend ds ON de.day = ds.day
-      WHERE COALESCE(de.day, ds.day) IS NOT NULL
-      ORDER BY day DESC
+      FROM daily_spend ds
+      LEFT JOIN daily_revenue dr ON ds.day = dr.day
+      LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day
+      ORDER BY ds.day DESC
       LIMIT 34
     `;
     const dailyResult = await db.query(dailyQuery);
 
-    // Calculate COP and ROAS for each day (excluding last 4 days for metrics)
+    // Calculate COHORT COP for each day (excluding last 4 days for closed cohorts)
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 4);
 
     const dailyData = dailyResult.rows.map(row => {
       const dayDate = new Date(row.day);
       const isOpen = dayDate > cutoffDate;
+      const spend = parseFloat(row.spend) || 0;
+      const subs = parseInt(row.subscribers) || 0;
       return {
         date: formatDate(row.day),
         revenue: parseFloat(row.revenue) || 0,
-        spend: parseFloat(row.spend) || 0,
-        subscribers: parseInt(row.subscribers) || 0,
-        cop: !isOpen && row.subscribers > 0 ? parseFloat(row.spend) / parseInt(row.subscribers) : null,
-        roas: !isOpen && parseFloat(row.spend) > 0 ? parseFloat(row.revenue) / parseFloat(row.spend) : null,
+        spend,
+        subscribers: subs,
+        cop: !isOpen && subs > 0 ? spend / subs : null,
+        roas: !isOpen && spend > 0 ? parseFloat(row.revenue) / spend : null,
       };
     }).reverse();
 
-    // ---- MONTHLY DATA ----
+    // ---- MONTHLY DATA (COHORT-BASED) ----
+    // Revenue by event_date, cohort metrics by install_date
     const monthlyQuery = `
-      WITH monthly_events AS (
+      WITH monthly_revenue AS (
         SELECT
           TO_CHAR(event_date, 'YYYY-MM') as month,
-          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue,
+          SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue
+        FROM qonversion_events
+        WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
+        GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+      ),
+      cohort_metrics AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as month,
           COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
           COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted') as converted,
           COUNT(DISTINCT q_user_id) FILTER (
@@ -231,8 +254,8 @@ router.get('/main', async (req, res) => {
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM qonversion_events
-        WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
-        GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+        WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
@@ -241,31 +264,38 @@ router.get('/main', async (req, res) => {
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       )
       SELECT
-        COALESCE(me.month, ms.month) as month,
-        COALESCE(me.revenue, 0) as revenue,
-        COALESCE(me.trials, 0) as trials,
-        COALESCE(me.converted, 0) as converted,
-        COALESCE(me.subscribers, 0) as subscribers,
+        ms.month,
+        COALESCE(mr.revenue, 0) as revenue,
+        COALESCE(cm.trials, 0) as trials,
+        COALESCE(cm.converted, 0) as converted,
+        COALESCE(cm.subscribers, 0) as subscribers,
         COALESCE(ms.spend, 0) as spend
-      FROM monthly_events me
-      FULL OUTER JOIN monthly_spend ms ON me.month = ms.month
-      WHERE COALESCE(me.month, ms.month) IS NOT NULL
-      ORDER BY month DESC
+      FROM monthly_spend ms
+      LEFT JOIN monthly_revenue mr ON ms.month = mr.month
+      LEFT JOIN cohort_metrics cm ON ms.month = cm.month
+      ORDER BY ms.month DESC
       LIMIT 12
     `;
     const monthlyResult = await db.query(monthlyQuery);
 
-    const monthlyData = monthlyResult.rows.map(row => ({
-      month: row.month,
-      revenue: parseFloat(row.revenue) || 0,
-      spend: parseFloat(row.spend) || 0,
-      trials: parseInt(row.trials) || 0,
-      converted: parseInt(row.converted) || 0,
-      subscribers: parseInt(row.subscribers) || 0,
-      cop: row.subscribers > 0 ? parseFloat(row.spend) / parseInt(row.subscribers) : null,
-      crToPaid: row.trials > 0 ? (parseInt(row.converted) / parseInt(row.trials)) * 100 : null,
-      roas: parseFloat(row.spend) > 0 ? parseFloat(row.revenue) / parseFloat(row.spend) : null,
-    })).reverse();
+    const monthlyData = monthlyResult.rows.map(row => {
+      const spend = parseFloat(row.spend) || 0;
+      const subs = parseInt(row.subscribers) || 0;
+      const trials = parseInt(row.trials) || 0;
+      const converted = parseInt(row.converted) || 0;
+      const revenue = parseFloat(row.revenue) || 0;
+      return {
+        month: row.month,
+        revenue,
+        spend,
+        trials,
+        converted,
+        subscribers: subs,
+        cop: subs > 0 ? spend / subs : null,
+        crToPaid: trials > 0 ? (converted / trials) * 100 : null,
+        roas: spend > 0 ? revenue / spend : null,
+      };
+    }).reverse();
 
     res.json({
       currentMonth: {
@@ -286,6 +316,76 @@ router.get('/main', async (req, res) => {
     });
   } catch (error) {
     console.error('Dashboard error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug COP calculation for a specific date
+router.get('/debug-cop/:date', async (req, res) => {
+  try {
+    const date = req.params.date; // e.g., '2026-02-27'
+
+    // 1. Spend for this date
+    const spendResult = await db.query(`
+      SELECT COALESCE(SUM(spend), 0) as spend
+      FROM apple_ads_campaigns
+      WHERE date = $1
+    `, [date]);
+
+    // 2. Cohort conversions (installed on this date, converted anytime)
+    const conversionsResult = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as conversions
+      FROM qonversion_events
+      WHERE DATE(install_date) = $1
+        AND (
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        )
+    `, [date]);
+
+    // 3. Breakdown by event type
+    const breakdownResult = await db.query(`
+      SELECT
+        event_name,
+        COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE DATE(install_date) = $1
+        AND (
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        )
+      GROUP BY event_name
+    `, [date]);
+
+    // 4. Sample users from this cohort
+    const sampleResult = await db.query(`
+      SELECT
+        q_user_id,
+        event_name,
+        product_id,
+        DATE(install_date) as install_date,
+        DATE(event_date) as event_date
+      FROM qonversion_events
+      WHERE DATE(install_date) = $1
+        AND (
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        )
+      LIMIT 10
+    `, [date]);
+
+    const spend = parseFloat(spendResult.rows[0]?.spend) || 0;
+    const conversions = parseInt(conversionsResult.rows[0]?.conversions) || 0;
+
+    res.json({
+      date,
+      spend,
+      conversions,
+      cop: conversions > 0 ? spend / conversions : null,
+      breakdown: breakdownResult.rows,
+      sampleUsers: sampleResult.rows,
+    });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
