@@ -233,8 +233,9 @@ router.get('/main', async (req, res) => {
       };
     }).reverse();
 
-    // ---- MONTHLY DATA (COHORT-BASED) ----
-    // Revenue by event_date, cohort metrics by install_date
+    // ---- MONTHLY DATA (COHORT-BASED, CLOSED COHORTS ONLY) ----
+    // Only count cohorts that have fully closed (installed 7+ days ago)
+    // For accurate COP, we match spend to closed cohort conversions
     const monthlyQuery = `
       WITH monthly_revenue AS (
         SELECT
@@ -255,25 +256,27 @@ router.get('/main', async (req, res) => {
           ) as subscribers
         FROM qonversion_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
+          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
-      monthly_spend AS (
+      closed_cohort_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
         FROM apple_ads_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '12 months'
+          AND date <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       )
       SELECT
-        ms.month,
+        cs.month,
         COALESCE(mr.revenue, 0) as revenue,
         COALESCE(cm.trials, 0) as trials,
         COALESCE(cm.converted, 0) as converted,
         COALESCE(cm.subscribers, 0) as subscribers,
-        COALESCE(ms.spend, 0) as spend
-      FROM monthly_spend ms
-      LEFT JOIN monthly_revenue mr ON ms.month = mr.month
-      LEFT JOIN cohort_metrics cm ON ms.month = cm.month
-      ORDER BY ms.month DESC
+        COALESCE(cs.spend, 0) as spend
+      FROM closed_cohort_spend cs
+      LEFT JOIN monthly_revenue mr ON cs.month = mr.month
+      LEFT JOIN cohort_metrics cm ON cs.month = cm.month
+      ORDER BY cs.month DESC
       LIMIT 12
     `;
     const monthlyResult = await db.query(monthlyQuery);
