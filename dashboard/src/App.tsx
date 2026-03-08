@@ -23,7 +23,7 @@ interface DashboardData {
     spendChange: number | null;
     revenue: number;
     revenueChange: number | null;
-    cohortRevenue: number;  // Apple Ads users revenue
+    cohortRevenue: number;
     subscribers: number;
     subscribersChange: number | null;
     cop: number | null;
@@ -61,6 +61,20 @@ interface DashboardData {
     copPredicted?: number | null;
     crToPaid: number | null;
     roas: number | null;
+  }>;
+}
+
+interface MarketingData {
+  data: Array<{
+    month: string;
+    spend: number;
+    cohortAge: number;
+    cop: { d4: number | null; d7: number | null; d30: number | null; d60: number | null; d180: number | null; total: number | null; predicted: number | null };
+    roas: { d4: number | null; d7: number | null; d30: number | null; d60: number | null; d180: number | null; total: number | null; predicted: number | null };
+    subs: { d4: number; d7: number; d30: number; d60: number; d180: number; total: number };
+    revenue: { d4: number; d7: number; d30: number; d60: number; d180: number; total: number };
+    paybackMonths: number | null;
+    isPaidBack: boolean;
   }>;
 }
 
@@ -102,9 +116,15 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/main`).then(r => r.json()),
   });
 
+  const { data: marketingData } = useQuery<MarketingData>({
+    queryKey: ['marketing'],
+    queryFn: () => fetch(`${API_URL}/dashboard/marketing?months=12`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = data?.monthly || [];
+  const marketing = marketingData?.data || [];
 
   // Filter daily data for chart with COP and predicted COP
   const dailyChartData = daily.slice(-30).map(d => ({
@@ -256,6 +276,58 @@ function Dashboard() {
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Marketing Analytics - Apple Ads Only */}
+      <div style={styles.tableCard}>
+        <h3 style={styles.chartTitle}>Marketing Analytics (Apple Ads)</h3>
+        <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+          COP and ROAS by cohort age. Shows how metrics evolve as cohorts mature.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Month</th>
+                <th style={styles.thRight}>Spend</th>
+                <th style={styles.thRight}>Age</th>
+                <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 4d</th>
+                <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 7d</th>
+                <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 30d</th>
+                <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 60d</th>
+                <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 4d</th>
+                <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 7d</th>
+                <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 30d</th>
+                <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 60d</th>
+                <th style={{ ...styles.thRight, background: '#fef3c7' }}>Predicted</th>
+                <th style={styles.thRight}>Payback</th>
+              </tr>
+            </thead>
+            <tbody>
+              {marketing.map(row => (
+                <tr key={row.month} style={styles.tr}>
+                  <td style={styles.td}>{row.month}</td>
+                  <td style={styles.tdRight}>{fmt(row.spend)}</td>
+                  <td style={styles.tdRight}>{row.cohortAge}d</td>
+                  <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d4 ? fmt(row.cop.d4) : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d7 ? fmt(row.cop.d7) : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d30 ? fmt(row.cop.d30) : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d60 ? fmt(row.cop.d60) : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d4 ? `${(row.roas.d4 * 0.82).toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d7 ? `${(row.roas.d7 * 0.82).toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d30 ? `${(row.roas.d30 * 0.82).toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe', color: row.roas.d60 && row.roas.d60 * 0.82 >= 1 ? '#10b981' : '#ef4444' }}>
+                    {row.roas.d60 ? `${(row.roas.d60 * 0.82).toFixed(2)}x` : '—'}
+                  </td>
+                  <td style={{ ...styles.tdRight, background: '#fef3c7', fontWeight: 500 }}>
+                    {row.roas.predicted ? `${(row.roas.predicted * 0.82).toFixed(2)}x` : '—'}
+                  </td>
+                  <td style={styles.tdRight}>{row.paybackMonths ? `${row.paybackMonths}mo` : '—'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
