@@ -13,24 +13,33 @@ const daysAgo = (n) => {
 
 // COP decay curve - % of final conversions by cohort age (based on historical data)
 // Used to predict final COP from early cohort data
+// Data from /dashboard/debug-conversion-delay analysis (13K+ users, Jan 2025+)
 const COP_DECAY_CURVE = {
-  0: 0.16,  // 16% of conversions by day 0
-  1: 0.17,
-  2: 0.17,
-  3: 0.65,  // Big spike at day 3 (trial end)
-  4: 0.70,
-  5: 0.73,
-  6: 0.76,
-  7: 0.79,
-  10: 0.83,
-  14: 0.88,
-  21: 0.95,
-  30: 1.00,
+  0: 0.154,   // 15.4% - immediate yearly conversions
+  1: 0.158,
+  2: 0.162,
+  3: 0.576,   // 57.6% - trial end spike (day 3)
+  4: 0.606,
+  5: 0.629,
+  6: 0.653,
+  7: 0.669,   // 66.9% by week 1
+  10: 0.700,
+  14: 0.736,  // 73.6% by week 2
+  21: 0.785,  // 78.5% by week 3
+  28: 0.819,  // 81.9% by week 4
+  30: 0.829,  // 82.9% by day 30
+  45: 0.877,  // ~88% by 6 weeks
+  60: 0.907,  // 90.7% by 2 months
+  90: 0.942,  // ~94% by 3 months
+  120: 0.960, // ~96% by 4 months
+  180: 0.980, // ~98% by 6 months
+  365: 1.00,  // 100% by 1 year
 };
 
 // Get interpolated decay factor for any day
 const getDecayFactor = (days) => {
-  if (days >= 30) return 1.0;
+  if (days >= 365) return 1.0;
+  if (days < 0) return COP_DECAY_CURVE[0];
   const keys = Object.keys(COP_DECAY_CURVE).map(Number).sort((a, b) => a - b);
   for (let i = 0; i < keys.length - 1; i++) {
     if (days >= keys[i] && days < keys[i + 1]) {
@@ -38,7 +47,7 @@ const getDecayFactor = (days) => {
       return COP_DECAY_CURVE[keys[i]] + t * (COP_DECAY_CURVE[keys[i + 1]] - COP_DECAY_CURVE[keys[i]]);
     }
   }
-  return COP_DECAY_CURVE[keys[0]];
+  return COP_DECAY_CURVE[keys[keys.length - 1]];
 };
 
 // ============================================
