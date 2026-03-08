@@ -3,7 +3,7 @@ import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
 } from 'recharts';
-import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Users, Target, Clock } from 'lucide-react';
+import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
