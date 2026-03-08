@@ -202,10 +202,21 @@ router.get('/main', async (req, res) => {
     const forecastSpend = avgDailySpend * daysInMonth;
     const forecastRevenue = avgDailyRevenue * daysInMonth;
 
-    // Payback calculation: how long to recover COP from subscriber revenue
-    // Yearly subscription ~$50, so monthly revenue per subscriber = $50/12 = $4.17
-    const monthlyARPU = 50 / 12; // $4.17 per month per subscriber
-    const paybackMonths = cop ? Math.round(cop / monthlyARPU) : null; // Months to recover COP
+    // Calculate predicted COP for current month cohorts
+    // Average cohort age for current month = currentDay / 2 (mid-point)
+    const avgCohortAge = Math.floor(currentDay / 2);
+    const currentDecayFactor = getDecayFactor(avgCohortAge);
+    const predictedMonthSubs = monthSubscribers > 0 ? monthSubscribers / currentDecayFactor : 0;
+    const predictedCop = predictedMonthSubs > 0 ? monthSpend / predictedMonthSubs : null;
+
+    // Payback calculation using PREDICTED COP (accounting for future conversions)
+    // Yearly subscription ~$50, so revenue per subscriber per year = $50
+    // Payback in months = predictedCOP / (yearly revenue / 12)
+    const yearlyARPU = 50; // Yearly subscription price
+    const paybackMonths = predictedCop ? Math.round(predictedCop / (yearlyARPU / 12)) : null;
+
+    // Also calculate forecast subscribers (current + expected additional conversions)
+    const forecastSubscribers = Math.round(predictedMonthSubs);
 
     // ---- DAILY DATA (last 30 days) ----
     // Revenue by event_date, but cohort conversions by install_date
@@ -343,11 +354,14 @@ router.get('/main', async (req, res) => {
       const revenue = parseFloat(row.revenue) || 0;
       const currentCop = subs > 0 ? spend / subs : null;
 
-      // For current month, calculate predicted COP
-      // Assume average cohort age of ~15 days for current month
-      const isCurrentMonth = row.month === currentMonth;
-      const avgCohortAge = isCurrentMonth ? 4 : 30; // Current month cohorts are young
-      const decayFactor = getDecayFactor(avgCohortAge);
+      // Calculate months ago for this cohort
+      const [year, month] = row.month.split('-').map(Number);
+      const monthDate = new Date(year, month - 1, 15); // Mid-month
+      const monthsAgo = Math.floor((today - monthDate) / (1000 * 60 * 60 * 24 * 30));
+
+      // Average cohort age in days (mid-month approximation)
+      const avgCohortAgeDays = monthsAgo * 30 + 15;
+      const decayFactor = getDecayFactor(avgCohortAgeDays);
       const predictedSubs = subs > 0 ? subs / decayFactor : 0;
       const predictedCop = predictedSubs > 0 ? spend / predictedSubs : null;
 
@@ -358,8 +372,8 @@ router.get('/main', async (req, res) => {
         trials,
         converted,
         subscribers: subs,
-        cop: !isCurrentMonth && currentCop ? currentCop : null, // Actual COP for past months
-        copPredicted: isCurrentMonth && currentCop ? predictedCop : null, // Predicted for current month
+        cop: currentCop,  // Always show actual COP
+        copPredicted: predictedCop,  // Always show predicted COP
         crToPaid: trials > 0 ? (converted / trials) * 100 : null,
         roas: spend > 0 ? revenue / spend : null,
       };
@@ -377,6 +391,8 @@ router.get('/main', async (req, res) => {
         crToPaid,
         forecastSpend,
         forecastRevenue,
+        predictedCop,
+        forecastSubscribers,
         paybackMonths,
       },
       daily: dailyData,

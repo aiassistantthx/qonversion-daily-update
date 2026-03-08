@@ -28,6 +28,8 @@ interface DashboardData {
     crToPaid: number | null;
     forecastSpend: number;
     forecastRevenue: number;
+    predictedCop: number | null;
+    forecastSubscribers: number;
     paybackMonths: number | null;
   };
   daily: Array<{
@@ -141,9 +143,11 @@ function Dashboard() {
       </div>
 
       {/* Forecast KPIs */}
-      <div style={{ ...styles.kpiGrid, gridTemplateColumns: 'repeat(2, 1fr)' }}>
-        <KPICard title="Forecast Spend (month)" value={fmtK(cm?.forecastSpend || 0)} />
-        <KPICard title="Forecast Revenue (month)" value={fmtK(cm?.forecastRevenue || 0)} />
+      <div style={styles.kpiGrid}>
+        <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" />
+        <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" />
+        <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="accounting for pending conversions" icon={Target} />
+        <KPICard title="Forecast Subs" value={String(cm?.forecastSubscribers || 0)} subtitle="after all conversions" icon={Users} />
       </div>
 
       {/* Daily Chart */}
