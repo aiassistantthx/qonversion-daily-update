@@ -302,7 +302,6 @@ class AppleAdsService {
       };
     }
   }
-}
 
   // ================================================
   // CAMPAIGN OPERATIONS

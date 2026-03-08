@@ -1,0 +1,18 @@
+{
+  "name": "asa-cli",
+  "version": "1.0.0",
+  "description": "Apple Search Ads Management CLI",
+  "main": "asa-cli.js",
+  "bin": {
+    "asa-cli": "./asa-cli.js"
+  },
+  "scripts": {
+    "start": "node asa-cli.js"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
