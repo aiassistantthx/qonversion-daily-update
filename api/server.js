@@ -282,6 +282,52 @@ app.post('/migrate/asa', async (req, res) => {
     FROM asa_automation_rules r
     LEFT JOIN asa_rule_executions e ON r.id = e.rule_id AND e.status = 'executed'
     GROUP BY r.id, r.name, r.scope, r.action_type, r.enabled;
+
+    CREATE OR REPLACE VIEW v_campaign_performance AS
+    SELECT
+      c.campaign_id,
+      MAX(c.campaign_name) as campaign_name,
+      MAX(c.campaign_status) as campaign_status,
+      MAX(c.daily_budget) as daily_budget,
+      SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.spend ELSE 0 END) as spend_7d,
+      SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.impressions ELSE 0 END) as impressions_7d,
+      SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.taps ELSE 0 END) as taps_7d,
+      SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.installs ELSE 0 END) as installs_7d,
+      CASE WHEN SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.installs ELSE 0 END) > 0
+           THEN SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.spend ELSE 0 END) /
+                SUM(CASE WHEN c.date >= CURRENT_DATE - INTERVAL '7 days' THEN c.installs ELSE 0 END)
+           ELSE NULL
+      END as cpa_7d,
+      MAX(c.date) as last_data_date
+    FROM apple_ads_campaigns c
+    GROUP BY c.campaign_id;
+
+    CREATE OR REPLACE VIEW v_keyword_performance AS
+    SELECT
+      k.keyword_id,
+      k.campaign_id,
+      k.adgroup_id,
+      MAX(k.keyword_text) as keyword_text,
+      MAX(k.match_type) as match_type,
+      MAX(k.keyword_status) as keyword_status,
+      MAX(k.bid_amount) as current_bid,
+      SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.spend ELSE 0 END) as spend_7d,
+      SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.impressions ELSE 0 END) as impressions_7d,
+      SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.taps ELSE 0 END) as taps_7d,
+      SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.installs ELSE 0 END) as installs_7d,
+      CASE WHEN SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.installs ELSE 0 END) > 0
+           THEN SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.spend ELSE 0 END) /
+                SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.installs ELSE 0 END)
+           ELSE NULL
+      END as cpa_7d,
+      CASE WHEN SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.impressions ELSE 0 END) > 0
+           THEN SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.taps ELSE 0 END)::DECIMAL /
+                SUM(CASE WHEN k.date >= CURRENT_DATE - INTERVAL '7 days' THEN k.impressions ELSE 0 END) * 100
+           ELSE NULL
+      END as ttr_7d,
+      MAX(k.date) as last_data_date
+    FROM apple_ads_keywords k
+    GROUP BY k.keyword_id, k.campaign_id, k.adgroup_id;
   `;
 
   try {
