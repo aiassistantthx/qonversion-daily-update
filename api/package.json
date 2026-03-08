@@ -1,6 +1,6 @@
 {
   "name": "qonversion-attribution-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Qonversion webhook receiver for attribution analytics",
   "main": "server.js",
   "scripts": {
