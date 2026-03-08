@@ -4,10 +4,22 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const db = require('./db');
 const webhookRouter = require('./routes/webhook');
+const dashboardRouter = require('./routes/dashboard');
 const appleAds = require('./services/appleAds');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // Middleware
 app.use(express.json({ limit: '1mb' }));
@@ -48,11 +60,14 @@ app.get('/health', async (req, res) => {
 // Webhook routes
 app.use('/webhook', webhookRouter);
 
+// Dashboard routes
+app.use('/dashboard', dashboardRouter);
+
 // API info endpoint
 app.get('/', (req, res) => {
   res.json({
     name: 'Qonversion Attribution API',
-    version: '1.0.0',
+    version: '2.0.0',
     endpoints: {
       'GET /': 'This info',
       'GET /health': 'Health check',
@@ -60,6 +75,16 @@ app.get('/', (req, res) => {
       'GET /webhook/stats': 'Event statistics',
       'GET /apple-ads/test': 'Test Apple Ads connection',
       'POST /apple-ads/sync': 'Sync Apple Ads data',
+      'GET /dashboard/summary': 'Today metrics summary',
+      'GET /dashboard/daily': 'Daily metrics (7 days)',
+      'GET /dashboard/intraday': 'Hourly revenue today',
+      'GET /dashboard/cop': 'COP metrics by window',
+      'GET /dashboard/cop-by-campaign': 'COP by campaign',
+      'GET /dashboard/revenue-by-source': 'Organic vs Paid',
+      'GET /dashboard/cohorts': 'Cohort revenue curves',
+      'GET /dashboard/retention': 'Retention heatmap',
+      'GET /dashboard/payback': 'Payback curves',
+      'GET /dashboard/health': 'Health score',
     },
   });
 });
