@@ -671,12 +671,14 @@ async function updateGoogleSheets(data) {
 
     if (!column) continue;
 
-    // Apple Ads Cost (row 7)
-    if (data.appleAds && data.appleAds.byDate && data.appleAds.byDate[dateKey] !== undefined) {
+    // Apple Ads Cost (row 7) - НЕ записываем нули, чтобы не затирать существующие данные
+    if (data.appleAds && data.appleAds.byDate && data.appleAds.byDate[dateKey] > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.appleAdsCost}`,
         value: Math.round(data.appleAds.byDate[dateKey])
       });
+    } else if (data.appleAds && data.appleAds.byDate && data.appleAds.byDate[dateKey] === 0) {
+      log(`  SKIP: Apple Ads Cost для ${dateKey} = 0, не записываем`);
     }
 
     // Sales (row 19)

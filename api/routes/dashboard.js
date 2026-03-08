@@ -11,6 +11,36 @@ const daysAgo = (n) => {
   return formatDate(d);
 };
 
+// COP decay curve - % of final conversions by cohort age (based on historical data)
+// Used to predict final COP from early cohort data
+const COP_DECAY_CURVE = {
+  0: 0.16,  // 16% of conversions by day 0
+  1: 0.17,
+  2: 0.17,
+  3: 0.65,  // Big spike at day 3 (trial end)
+  4: 0.70,
+  5: 0.73,
+  6: 0.76,
+  7: 0.79,
+  10: 0.83,
+  14: 0.88,
+  21: 0.95,
+  30: 1.00,
+};
+
+// Get interpolated decay factor for any day
+const getDecayFactor = (days) => {
+  if (days >= 30) return 1.0;
+  const keys = Object.keys(COP_DECAY_CURVE).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (days >= keys[i] && days < keys[i + 1]) {
+      const t = (days - keys[i]) / (keys[i + 1] - keys[i]);
+      return COP_DECAY_CURVE[keys[i]] + t * (COP_DECAY_CURVE[keys[i + 1]] - COP_DECAY_CURVE[keys[i]]);
+    }
+  }
+  return COP_DECAY_CURVE[keys[0]];
+};
+
 // ============================================
 // MAIN DASHBOARD ENDPOINT
 // ============================================
@@ -218,22 +248,38 @@ router.get('/main', async (req, res) => {
     `;
     const dailyResult = await db.query(dailyQuery);
 
-    // Calculate COHORT COP for each day (excluding last 4 days for closed cohorts)
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 4);
+    // Calculate COHORT COP for each day with predicted final COP
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const dailyData = dailyResult.rows.map(row => {
       const dayDate = new Date(row.day);
-      const isOpen = dayDate > cutoffDate;
+      dayDate.setHours(0, 0, 0, 0);
+      const cohortAge = Math.floor((today - dayDate) / (1000 * 60 * 60 * 24));
       const spend = parseFloat(row.spend) || 0;
       const subs = parseInt(row.subscribers) || 0;
+
+      // Current COP (actual conversions so far)
+      const currentCop = subs > 0 ? spend / subs : null;
+
+      // Predicted final COP based on decay curve
+      // If cohort is young, predict how many more conversions will come
+      const decayFactor = getDecayFactor(cohortAge);
+      const predictedFinalSubs = subs > 0 ? subs / decayFactor : 0;
+      const predictedCop = predictedFinalSubs > 0 ? spend / predictedFinalSubs : null;
+
+      // For cohorts 30+ days old, use actual COP
+      const isClosed = cohortAge >= 30;
+
       return {
         date: formatDate(row.day),
         revenue: parseFloat(row.revenue) || 0,
         spend,
         subscribers: subs,
-        cop: !isOpen && subs > 0 ? spend / subs : null,
-        roas: !isOpen && spend > 0 ? parseFloat(row.revenue) / spend : null,
+        cohortAge,
+        cop: isClosed ? currentCop : null,  // Actual COP only for closed cohorts
+        copPredicted: !isClosed && currentCop ? predictedCop : null,  // Predicted for open cohorts
+        roas: cohortAge >= 7 && spend > 0 ? parseFloat(row.revenue) / spend : null,
       };
     }).reverse();
 

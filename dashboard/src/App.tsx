@@ -11,10 +11,10 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60000, retry: 1 } },
 });
 
-const fmt = (n: number | null) => n !== null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—';
-const fmtK = (n: number | null) => n !== null ? `$${(n / 1000).toFixed(1)}K` : '—';
-const fmtPct = (n: number | null) => n !== null ? `${n.toFixed(1)}%` : '—';
-const fmtDays = (n: number | null) => n !== null ? `${n}d` : '—';
+const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—';
+const fmtK = (n: number | null | undefined) => n != null ? `$${(n / 1000).toFixed(1)}K` : '—';
+const fmtPct = (n: number | null | undefined) => n != null ? `${n.toFixed(1)}%` : '—';
+const fmtDays = (n: number | null | undefined) => n != null ? `${n}d` : '—';
 
 interface DashboardData {
   currentMonth: {
@@ -35,7 +35,9 @@ interface DashboardData {
     revenue: number;
     spend: number;
     subscribers: number;
+    cohortAge?: number;
     cop: number | null;
+    copPredicted?: number | null;
     roas: number | null;
   }>;
   monthly: Array<{
@@ -87,12 +89,13 @@ function Dashboard() {
   const daily = data?.daily || [];
   const monthly = data?.monthly || [];
 
-  // Filter daily data for chart (exclude last 4 days for COP/ROAS)
+  // Filter daily data for chart with COP and predicted COP
   const dailyChartData = daily.slice(-30).map(d => ({
     date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     revenue: d.revenue,
     spend: d.spend,
     cop: d.cop,
+    copPredicted: d.copPredicted,
     roas: d.roas ? d.roas * 100 : null,
   }));
 
@@ -153,17 +156,20 @@ function Dashboard() {
               <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
               <Tooltip
                 contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                formatter={(v: number, name: string) => {
-                  if (name === 'revenue' || name === 'spend') return [`$${v.toLocaleString()}`, name];
-                  if (name === 'cop') return [v ? `$${v.toFixed(0)}` : '—', 'COP'];
-                  if (name === 'roas') return [v ? `${v.toFixed(0)}%` : '—', 'ROAS %'];
-                  return [v, name];
+                formatter={(v, name) => {
+                  const val = Number(v) || 0;
+                  if (name === 'revenue' || name === 'spend') return [`$${val.toLocaleString()}`, name];
+                  if (name === 'cop' || name === 'COP') return [val ? `$${val.toFixed(0)}` : '—', 'COP'];
+                  if (name === 'copPredicted' || name === 'COP Predicted') return [val ? `$${val.toFixed(0)}` : '—', 'COP Predicted'];
+                  if (name === 'roas') return [val ? `${val.toFixed(0)}%` : '—', 'ROAS %'];
+                  return [String(v), String(name)];
                 }}
               />
               <Legend />
               <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={false} name="Revenue" />
               <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#ef4444" strokeWidth={2} dot={false} name="Spend" />
               <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
+              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -181,10 +187,11 @@ function Dashboard() {
               <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
               <Tooltip
                 contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                formatter={(v: number, name: string) => {
-                  if (name === 'Spend') return [`$${(v * 1000).toLocaleString()}`, name];
-                  if (name === 'COP') return [v ? `$${v.toFixed(0)}` : '—', name];
-                  return [v, name];
+                formatter={(v, name) => {
+                  const val = Number(v) || 0;
+                  if (name === 'Spend') return [`$${(val * 1000).toLocaleString()}`, String(name)];
+                  if (name === 'COP') return [val ? `$${val.toFixed(0)}` : '—', String(name)];
+                  return [String(v), String(name)];
                 }}
               />
               <Legend />
