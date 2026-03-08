@@ -49,8 +49,8 @@ router.get('/main', async (req, res) => {
       FROM qonversion_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND (
-          event_name = 'trial_converted'
-          OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%')
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
         )
     `;
     const subscribersResult = await db.query(subscribersQuery, [currentMonth]);
@@ -62,8 +62,8 @@ router.get('/main', async (req, res) => {
         SELECT
           DATE(event_date) as day,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'trial_converted'
-            OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%')
+            WHERE event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM qonversion_events
         WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
@@ -99,7 +99,7 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events, period
         WHERE DATE(event_date) BETWEEN start_date AND end_date
-          AND (event_name = 'trial_converted' OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%'))
+          AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
@@ -124,7 +124,7 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events, period
         WHERE DATE(event_date) BETWEEN start_date AND end_date
-          AND (event_name = 'trial_converted' OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%'))
+          AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
@@ -145,14 +145,14 @@ router.get('/main', async (req, res) => {
         FROM qonversion_events
         WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
           AND DATE(event_date) <= CURRENT_DATE - INTERVAL '7 days'
-          AND event_name = 'trial_started'
+          AND event_name = 'Trial Started'
       ),
       converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM qonversion_events
         WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
           AND DATE(event_date) <= CURRENT_DATE - INTERVAL '4 days'
-          AND event_name = 'trial_converted'
+          AND event_name = 'Trial Converted'
       )
       SELECT trials.cnt as trials, converted.cnt as converted FROM trials, converted
     `;
@@ -175,8 +175,8 @@ router.get('/main', async (req, res) => {
           DATE(event_date) as day,
           SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'trial_converted'
-            OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%')
+            WHERE event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM qonversion_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
@@ -224,11 +224,11 @@ router.get('/main', async (req, res) => {
         SELECT
           TO_CHAR(event_date, 'YYYY-MM') as month,
           SUM(proceeds_usd) FILTER (WHERE refund = false) as revenue,
-          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'trial_started') as trials,
-          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'trial_converted') as converted,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted') as converted,
           COUNT(DISTINCT q_user_id) FILTER (
-            WHERE event_name = 'trial_converted'
-            OR (event_name = 'subscription_started' AND product_id LIKE '%yearly%')
+            WHERE event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM qonversion_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
