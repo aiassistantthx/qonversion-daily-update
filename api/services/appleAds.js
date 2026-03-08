@@ -230,29 +230,52 @@ class AppleAdsService {
         const metadata = report.metadata;
         const totals = report.total;
 
+        const spend = parseFloat(totals?.localSpend?.amount || 0);
+        const impressions = parseInt(totals?.impressions || 0);
+        const taps = parseInt(totals?.taps || 0);
+        const installs = parseInt(totals?.installs || 0);
+
+        // Calculate metrics
+        const ttr = impressions > 0 ? (taps / impressions) * 100 : 0;
+        const conversionRate = taps > 0 ? (installs / taps) * 100 : 0;
+        const avgCpa = installs > 0 ? spend / installs : 0;
+        const avgCpt = taps > 0 ? spend / taps : 0;
+        const avgCpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+
         await db.query(`
           INSERT INTO apple_ads_campaigns (
             date, campaign_id, campaign_name,
-            adgroup_id, adgroup_name, keyword_id, keyword,
-            spend_usd, impressions, taps, installs, updated_at
+            spend, impressions, taps, installs,
+            ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm,
+            synced_at
           )
-          VALUES ($1, $2, $3, 0, NULL, 0, NULL, $4, $5, $6, $7, NOW())
-          ON CONFLICT (date, campaign_id, adgroup_id, keyword_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+          ON CONFLICT (date, campaign_id)
           DO UPDATE SET
             campaign_name = EXCLUDED.campaign_name,
-            spend_usd = EXCLUDED.spend_usd,
+            spend = EXCLUDED.spend,
             impressions = EXCLUDED.impressions,
             taps = EXCLUDED.taps,
             installs = EXCLUDED.installs,
-            updated_at = NOW()
+            ttr = EXCLUDED.ttr,
+            conversion_rate = EXCLUDED.conversion_rate,
+            avg_cpa = EXCLUDED.avg_cpa,
+            avg_cpt = EXCLUDED.avg_cpt,
+            avg_cpm = EXCLUDED.avg_cpm,
+            synced_at = NOW()
         `, [
           dateStr,
           metadata.campaignId,
           metadata.campaignName,
-          parseFloat(totals?.localSpend?.amount || 0),
-          parseInt(totals?.impressions || 0),
-          parseInt(totals?.taps || 0),
-          parseInt(totals?.installs || 0),
+          spend,
+          impressions,
+          taps,
+          installs,
+          ttr,
+          conversionRate,
+          avgCpa,
+          avgCpt,
+          avgCpm,
         ]);
         synced++;
       }
