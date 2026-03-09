@@ -12,6 +12,9 @@ export interface TrendChartData {
     spend: number;
     revenue: number;
     roas: number;
+    installs: number;
+    trials: number;
+    paid_users: number;
   }>;
 }
 
@@ -20,14 +23,16 @@ interface TrendChartProps {
 }
 
 type MetricType = 'spend' | 'revenue' | 'roas';
+type ChartMode = 'financial' | 'conversions';
 
 export function TrendChart({ data }: TrendChartProps) {
+  const [chartMode, setChartMode] = useState<ChartMode>('financial');
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('roas');
 
   if (!data || !data.data || data.data.length === 0) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
-        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Spend / Revenue / ROAS Trends</div>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Trends</div>
         <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
@@ -38,6 +43,9 @@ export function TrendChart({ data }: TrendChartProps) {
     spend: d.spend,
     revenue: d.revenue,
     roas: d.roas * 100,
+    installs: d.installs,
+    trials: d.trials,
+    paid_users: d.paid_users,
   }));
 
   const getMetricConfig = (metric: MetricType) => {
@@ -76,87 +84,163 @@ export function TrendChart({ data }: TrendChartProps) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 4 }}>
-            Spend / Revenue / ROAS Trends
+            {chartMode === 'financial' ? 'Spend / Revenue / ROAS Trends' : 'Conversion Funnel'}
           </h3>
           <p style={{ fontSize: 12, color: '#6b7280' }}>
-            Daily metrics for the selected period
+            {chartMode === 'financial' ? 'Daily metrics for the selected period' : 'Installs → Trials → Paid Users'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => setSelectedMetric('spend')}
+            onClick={() => setChartMode('financial')}
             style={{
               padding: '6px 12px',
               borderRadius: 6,
               border: '1px solid #e5e7eb',
-              background: selectedMetric === 'spend' ? '#ef4444' : '#fff',
-              color: selectedMetric === 'spend' ? '#fff' : '#374151',
+              background: chartMode === 'financial' ? '#6366f1' : '#fff',
+              color: chartMode === 'financial' ? '#fff' : '#374151',
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
             }}
           >
-            Spend
+            Spend/Revenue
           </button>
           <button
-            onClick={() => setSelectedMetric('revenue')}
+            onClick={() => setChartMode('conversions')}
             style={{
               padding: '6px 12px',
               borderRadius: 6,
               border: '1px solid #e5e7eb',
-              background: selectedMetric === 'revenue' ? '#3b82f6' : '#fff',
-              color: selectedMetric === 'revenue' ? '#fff' : '#374151',
+              background: chartMode === 'conversions' ? '#6366f1' : '#fff',
+              color: chartMode === 'conversions' ? '#fff' : '#374151',
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
             }}
           >
-            Revenue
+            Conversions
           </button>
-          <button
-            onClick={() => setSelectedMetric('roas')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #e5e7eb',
-              background: selectedMetric === 'roas' ? '#10b981' : '#fff',
-              color: selectedMetric === 'roas' ? '#fff' : '#374151',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            ROAS
-          </button>
+          {chartMode === 'financial' && (
+            <>
+              <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px' }} />
+              <button
+                onClick={() => setSelectedMetric('spend')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'spend' ? '#ef4444' : '#fff',
+                  color: selectedMetric === 'spend' ? '#fff' : '#374151',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Spend
+              </button>
+              <button
+                onClick={() => setSelectedMetric('revenue')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'revenue' ? '#3b82f6' : '#fff',
+                  color: selectedMetric === 'revenue' ? '#fff' : '#374151',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Revenue
+              </button>
+              <button
+                onClick={() => setSelectedMetric('roas')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'roas' ? '#10b981' : '#fff',
+                  color: selectedMetric === 'roas' ? '#fff' : '#374151',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                ROAS
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <div style={{ height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis
-              dataKey="date"
-              tick={{ fill: '#6b7280', fontSize: 11 }}
-            />
-            <YAxis
-              tick={{ fill: '#6b7280', fontSize: 11 }}
-              tickFormatter={config.yAxisFormatter}
-            />
-            <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
-              formatter={(v) => [config.formatter(Number(v)), config.tooltipLabel]}
-            />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey={selectedMetric}
-              stroke={config.color}
-              strokeWidth={2}
-              dot={{ r: 3 }}
-              name={config.title}
-            />
-          </LineChart>
+          {chartMode === 'financial' ? (
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#6b7280', fontSize: 11 }}
+              />
+              <YAxis
+                tick={{ fill: '#6b7280', fontSize: 11 }}
+                tickFormatter={config.yAxisFormatter}
+              />
+              <Tooltip
+                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+                formatter={(v) => [config.formatter(Number(v)), config.tooltipLabel]}
+              />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey={selectedMetric}
+                stroke={config.color}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name={config.title}
+              />
+            </LineChart>
+          ) : (
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#6b7280', fontSize: 11 }}
+              />
+              <YAxis
+                tick={{ fill: '#6b7280', fontSize: 11 }}
+              />
+              <Tooltip
+                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+              />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="installs"
+                stroke="#8b5cf6"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name="Installs"
+              />
+              <Line
+                type="monotone"
+                dataKey="trials"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name="Trials"
+              />
+              <Line
+                type="monotone"
+                dataKey="paid_users"
+                stroke="#10b981"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name="Paid Users"
+              />
+            </LineChart>
+          )}
         </ResponsiveContainer>
       </div>
     </div>

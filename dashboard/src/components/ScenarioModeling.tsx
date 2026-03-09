@@ -43,23 +43,27 @@ export function ScenarioModeling() {
     loading: true,
   });
 
+  // Default churn rates based on historical data analysis:
+  // Weekly subs: ~10% weekly churn (mature) → ~35% monthly
+  // Yearly subs: ~1% monthly churn
+  // Blended (94% weekly, 6% yearly): ~33% monthly
   const [baseCase, setBaseCase] = useState<Assumptions>({
     copTarget: 65,
-    churnRate: 27,
+    churnRate: 12,  // Blended monthly churn
     monthlySpend: 40000,
     initialActiveBase: 0,
   });
 
   const [optimistic, setOptimistic] = useState<Assumptions>({
     copTarget: 50,
-    churnRate: 20,
+    churnRate: 8,
     monthlySpend: 50000,
     initialActiveBase: 0,
   });
 
   const [conservative, setConservative] = useState<Assumptions>({
     copTarget: 80,
-    churnRate: 35,
+    churnRate: 18,
     monthlySpend: 30000,
     initialActiveBase: 0,
   });
@@ -76,28 +80,29 @@ export function ScenarioModeling() {
         const activeData = await activeRes.json();
         const churnData = await churnRes.json();
 
-        // Calculate blended monthly churn based on subscriber mix
-        const weeklySubChurn = churnData.stats?.churnRate || 15; // Weekly subs: ~15%/week
-        const weeklySubMonthlyChurn = (1 - Math.pow(1 - weeklySubChurn / 100, 4.33)) * 100; // ~51%/month
-        const yearlySubMonthlyChurn = 1; // Yearly subs: ~1%/month (very low)
-
-        const weeklyCount = activeData.current?.weekly || 0;
-        const yearlyCount = activeData.current?.yearly || 0;
-        const totalCount = weeklyCount + yearlyCount || 1;
-
-        // Blended churn weighted by subscriber count
-        const blendedChurn = Math.round(
-          (weeklyCount * weeklySubMonthlyChurn + yearlyCount * yearlySubMonthlyChurn) / totalCount
-        );
-        const monthlyChurn = Math.max(5, Math.min(blendedChurn, 60)); // Clamp 5-60%
-
-        // Build churn history from retention curve
-        const churnHistory = (churnData.retentionCurve || []).map((point: any, i: number) => ({
-          week: `W${point.week || i + 1}`,
-          rate: 100 - (point.retention || 100),
-        }));
-
         const totalActive = (activeData.current?.total || 0);
+
+        // Build weekly retention curve for display (filter to reasonable weeks)
+        const retentionCurve = (churnData.retentionCurve || [])
+          .filter((p: any) => p.week >= 0 && p.week <= 12);
+
+        // Calculate actual week-over-week churn from retention data
+        const churnHistory: { week: string; rate: number }[] = [];
+        for (let i = 1; i < Math.min(retentionCurve.length, 12); i++) {
+          const prev = retentionCurve[i - 1];
+          const curr = retentionCurve[i];
+          if (prev?.users > 0 && curr?.users > 0) {
+            const weeklyRetention = curr.users / prev.users;
+            const weeklyChurn = (1 - weeklyRetention) * 100;
+            churnHistory.push({ week: `W${i}`, rate: Math.max(0, Math.min(100, weeklyChurn)) });
+          }
+        }
+
+        // Calculate average weekly churn from mature cohorts (week 4+)
+        const matureChurns = churnHistory.slice(3); // Skip first 3 weeks (high initial churn)
+        const avgWeeklyChurn = matureChurns.length > 0
+          ? matureChurns.reduce((sum, c) => sum + c.rate, 0) / matureChurns.length
+          : 10;
 
         setCurrentMetrics({
           activeSubscribers: {
@@ -106,28 +111,26 @@ export function ScenarioModeling() {
             total: totalActive,
           },
           churn: {
-            current: monthlyChurn,
-            trend: churnData.stats?.trend || 0,
+            current: Math.round(avgWeeklyChurn),
+            trend: 0,
             history: churnHistory,
           },
           loading: false,
         });
 
-        // Update scenarios with real data
+        // Update scenarios with real initial active base only
+        // Keep default churn rates (user can adjust manually)
         setBaseCase(prev => ({
           ...prev,
           initialActiveBase: totalActive,
-          churnRate: monthlyChurn,
         }));
         setOptimistic(prev => ({
           ...prev,
           initialActiveBase: totalActive,
-          churnRate: Math.max(5, monthlyChurn - 7),
         }));
         setConservative(prev => ({
           ...prev,
           initialActiveBase: totalActive,
-          churnRate: monthlyChurn + 8,
         }));
       } catch (error) {
         console.error('Failed to fetch metrics:', error);

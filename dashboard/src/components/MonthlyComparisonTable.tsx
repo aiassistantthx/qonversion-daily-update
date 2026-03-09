@@ -13,6 +13,7 @@ interface MonthlyComparisonRow {
   subs2025: number;
   subs2026: number;
   subsDiff: number | null;
+  isCurrentMonth?: boolean;
 }
 
 interface MonthlyComparisonTableProps {
@@ -72,25 +73,51 @@ function getCellColor(diff: number | null, invertColors = false): string {
 }
 
 export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
-  const rows: MonthlyComparisonRow[] = (data?.monthlyTrend || []).map(m => {
-    const revenueDiff = m.lastYear > 0 ? ((m.thisYear - m.lastYear) / m.lastYear) * 100 : null;
-    const subsDiff = m.lastYearSubs > 0 ? ((m.thisYearSubs - m.lastYearSubs) / m.lastYearSubs) * 100 : null;
-    const spendDiff = m.lastYearSpend > 0 ? ((m.thisYearSpend - m.lastYearSpend) / m.lastYearSpend) * 100 : null;
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1; // 1-12
+  const currentDayOfMonth = currentDate.getDate();
 
-    return {
-      month: m.month,
-      monthNum: m.monthNum,
-      revenue2025: m.lastYear,
-      revenue2026: m.thisYear,
-      revenueDiff,
-      spend2025: m.lastYearSpend,
-      spend2026: m.thisYearSpend,
-      spendDiff,
-      subs2025: m.lastYearSubs,
-      subs2026: m.thisYearSubs,
-      subsDiff,
-    };
-  }).sort((a, b) => a.monthNum - b.monthNum);
+  const rows: MonthlyComparisonRow[] = (data?.monthlyTrend || [])
+    // Only show months that have data for the current year
+    .filter(m => m.thisYear > 0 || m.thisYearSubs > 0 || m.thisYearSpend > 0)
+    .map(m => {
+      const isCurrentMonth = m.monthNum === currentMonth;
+
+      // For current month, calculate proportional comparison
+      // (compare first N days of this year vs first N days of last year)
+      let adjustedLastYearRevenue = m.lastYear;
+      let adjustedLastYearSubs = m.lastYearSubs;
+      let adjustedLastYearSpend = m.lastYearSpend;
+
+      if (isCurrentMonth && m.lastYear > 0) {
+        // Estimate last year's data for the same number of days
+        // Assuming roughly even distribution across the month
+        const daysInMonth = new Date(currentDate.getFullYear() - 1, currentMonth, 0).getDate();
+        const proportionOfMonth = currentDayOfMonth / daysInMonth;
+        adjustedLastYearRevenue = m.lastYear * proportionOfMonth;
+        adjustedLastYearSubs = Math.round(m.lastYearSubs * proportionOfMonth);
+        adjustedLastYearSpend = m.lastYearSpend * proportionOfMonth;
+      }
+
+      const revenueDiff = adjustedLastYearRevenue > 0 ? ((m.thisYear - adjustedLastYearRevenue) / adjustedLastYearRevenue) * 100 : null;
+      const subsDiff = adjustedLastYearSubs > 0 ? ((m.thisYearSubs - adjustedLastYearSubs) / adjustedLastYearSubs) * 100 : null;
+      const spendDiff = adjustedLastYearSpend > 0 ? ((m.thisYearSpend - adjustedLastYearSpend) / adjustedLastYearSpend) * 100 : null;
+
+      return {
+        month: m.month,
+        monthNum: m.monthNum,
+        revenue2025: adjustedLastYearRevenue,
+        revenue2026: m.thisYear,
+        revenueDiff,
+        spend2025: adjustedLastYearSpend,
+        spend2026: m.thisYearSpend,
+        spendDiff,
+        subs2025: adjustedLastYearSubs,
+        subs2026: m.thisYearSubs,
+        subsDiff,
+        isCurrentMonth,
+      };
+    }).sort((a, b) => a.monthNum - b.monthNum);
 
   const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<MonthlyComparisonRow>(
     rows,
@@ -162,6 +189,11 @@ export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
               <tr key={row.month} style={styles.tr}>
                 <td style={{ ...styles.td, fontWeight: 500, position: 'sticky', left: 0, background: '#fff', zIndex: 5 }}>
                   {row.month}
+                  {row.isCurrentMonth && (
+                    <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 6 }} title={`Compared to first ${new Date().getDate()} days of ${data?.lastYear}`}>
+                      (partial)
+                    </span>
+                  )}
                 </td>
                 <td style={{ ...styles.tdRight, background: '#fafafa' }}>
                   {formatCurrency(row.revenue2025)}

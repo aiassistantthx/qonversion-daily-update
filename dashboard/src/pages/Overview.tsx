@@ -12,7 +12,6 @@ import {
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
   RevenueByDayChart,
-  TRoasChart,
   TrendChart,
   SubscriptionBreakdown,
   RetentionChart,
@@ -20,7 +19,6 @@ import {
   RenewalRatesTable,
   CountriesTable,
   MRRBreakdown,
-  RevenueYoYChart,
   ScenarioModeling,
   MetricSelector,
   PayerShareChart,
@@ -32,9 +30,9 @@ import {
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
+  RevenueByDayData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData, RevenueYoYData, PayerShareData, ActiveSubscribersData
+  CountriesData, MRRBreakdownData, PayerShareData, ActiveSubscribersData
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
@@ -448,11 +446,6 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?months=12`).then(r => r.json()),
   });
 
-  const { data: tRoasData } = useQuery<TRoasData>({
-    queryKey: ['troas'],
-    queryFn: () => fetch(`${API_URL}/dashboard/troas?months=12`).then(r => r.json()),
-  });
-
   const { data: retentionData } = useQuery<RetentionData>({
     queryKey: ['retention', dateRange],
     queryFn: () => fetch(`${API_URL}/dashboard/retention?${buildParams({ months: 12 })}`).then(r => r.json()),
@@ -481,11 +474,6 @@ export function Overview() {
   const { data: mrrBreakdownData } = useQuery<MRRBreakdownData>({
     queryKey: ['mrr-breakdown'],
     queryFn: () => fetch(`${API_URL}/dashboard/mrr?months=12`).then(r => r.json()),
-  });
-
-  const { data: revenueYoYData } = useQuery<RevenueYoYData>({
-    queryKey: ['revenue-yoy'],
-    queryFn: () => fetch(`${API_URL}/dashboard/revenue-yoy`).then(r => r.json()),
   });
 
   const { data: payerShareData } = useQuery<PayerShareData>({
@@ -690,8 +678,6 @@ export function Overview() {
       {/* Active Subscribers Widget */}
       {activeSubscribersData?.current && <ActiveSubscribersWidget data={activeSubscribersData} />}
 
-      {/* Revenue YoY Comparison */}
-      {revenueYoYData?.chartData && <RevenueYoYChart data={revenueYoYData} />}
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
@@ -701,9 +687,6 @@ export function Overview() {
 
       {/* Revenue by Day Chart */}
       {revenueByDayData?.cohorts && <RevenueByDayChart data={revenueByDayData} />}
-
-      {/* tROAS Chart */}
-      {tRoasData?.cohorts && <TRoasChart data={tRoasData} />}
 
       {/* Retention Chart */}
       {retentionData?.cohorts && <RetentionChart data={retentionData} />}

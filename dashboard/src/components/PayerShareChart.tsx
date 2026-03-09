@@ -141,7 +141,7 @@ export function PayerShareChart({ data, mode = 'all' }: PayerShareChartProps) {
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
               tickFormatter={v => `${(v * 100).toFixed(0)}%`}
-              domain={[0, 0.3]}
+              domain={[0, (dataMax: number) => Math.ceil((dataMax * 1.2) * 100) / 100]}
             />
             <Tooltip
               contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
