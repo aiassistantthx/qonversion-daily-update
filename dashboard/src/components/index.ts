@@ -44,3 +44,5 @@ export type { MRRBreakdownData } from './MRRBreakdown';
 
 export { RevenueYoYChart } from './RevenueYoYChart';
 export type { RevenueYoYData } from './RevenueYoYChart';
+
+export { ScenarioModeling } from './ScenarioModeling';

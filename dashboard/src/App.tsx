@@ -20,6 +20,7 @@ import {
   CountriesTable,
   MRRBreakdown,
   RevenueYoYChart,
+  ScenarioModeling,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection,
@@ -492,6 +493,9 @@ function Dashboard() {
 
       {/* Revenue YoY Comparison */}
       <RevenueYoYChart data={revenueYoYData} />
+
+      {/* Scenario Modeling */}
+      <ScenarioModeling />
 
       {/* Revenue by Day Chart */}
       <RevenueByDayChart data={revenueByDayData} />
