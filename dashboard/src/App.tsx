@@ -288,20 +288,10 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/funnel?${buildParams({ days: 30 })}`).then(r => r.json()),
   });
 
-  const { data: revenueByDayData } = useQuery<RevenueByDayData>({
-    queryKey: ['revenue-by-day', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?${buildParams({ months: 12 })}`).then(r => r.json()),
-  });
-
-  const { data: tRoasData } = useQuery<TRoasData>({
-    queryKey: ['troas', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/troas?${buildParams({ months: 12 })}`).then(r => r.json()),
-  });
-
-  const { data: subscriptionBreakdownData } = useQuery<SubscriptionBreakdownData>({
-    queryKey: ['subscription-breakdown', dateRange, trafficSource],
-    queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?${buildParams()}`).then(r => r.json()),
-  });
+  // Disabled - endpoints don't exist yet
+  const revenueByDayData = undefined as RevenueByDayData | undefined;
+  const tRoasData = undefined as TRoasData | undefined;
+  const subscriptionBreakdownData = undefined as SubscriptionBreakdownData | undefined;
 
   const { data: retentionData } = useQuery<RetentionData>({
     queryKey: ['retention', dateRange],
@@ -313,15 +303,9 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/weekly-churn?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
-  const { data: renewalRatesData } = useQuery<RenewalRatesData>({
-    queryKey: ['renewal-rates'],
-    queryFn: () => fetch(`${API_URL}/dashboard/renewal-rates`).then(r => r.json()),
-  });
-
-  const { data: countriesData } = useQuery<CountriesData>({
-    queryKey: ['countries', dateRange, trafficSource],
-    queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams()}`).then(r => r.json()),
-  });
+  // Disabled - endpoints don't exist yet
+  const renewalRatesData = undefined as RenewalRatesData | undefined;
+  const countriesData = undefined as CountriesData | undefined;
 
   const cm = data?.currentMonth;
   const daily = data?.daily || [];

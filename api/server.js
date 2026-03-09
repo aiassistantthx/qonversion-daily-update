@@ -534,6 +534,20 @@ app.post('/migrate/asa', async (req, res) => {
     CREATE INDEX IF NOT EXISTS idx_history_changed_at ON asa_change_history(changed_at);
     CREATE INDEX IF NOT EXISTS idx_alerts_created ON asa_alerts(created_at);
 
+    -- Budget Alerts
+    CREATE TABLE IF NOT EXISTS asa_budget_alerts (
+      id SERIAL PRIMARY KEY,
+      campaign_id BIGINT NOT NULL,
+      alert_level VARCHAR(20) NOT NULL,
+      message TEXT,
+      acknowledged BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      acknowledged_at TIMESTAMP,
+      UNIQUE(campaign_id, DATE(created_at))
+    );
+    CREATE INDEX IF NOT EXISTS idx_budget_alerts_campaign ON asa_budget_alerts(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_budget_alerts_date ON asa_budget_alerts(created_at);
+
     -- Views
     DROP VIEW IF EXISTS v_campaign_performance CASCADE;
     DROP VIEW IF EXISTS v_keyword_performance CASCADE;
