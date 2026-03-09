@@ -81,6 +81,26 @@ router.get('/campaigns', async (req, res) => {
       performance: performanceMap.get(String(campaign.id)) || null
     }));
 
+    // Sort by revenue (descending) by default
+    const { sort = 'revenue' } = req.query;
+    enriched.sort((a, b) => {
+      const perfA = a.performance || {};
+      const perfB = b.performance || {};
+
+      switch (sort) {
+        case 'revenue':
+          return (parseFloat(perfB.revenue_7d) || 0) - (parseFloat(perfA.revenue_7d) || 0);
+        case 'spend':
+          return (parseFloat(perfB.spend_7d) || 0) - (parseFloat(perfA.spend_7d) || 0);
+        case 'roas':
+          return (parseFloat(perfB.roas_7d) || 0) - (parseFloat(perfA.roas_7d) || 0);
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '');
+        default:
+          return (parseFloat(perfB.revenue_7d) || 0) - (parseFloat(perfA.revenue_7d) || 0);
+      }
+    });
+
     res.json({
       total: enriched.length,
       data: enriched.slice(offset, offset + parseInt(limit))
