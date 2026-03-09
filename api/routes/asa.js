@@ -2095,10 +2095,11 @@ router.get('/keywords/sov-trend', async (req, res) => {
  * - campaign_id: filter by campaign (optional)
  * - period: 'week' or 'month' (default: 'week')
  * - limit: number of cohorts (default: 12)
+ * - country: filter by country (optional, supports comma-separated values)
  */
 router.get('/cohorts', async (req, res) => {
   try {
-    const { campaign_id, period = 'week', limit = 12 } = req.query;
+    const { campaign_id, period = 'week', limit = 12, country } = req.query;
 
     // Build date grouping based on period
     const dateGroup = period === 'month'
@@ -2107,10 +2108,25 @@ router.get('/cohorts', async (req, res) => {
 
     // Campaign filter
     let campaignFilter = '';
+    let countryFilter = '';
+    let spendCountryFilter = '';
     const params = [parseInt(limit) || 12];
+    let paramIndex = 2;
+
     if (campaign_id) {
-      campaignFilter = 'AND campaign_id = $2';
+      campaignFilter = `AND campaign_id = $${paramIndex}`;
       params.push(campaign_id);
+      paramIndex++;
+    }
+
+    if (country) {
+      const countries = country.split(',').map(c => c.trim()).filter(Boolean);
+      if (countries.length > 0) {
+        countryFilter = `AND country = ANY($${paramIndex}::text[])`;
+        spendCountryFilter = `AND $${paramIndex}::text[] && countries_or_regions`;
+        params.push(countries);
+        paramIndex++;
+      }
     }
 
     // Get cohort data with ROAS by different time windows
@@ -2122,6 +2138,7 @@ router.get('/cohorts', async (req, res) => {
         FROM apple_ads_campaigns
         WHERE install_date IS NOT NULL
           ${campaignFilter}
+          ${spendCountryFilter}
         GROUP BY 1
       ),
       cohort_revenue AS (
@@ -2152,6 +2169,7 @@ router.get('/cohorts', async (req, res) => {
           AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
           AND install_date IS NOT NULL
           ${campaignFilter}
+          ${countryFilter}
         GROUP BY 1, 2
       ),
       cohort_agg AS (
