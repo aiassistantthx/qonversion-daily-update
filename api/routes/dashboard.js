@@ -1340,6 +1340,9 @@ router.get('/forecast', async (req, res) => {
         avgMonthlyRevenue: Math.round(avgMonthlyRevenue),
       },
       currentMonthSubs: parseInt(currentMonthSubs.rows[0]?.subs) || 0,
+      // Backward compatibility
+      avgNewSubsPerMonth: avgYearlyNewSubs + avgWeeklyNewTrials,
+      projectedNewSubsPerMonth: avgYearlyNewSubs + avgWeeklyNewTrials,
       projectionAssumptions: {
         avgDailySpend: Math.round(avgDailySpend),
         avgMonthlySpend: Math.round(avgMonthlySpend),

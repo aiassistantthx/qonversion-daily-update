@@ -1,10 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
-  LineChart, Line, Bar, AreaChart, Area, ComposedChart,
+  LineChart, Line, Bar, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
 } from 'recharts';
 import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search } from 'lucide-react';
+import {
+  DateRangePicker, getDefaultDateRange, parseDateRangeFromURL, updateURLWithDateRange,
+  DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale,
+  TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
+  RevenueByDayChart,
+  TRoasChart,
+  SubscriptionBreakdown,
+  RetentionChart,
+  WeeklyChurnChart,
+  RenewalRatesTable,
+} from './components';
+import type {
+  DateRange, DateScale, TrafficSource,
+  RevenueByDayData, TRoasData, SubscriptionBreakdownData,
+  RetentionData, WeeklyChurnData, RenewalRatesData
+} from './components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -129,15 +145,36 @@ interface ForecastData {
   historical: Array<{
     month: string;
     revenue: number;
-    newSubs: number;
-    renewals: number;
+    newSubs?: number;
+    renewals?: number;
+    weeklyRevenue?: number;
+    yearlyRevenue?: number;
   }>;
   renewalForecast: Array<{
     month: string;
-    expectedRenewals: number;
-    expectedRevenue: number;
+    expectedRenewals?: number;
+    expectedRevenue?: number;
+    totalForecastRevenue?: number;
+    totalRevenue?: number;
+    weeklyRevenue?: number;
+    yearlyRevenue?: number;
+    newSubsRevenue?: number;
   }>;
-  avgNewSubsPerMonth: number;
+  avgNewSubsPerMonth?: number;
+  projectedNewSubsPerMonth?: number;
+  currentMetrics?: {
+    activeWeeklyBase: number;
+    avgWeeklyNewTrials: number;
+    avgWeeklyRevenue: number;
+    avgYearlyNewSubs: number;
+    avgYearlyRevenue: number;
+    avgMonthlyRevenue: number;
+  };
+  modelParameters?: {
+    weeklyPrice: number;
+    yearlyPrice: number;
+    yearlyRenewalRate: number;
+  };
 }
 
 interface FunnelData {
@@ -188,26 +225,55 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
 }
 
 function Dashboard() {
+  // Filter state
+  const [dateRange, setDateRange] = useState<DateRange>(() => parseDateRangeFromURL() || getDefaultDateRange());
+  const [dateScale, setDateScale] = useState<DateScale>(() => parseDateScaleFromURL() || 'day');
+  const [trafficSource, setTrafficSource] = useState<TrafficSource>(() => parseTrafficSourceFromURL() || 'all');
   const [keywordDays, setKeywordDays] = useState(90);
 
+  // Sync filters to URL
+  useEffect(() => {
+    updateURLWithDateRange(dateRange);
+  }, [dateRange]);
+
+  useEffect(() => {
+    updateURLWithDateScale(dateScale);
+  }, [dateScale]);
+
+  useEffect(() => {
+    updateURLWithTrafficSource(trafficSource);
+  }, [trafficSource]);
+
+  // Build query params
+  const buildParams = (extra: Record<string, string | number> = {}) => {
+    const params = new URLSearchParams({
+      from: dateRange.from,
+      to: dateRange.to,
+      scale: dateScale,
+      source: trafficSource,
+      ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
+    });
+    return params.toString();
+  };
+
   const { data, refetch, isFetching } = useQuery<DashboardData>({
-    queryKey: ['dashboard'],
-    queryFn: () => fetch(`${API_URL}/dashboard/main`).then(r => r.json()),
+    queryKey: ['dashboard', dateRange, dateScale, trafficSource],
+    queryFn: () => fetch(`${API_URL}/dashboard/main?${buildParams()}`).then(r => r.json()),
   });
 
   const { data: marketingData } = useQuery<MarketingData>({
-    queryKey: ['marketing'],
-    queryFn: () => fetch(`${API_URL}/dashboard/marketing?months=12`).then(r => r.json()),
+    queryKey: ['marketing', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/marketing?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
   const { data: roasEvolution } = useQuery<RoasEvolutionData>({
-    queryKey: ['roas-evolution'],
-    queryFn: () => fetch(`${API_URL}/dashboard/roas-evolution?months=12`).then(r => r.json()),
+    queryKey: ['roas-evolution', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/roas-evolution?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
   const { data: keywordsData } = useQuery<KeywordsData>({
-    queryKey: ['keywords', keywordDays],
-    queryFn: () => fetch(`${API_URL}/dashboard/keywords?days=${keywordDays}`).then(r => r.json()),
+    queryKey: ['keywords', keywordDays, trafficSource],
+    queryFn: () => fetch(`${API_URL}/dashboard/keywords?${buildParams({ days: keywordDays })}`).then(r => r.json()),
   });
 
   const { data: forecastData } = useQuery<ForecastData>({
@@ -216,8 +282,23 @@ function Dashboard() {
   });
 
   const { data: funnelData } = useQuery<FunnelData>({
-    queryKey: ['funnel'],
-    queryFn: () => fetch(`${API_URL}/dashboard/funnel?days=30`).then(r => r.json()),
+    queryKey: ['funnel', dateRange, trafficSource],
+    queryFn: () => fetch(`${API_URL}/dashboard/funnel?${buildParams({ days: 30 })}`).then(r => r.json()),
+  });
+
+  const { data: revenueByDayData } = useQuery<RevenueByDayData>({
+    queryKey: ['revenue-by-day', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?${buildParams({ months: 12 })}`).then(r => r.json()),
+  });
+
+  const { data: tRoasData } = useQuery<TRoasData>({
+    queryKey: ['troas', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/troas?${buildParams({ months: 12 })}`).then(r => r.json()),
+  });
+
+  const { data: subscriptionBreakdownData } = useQuery<SubscriptionBreakdownData>({
+    queryKey: ['subscription-breakdown', dateRange, trafficSource],
+    queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?${buildParams()}`).then(r => r.json()),
   });
 
   const cm = data?.currentMonth;
@@ -270,7 +351,9 @@ function Dashboard() {
       <div style={styles.header}>
         <h1 style={styles.title}>Analytics Dashboard</h1>
         <div style={styles.headerRight}>
-          <div style={styles.dateRange}>{cm?.month || '—'}</div>
+          <TrafficSourceFilter value={trafficSource} onChange={setTrafficSource} />
+          <DateScaleSelector value={dateScale} onChange={setDateScale} />
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
           <button style={styles.refreshBtn} onClick={() => refetch()}>
             <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
           </button>
@@ -337,6 +420,15 @@ function Dashboard() {
         </div>
       </div>
 
+      {/* Subscription Breakdown */}
+      <SubscriptionBreakdown data={subscriptionBreakdownData} />
+
+      {/* Revenue by Day Chart */}
+      <RevenueByDayChart data={revenueByDayData} />
+
+      {/* tROAS Chart */}
+      <TRoasChart data={tRoasData} />
+
       {/* Daily Chart */}
       <div style={styles.chartCard}>
         <h3 style={styles.chartTitle}>Last 30 Days - Revenue, Spend & COP</h3>
@@ -398,7 +490,7 @@ function Dashboard() {
         <div style={styles.chartCard}>
           <h3 style={styles.chartTitle}>Revenue Forecast (12 months)</h3>
           <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-            Renewals from existing subscribers + new acquisitions. Assumes 70% renewal rate, marketing spend = avg last 30 days ({forecastData.projectedNewSubsPerMonth || 0} new subs/mo).
+            Weekly ({forecastData.currentMetrics?.avgWeeklyRevenue ? `$${Math.round(forecastData.currentMetrics.avgWeeklyRevenue/1000)}k` : '73%'}) + Yearly (35% renewal rate). Assumes current marketing performance continues.
           </p>
           <div style={{ ...styles.chartContainer, height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">

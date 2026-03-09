@@ -1,0 +1,171 @@
+export interface RenewalRatesData {
+  cohorts: Array<{
+    month: string;
+    yearlySubscribers: number;
+    eligibleForRenewal: number;
+    renewed: number;
+    renewalRate: number | null;
+    cohortAge: number;
+    isMatured: boolean;
+  }>;
+  averageRenewalRate: number | null;
+  projectedRenewalRate: number | null;
+}
+
+interface RenewalRatesTableProps {
+  data: RenewalRatesData | undefined;
+}
+
+export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
+  if (!data) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
+        Loading renewal rates data...
+      </div>
+    );
+  }
+
+  const sortedCohorts = [...(data.cohorts || [])].sort((a, b) =>
+    b.month.localeCompare(a.month)
+  );
+
+  const maturedCohorts = sortedCohorts.filter(c => c.isMatured);
+  const pendingCohorts = sortedCohorts.filter(c => !c.isMatured);
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+        Yearly Subscription Renewal Rates
+      </h3>
+      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+        Renewal rates by yearly subscription cohort. Shows what % of subscribers renew after 12 months.
+      </p>
+
+      {/* Key metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div style={{ background: '#ecfdf5', borderRadius: 8, padding: 16 }}>
+          <div style={{ fontSize: 12, color: '#10b981', fontWeight: 500 }}>Average Renewal Rate</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#047857' }}>
+            {data.averageRenewalRate ? `${(data.averageRenewalRate * 100).toFixed(0)}%` : '—'}
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Based on matured cohorts</div>
+        </div>
+        <div style={{ background: '#fef3c7', borderRadius: 8, padding: 16 }}>
+          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 500 }}>Projected Renewal Rate</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#d97706' }}>
+            {data.projectedRenewalRate ? `${(data.projectedRenewalRate * 100).toFixed(0)}%` : '—'}
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Including pending cohorts</div>
+        </div>
+      </div>
+
+      {/* Cohorts table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Cohort</th>
+              <th style={thRightStyle}>Yearly Subs</th>
+              <th style={thRightStyle}>Eligible</th>
+              <th style={thRightStyle}>Renewed</th>
+              <th style={thRightStyle}>Rate</th>
+              <th style={thRightStyle}>Age</th>
+              <th style={thStyle}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Matured cohorts */}
+            {maturedCohorts.map(cohort => (
+              <tr key={cohort.month} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <td style={tdStyle}>{cohort.month}</td>
+                <td style={tdRightStyle}>{cohort.yearlySubscribers}</td>
+                <td style={tdRightStyle}>{cohort.eligibleForRenewal}</td>
+                <td style={tdRightStyle}>{cohort.renewed}</td>
+                <td style={{
+                  ...tdRightStyle,
+                  fontWeight: 600,
+                  color: getRateColor(cohort.renewalRate)
+                }}>
+                  {cohort.renewalRate ? `${(cohort.renewalRate * 100).toFixed(0)}%` : '—'}
+                </td>
+                <td style={tdRightStyle}>{cohort.cohortAge}mo</td>
+                <td style={{ ...tdStyle, color: '#10b981' }}>
+                  ✓ Mature
+                </td>
+              </tr>
+            ))}
+
+            {/* Pending cohorts */}
+            {pendingCohorts.map(cohort => (
+              <tr key={cohort.month} style={{ borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+                <td style={tdStyle}>{cohort.month}</td>
+                <td style={tdRightStyle}>{cohort.yearlySubscribers}</td>
+                <td style={{ ...tdRightStyle, color: '#9ca3af' }}>—</td>
+                <td style={{ ...tdRightStyle, color: '#9ca3af' }}>—</td>
+                <td style={{ ...tdRightStyle, color: '#9ca3af' }}>—</td>
+                <td style={tdRightStyle}>{cohort.cohortAge}mo</td>
+                <td style={{ ...tdStyle, color: '#f59e0b' }}>
+                  ⏳ Pending ({12 - cohort.cohortAge}mo)
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Insights */}
+      <div style={{ marginTop: 24, padding: 16, background: '#f3f4f6', borderRadius: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 8 }}>
+          Insights
+        </div>
+        <ul style={{ fontSize: 12, color: '#6b7280', margin: 0, paddingLeft: 20 }}>
+          <li style={{ marginBottom: 4 }}>
+            {maturedCohorts.length} cohort{maturedCohorts.length !== 1 ? 's' : ''} have matured (12+ months old)
+          </li>
+          <li style={{ marginBottom: 4 }}>
+            {pendingCohorts.length} cohort{pendingCohorts.length !== 1 ? 's' : ''} are pending renewal
+          </li>
+          {data.averageRenewalRate && (
+            <li>
+              At {(data.averageRenewalRate * 100).toFixed(0)}% renewal rate, expect ~
+              {Math.round(pendingCohorts.reduce((sum, c) => sum + c.yearlySubscribers, 0) * data.averageRenewalRate)} renewals from pending cohorts
+            </li>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function getRateColor(rate: number | null): string {
+  if (rate == null) return '#9ca3af';
+  const pct = rate * 100;
+  if (pct >= 40) return '#10b981';
+  if (pct >= 30) return '#f59e0b';
+  return '#ef4444';
+}
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '10px 8px',
+  borderBottom: '1px solid #e5e7eb',
+  color: '#6b7280',
+  fontWeight: 500,
+  fontSize: 12,
+};
+
+const thRightStyle: React.CSSProperties = {
+  ...thStyle,
+  textAlign: 'right',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 8px',
+  color: '#111827',
+};
+
+const tdRightStyle: React.CSSProperties = {
+  ...tdStyle,
+  textAlign: 'right',
+  fontFamily: "'JetBrains Mono', monospace",
+};
