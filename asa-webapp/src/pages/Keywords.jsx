@@ -235,7 +235,7 @@ export default function Keywords() {
   };
 
   const exportCSV = () => {
-    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend 7d', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
       const spend = parseFloat(k.spend_7d || 0);
       const revenue = parseFloat(k.revenue_7d || 0);
@@ -353,7 +353,7 @@ export default function Keywords() {
         <div className="grid grid-cols-6 gap-4">
           <Card>
             <div className="p-4">
-              <p className="text-sm text-gray-500">Spend (7d)</p>
+              <p className="text-sm text-gray-500">Spend</p>
               <p className="text-xl font-bold">${totals.spend.toFixed(2)}</p>
             </div>
           </Card>
@@ -371,7 +371,7 @@ export default function Keywords() {
           </Card>
           <Card>
             <div className="p-4">
-              <p className="text-sm text-gray-500">Revenue (7d)</p>
+              <p className="text-sm text-gray-500">Revenue</p>
               <p className="text-xl font-bold text-green-600">${totals.revenue.toFixed(2)}</p>
             </div>
           </Card>

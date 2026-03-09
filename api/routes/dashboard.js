@@ -735,23 +735,23 @@ router.get('/marketing', async (req, res) => {
             break;
           }
         }
-      } else if (roasPredicted && roasPredicted > 0) {
+      } else if (roasPredicted && roasPredicted > 0 && roasTotal && roasTotal > 0) {
         // Not paid back yet - calculate predicted payback based on ROAS growth rate
-        // Use the growth from current ROAS to predicted ROAS to extrapolate when it might reach 1.0
-        const lastPoint = roasPoints.filter(p => p[1] != null).pop();
-        if (lastPoint) {
-          const [lastDays, lastRoas] = lastPoint;
-          if (lastRoas > 0 && roasPredicted > lastRoas) {
-            // Calculate daily ROAS growth rate
-            const daysToPredict = 365 - lastDays;
-            const roasGrowth = roasPredicted - lastRoas;
-            const dailyGrowth = roasGrowth / daysToPredict;
+        // Use the growth from current ROAS (roasTotal at cohortAge) to predicted ROAS (at 365 days)
+        if (roasPredicted > roasTotal && cohortAge < 365) {
+          // Calculate daily ROAS growth rate from current age to 365 days
+          const daysRemaining = 365 - cohortAge;
+          const roasGrowth = roasPredicted - roasTotal;
+          const dailyGrowth = roasGrowth / daysRemaining;
 
-            // Calculate days needed to reach 1.0 from current position
-            const roasNeeded = 1 - lastRoas;
-            if (dailyGrowth > 0) {
-              const daysToPayback = roasNeeded / dailyGrowth;
-              predictedPaybackDays = Math.round(lastDays + daysToPayback);
+          // Calculate days needed to reach 1.0 from current position
+          const roasNeeded = 1 - roasTotal;
+          if (dailyGrowth > 0) {
+            const daysToPayback = roasNeeded / dailyGrowth;
+            predictedPaybackDays = Math.round(cohortAge + daysToPayback);
+            // Cap at reasonable maximum (5 years)
+            if (predictedPaybackDays > 1825) {
+              predictedPaybackDays = null;
             }
           }
         }

@@ -504,6 +504,14 @@ router.patch('/campaigns/:campaignId/adgroups/:adGroupId/bid', async (req, res) 
 /**
  * GET /asa/keywords
  * List keywords with filters
+ *
+ * Query params:
+ * - campaign_id: campaign ID (required)
+ * - adgroup_id: ad group ID (optional)
+ * - status: filter by status
+ * - days: number of days (default 7)
+ * - from: start date (YYYY-MM-DD)
+ * - to: end date (YYYY-MM-DD)
  */
 router.get('/keywords', async (req, res) => {
   try {
@@ -513,19 +521,77 @@ router.get('/keywords', async (req, res) => {
       return res.status(400).json({ error: 'campaign_id is required' });
     }
 
-    // Get from local DB with performance data
+    // Parse date range
+    let { days = 7, from, to } = req.query;
+    let dateFilter;
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
+    }
+
+    // Build date conditions
+    const dateCondition = dateFilter.days
+      ? `k.date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `k.date >= '${dateFilter.from}' AND k.date <= '${dateFilter.to}'`;
+
+    const revenueCondition = dateFilter.days
+      ? `e.event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `e.event_date >= '${dateFilter.from}' AND e.event_date <= '${dateFilter.to}'`;
+
+    // Get keywords with dynamic performance data
     let query = `
+      WITH keyword_perf AS (
+        SELECT
+          keyword_id,
+          SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
+          SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
+          SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+        GROUP BY keyword_id
+      ),
+      keyword_revenue AS (
+        SELECT
+          keyword_id,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
+        FROM events_v2 e
+        WHERE ${revenueCondition}
+          AND keyword_id IS NOT NULL
+          AND campaign_id = $1
+        GROUP BY keyword_id
+      )
       SELECT
-        k.*,
-        p.cpa_7d,
-        p.ttr_7d,
-        p.spend_7d,
-        p.impressions_7d,
-        p.taps_7d,
-        p.installs_7d
-      FROM apple_ads_keywords k
-      LEFT JOIN v_keyword_performance p ON k.keyword_id = p.keyword_id
-      WHERE k.campaign_id = $1
+        k.keyword_id,
+        k.campaign_id,
+        k.adgroup_id,
+        k.keyword_text,
+        k.match_type,
+        k.keyword_status,
+        k.current_bid,
+        k.bid_amount,
+        COALESCE(p.spend, 0) as spend_7d,
+        COALESCE(p.impressions, 0) as impressions_7d,
+        COALESCE(p.taps, 0) as taps_7d,
+        COALESCE(p.installs, 0) as installs_7d,
+        COALESCE(r.revenue, 0) as revenue_7d,
+        COALESCE(r.paid_users, 0) as paid_users_7d,
+        CASE WHEN COALESCE(p.installs, 0) > 0 THEN COALESCE(p.spend, 0) / p.installs ELSE NULL END as cpa_7d,
+        CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / p.spend ELSE 0 END as roas_7d,
+        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(p.spend, 0) / r.paid_users ELSE NULL END as cop_7d,
+        CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d
+      FROM (
+        SELECT DISTINCT ON (keyword_id)
+          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, keyword_status, current_bid, bid_amount
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+      ) k
+      LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id
+      LEFT JOIN keyword_revenue r ON k.keyword_id::TEXT = r.keyword_id::TEXT
+      WHERE 1=1
     `;
     const params = [campaign_id];
 
@@ -539,13 +605,14 @@ router.get('/keywords', async (req, res) => {
       params.push(status.toUpperCase());
     }
 
-    query += ` ORDER BY k.spend DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += ` ORDER BY spend_7d DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
     const result = await db.query(query, params);
 
     res.json({
       total: result.rowCount,
+      dateRange: dateFilter,
       data: result.rows
     });
   } catch (error) {
