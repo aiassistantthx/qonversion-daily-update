@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, CartesianGrid } from 'recharts';
 import { api } from '../api';
+import { ScenarioModeling } from '../components/ScenarioModeling';
 
 const COLORS = ['#00d4ff', '#00ff88', '#a371f7', '#ffcc00', '#ff4444', '#ff88aa'];
 
@@ -358,33 +359,8 @@ export function ForecastDashboard() {
         </div>
       )}
 
-      {/* Scenario modeling placeholder */}
-      <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-        <div className="text-sm text-terminal-muted mb-4">Scenario Projections</div>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-3 bg-terminal-border/30 rounded">
-            <div className="text-xs text-terminal-muted mb-1">Base Case</div>
-            <div className="text-lg font-mono text-terminal-text">
-              ${((avgLtv * (paybackData?.payback.reduce((sum, c) => sum + c.cohortSize, 0) || 0)) / 1000).toFixed(0)}k
-            </div>
-            <div className="text-xs text-terminal-muted">Annual revenue</div>
-          </div>
-          <div className="p-3 bg-terminal-green/10 rounded border border-terminal-green/30">
-            <div className="text-xs text-terminal-green mb-1">Optimistic (+20%)</div>
-            <div className="text-lg font-mono text-terminal-green">
-              ${((avgLtv * 1.2 * (paybackData?.payback.reduce((sum, c) => sum + c.cohortSize, 0) || 0)) / 1000).toFixed(0)}k
-            </div>
-            <div className="text-xs text-terminal-muted">If COP drops to $30</div>
-          </div>
-          <div className="p-3 bg-terminal-red/10 rounded border border-terminal-red/30">
-            <div className="text-xs text-terminal-red mb-1">Pessimistic (-15%)</div>
-            <div className="text-lg font-mono text-terminal-red">
-              ${((avgLtv * 0.85 * (paybackData?.payback.reduce((sum, c) => sum + c.cohortSize, 0) || 0)) / 1000).toFixed(0)}k
-            </div>
-            <div className="text-xs text-terminal-muted">If churn +5%</div>
-          </div>
-        </div>
-      </div>
+      {/* Scenario Modeling Widget */}
+      <ScenarioModeling />
     </div>
   );
 }
