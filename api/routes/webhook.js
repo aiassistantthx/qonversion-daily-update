@@ -472,13 +472,53 @@ router.get('/stats', async (req, res) => {
     const attributions = await db.query(`
       SELECT
         COUNT(DISTINCT q_user_id) as total_users,
-        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as attributed_users
+        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as users_with_campaign_id,
+        COUNT(DISTINCT CASE WHEN media_source = 'Apple AdServices' THEN q_user_id END) as users_from_asa
       FROM events_v2
+    `);
+
+    // Check attribution by date ranges
+    const attributionByPeriod = await db.query(`
+      SELECT
+        CASE
+          WHEN install_date >= '2026-03-07' THEN 'after_mar_7'
+          WHEN install_date >= '2026-02-01' THEN 'feb_2026'
+          WHEN install_date >= '2026-01-01' THEN 'jan_2026'
+          WHEN install_date >= '2025-01-01' THEN 'year_2025'
+          ELSE 'before_2025'
+        END as period,
+        COUNT(DISTINCT q_user_id) as total_users,
+        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as with_campaign_id,
+        COUNT(DISTINCT CASE WHEN media_source = 'Apple AdServices' THEN q_user_id END) as from_asa,
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
+      FROM events_v2
+      WHERE media_source = 'Apple AdServices' OR campaign_id IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    // Revenue comparison
+    const revenueComparison = await db.query(`
+      SELECT
+        'with_campaign_id' as filter,
+        COUNT(DISTINCT q_user_id) as users,
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
+      FROM events_v2
+      WHERE campaign_id IS NOT NULL
+      UNION ALL
+      SELECT
+        'media_source_asa' as filter,
+        COUNT(DISTINCT q_user_id) as users,
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
+      FROM events_v2
+      WHERE media_source = 'Apple AdServices'
     `);
 
     res.json({
       events: stats.rows,
       attributions: attributions.rows[0],
+      attributionByPeriod: attributionByPeriod.rows,
+      revenueComparison: revenueComparison.rows,
     });
 
   } catch (error) {
