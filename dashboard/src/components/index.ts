@@ -7,6 +7,9 @@ export type { DateScale } from './DateScaleSelector';
 export { TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource } from './TrafficSourceFilter';
 export type { TrafficSource } from './TrafficSourceFilter';
 
+export { CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter } from './CountryFilter';
+export type { CountrySelection } from './CountryFilter';
+
 export { RevenueByDayChart } from './RevenueByDayChart';
 export type { RevenueByDayData } from './RevenueByDayChart';
 

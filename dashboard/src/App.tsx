@@ -9,6 +9,7 @@ import {
   DateRangePicker, getDefaultDateRange, parseDateRangeFromURL, updateURLWithDateRange,
   DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale,
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
+  CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   RevenueByDayChart,
   TRoasChart,
   TrendChart,
@@ -19,7 +20,7 @@ import {
   CountriesTable,
 } from './components';
 import type {
-  DateRange, DateScale, TrafficSource,
+  DateRange, DateScale, TrafficSource, CountrySelection,
   RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
   CountriesData
@@ -232,6 +233,7 @@ function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange>(() => parseDateRangeFromURL() || getDefaultDateRange());
   const [dateScale, setDateScale] = useState<DateScale>(() => parseDateScaleFromURL() || 'day');
   const [trafficSource, setTrafficSource] = useState<TrafficSource>(() => parseTrafficSourceFromURL() || 'all');
+  const [countryFilter, setCountryFilter] = useState<CountrySelection>(() => parseCountryFilterFromURL());
   const [keywordDays, setKeywordDays] = useState(90);
 
   // Sync filters to URL
@@ -247,6 +249,10 @@ function Dashboard() {
     updateURLWithTrafficSource(trafficSource);
   }, [trafficSource]);
 
+  useEffect(() => {
+    updateURLWithCountryFilter(countryFilter);
+  }, [countryFilter]);
+
   // Build query params
   const buildParams = (extra: Record<string, string | number> = {}) => {
     const params = new URLSearchParams({
@@ -256,11 +262,14 @@ function Dashboard() {
       source: trafficSource,
       ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
     });
+    if (countryFilter.length > 0) {
+      params.set('countries', countryFilter.join(','));
+    }
     return params.toString();
   };
 
   const { data, refetch, isFetching } = useQuery<DashboardData>({
-    queryKey: ['dashboard', dateRange, dateScale, trafficSource],
+    queryKey: ['dashboard', dateRange, dateScale, trafficSource, countryFilter],
     queryFn: () => fetch(`${API_URL}/dashboard/main?${buildParams()}`).then(r => r.json()),
   });
 
@@ -320,7 +329,7 @@ function Dashboard() {
   });
 
   const { data: countriesData } = useQuery<CountriesData>({
-    queryKey: ['countries', dateRange],
+    queryKey: ['countries', dateRange, countryFilter],
     queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams({ limit: 20 })}`).then(r => r.json()),
   });
 
@@ -390,6 +399,7 @@ function Dashboard() {
       <div style={styles.header}>
         <h1 style={styles.title}>Analytics Dashboard</h1>
         <div style={styles.headerRight}>
+          <CountryFilter value={countryFilter} onChange={setCountryFilter} />
           <TrafficSourceFilter value={trafficSource} onChange={setTrafficSource} />
           <DateScaleSelector value={dateScale} onChange={setDateScale} />
           <DateRangePicker value={dateRange} onChange={setDateRange} />

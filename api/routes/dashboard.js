@@ -2672,7 +2672,7 @@ router.get('/weekly-churn', async (req, res) => {
 // ============================================
 router.get('/countries', async (req, res) => {
   try {
-    const { from, to, source, limit = 20 } = req.query;
+    const { from, to, source, countries, limit = 20, sortBy = 'revenue' } = req.query;
 
     // Date filter
     let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
@@ -2688,6 +2688,29 @@ router.get('/countries', async (req, res) => {
       sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
     }
 
+    // Country filter
+    let countryCondition = '1=1';
+    if (countries && countries.trim()) {
+      const countryList = countries.split(',').map(c => c.trim()).filter(Boolean);
+      if (countryList.length > 0) {
+        const quotedCountries = countryList.map(c => `'${c}'`).join(',');
+        countryCondition = `country IN (${quotedCountries})`;
+      }
+    }
+
+    // Sort validation and mapping
+    const allowedSorts = {
+      country: 'cm.country',
+      source: 'cm.source',
+      revenue: 'revenue',
+      spend: 'spend',
+      roas: 'roas',
+      cop: 'cop',
+      subscribers: 'cm.subscribers',
+      trials: 'cm.trials'
+    };
+    const sortColumn = allowedSorts[sortBy] || 'revenue';
+
     const result = await db.query(`
       WITH user_countries AS (
         SELECT
@@ -2697,6 +2720,7 @@ router.get('/countries', async (req, res) => {
           install_date
         FROM events_v2
         WHERE ${dateCondition}
+          AND ${countryCondition}
         GROUP BY q_user_id, country, media_source, install_date
       ),
       country_metrics AS (
@@ -2723,6 +2747,7 @@ router.get('/countries', async (req, res) => {
           SUM(local_spend) as spend
         FROM apple_ads_keywords
         WHERE ${dateCondition.replace('install_date', 'date')}
+          AND ${countryCondition}
         GROUP BY country
       )
       SELECT
@@ -2745,13 +2770,13 @@ router.get('/countries', async (req, res) => {
         END as roas
       FROM country_metrics cm
       LEFT JOIN country_spend cs ON cm.country = cs.country AND cm.source = 'Apple Ads'
-      ORDER BY cm.revenue DESC
+      ORDER BY ${sortColumn} DESC NULLS LAST
       LIMIT ${parseInt(limit)}
     `);
 
     res.json({
       countries: result.rows,
-      filters: { from, to, source, limit: parseInt(limit) }
+      filters: { from, to, source, countries, limit: parseInt(limit), sortBy }
     });
   } catch (error) {
     console.error('Countries error:', error);
@@ -3247,68 +3272,6 @@ router.get('/renewal-rates', async (req, res) => {
     });
   } catch (error) {
     console.error('Renewal rates error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============================================================================
-// COUNTRIES - Country ranking by metrics
-// ============================================================================
-router.get('/countries', async (req, res) => {
-  try {
-    const from = req.query.from || daysAgo(30);
-    const to = req.query.to || formatDate(new Date());
-    const limit = parseInt(req.query.limit) || 20;
-
-    // Simplified query - group by source only for now
-    const query = `
-      SELECT
-        'Global' as country,
-        'XX' as country_code,
-        CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END as source,
-        COALESCE(SUM(CASE WHEN event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN price_usd ELSE 0 END), 0) as revenue,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Trial Converted', 'Subscription Started') AND product_id LIKE '%yearly%' THEN q_user_id END) +
-        COUNT(DISTINCT CASE WHEN event_name = 'Trial Converted' AND product_id NOT LIKE '%yearly%' THEN q_user_id END) as subscribers,
-        COUNT(DISTINCT CASE WHEN event_name = 'Trial Started' THEN q_user_id END) as trials
-      FROM events_v2
-      WHERE created_at >= $1 AND created_at < $2::date + 1
-      GROUP BY CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
-      ORDER BY revenue DESC
-      LIMIT $3
-    `;
-
-    const result = await db.query(query, [from, to, limit * 2]); // Get more to have both sources
-
-    const countries = result.rows.map(row => {
-      const subscribers = parseInt(row.subscribers) || 0;
-      const trials = parseInt(row.trials) || 0;
-      return {
-        country: row.country,
-        countryCode: row.country_code,
-        source: row.source,
-        revenue: parseFloat(row.revenue) || 0,
-        spend: 0,
-        roas: null,
-        cop: null,
-        subscribers,
-        trials,
-        crToPaid: trials > 0 ? subscribers / trials : null,
-      };
-    });
-
-    // Calculate totals
-    const totals = countries.reduce((acc, c) => ({
-      revenue: acc.revenue + c.revenue,
-      spend: acc.spend + c.spend,
-      subscribers: acc.subscribers + c.subscribers,
-    }), { revenue: 0, spend: 0, subscribers: 0 });
-
-    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
-    totals.cop = totals.subscribers > 0 && totals.spend > 0 ? totals.spend / totals.subscribers : null;
-
-    res.json({ countries, totals });
-  } catch (error) {
-    console.error('Countries error:', error);
     res.status(500).json({ error: error.message });
   }
 });
