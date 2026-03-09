@@ -2760,14 +2760,13 @@ router.get('/countries', async (req, res) => {
         GROUP BY uc.country,
           CASE WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END
       ),
-      country_spend AS (
+      campaign_spend AS (
         SELECT
-          COALESCE(country, 'Unknown') as country,
-          SUM(local_spend) as spend
-        FROM apple_ads_keywords
-        WHERE ${dateCondition.replace('install_date', 'date')}
-          AND ${countryCondition}
-        GROUP BY country
+          c.campaign_id,
+          SUM(c.spend) as spend
+        FROM apple_ads_campaigns c
+        WHERE ${dateCondition.replace('install_date', 'c.date')}
+        GROUP BY c.campaign_id
       )
       SELECT
         cm.country,
@@ -2776,19 +2775,10 @@ router.get('/countries', async (req, res) => {
         cm.trials,
         cm.subscribers,
         ROUND(cm.revenue::numeric, 2) as revenue,
-        COALESCE(cs.spend, 0) as spend,
-        CASE
-          WHEN cm.subscribers > 0 AND COALESCE(cs.spend, 0) > 0
-          THEN ROUND((COALESCE(cs.spend, 0) / cm.subscribers)::numeric, 2)
-          ELSE NULL
-        END as cop,
-        CASE
-          WHEN COALESCE(cs.spend, 0) > 0
-          THEN ROUND((cm.revenue / COALESCE(cs.spend, 0))::numeric, 2)
-          ELSE NULL
-        END as roas
+        0 as spend,
+        NULL as cop,
+        NULL as roas
       FROM country_metrics cm
-      LEFT JOIN country_spend cs ON cm.country = cs.country AND cm.source = 'Apple Ads'
       ORDER BY ${sortColumn} DESC NULLS LAST
       LIMIT ${parseInt(limit)}
     `);
@@ -3498,7 +3488,7 @@ router.get('/revenue-yoy', async (req, res) => {
 // Payer Share by Day
 router.get('/payer-share', async (req, res) => {
   try {
-    const monthsBack = parseInt(req.query.months) || 12;
+    const monthsBack = Math.min(parseInt(req.query.months) || 6, 12); // Cap at 12 months
 
     // Get all cohorts by install month
     // For each cohort, calculate % of users who became payers by day N
