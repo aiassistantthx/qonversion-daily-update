@@ -1086,11 +1086,20 @@ router.get('/forecast', async (req, res) => {
     // MODEL PARAMETERS (from research 2026-03-09)
     // ============================================
     const YEARLY_RENEWAL_RATE = 0.35;  // 35% renewal rate for yearly
+    const YEARLY_RENEWAL_RATE_OPTIMISTIC = 0.42;  // +20%
+    const YEARLY_RENEWAL_RATE_PESSIMISTIC = 0.30;  // -15%
+
     const WEEKLY_PRICE = 9.19;
     const WEEKLY_TRIAL_PRICE = 9.50;
     const YEARLY_PRICE = 62;
     const WEEKLY_W1_RETENTION = 0.48;  // 48% survive week 1
     const WEEKLY_WEEKLY_RETENTION = 0.92;  // 92% weekly retention after W1
+    const WEEKLY_WEEKLY_RETENTION_OPTIMISTIC = 0.94;  // +2pp
+    const WEEKLY_WEEKLY_RETENTION_PESSIMISTIC = 0.89;  // -3pp
+
+    const WEEKLY_CHURN_RATE = 1 - WEEKLY_WEEKLY_RETENTION;
+    const WEEKLY_CHURN_RATE_OPTIMISTIC = 1 - WEEKLY_WEEKLY_RETENTION_OPTIMISTIC;
+    const WEEKLY_CHURN_RATE_PESSIMISTIC = 1 - WEEKLY_WEEKLY_RETENTION_PESSIMISTIC;
 
     // ============================================
     // 1. GET HISTORICAL DATA
@@ -1147,6 +1156,27 @@ router.get('/forecast', async (req, res) => {
       ORDER BY cohort_month
     `);
 
+    // Weekly cohorts for churn modeling (last 6 months)
+    const weeklyCohortsResult = await db.query(`
+      WITH first_weekly_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE event_name = 'Trial Converted'
+          AND product_id LIKE '%weekly%'
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        TO_CHAR(first_sub_date, 'YYYY-MM') as cohort_month,
+        COUNT(*) as subscribers
+      FROM first_weekly_subs
+      WHERE first_sub_date >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY TO_CHAR(first_sub_date, 'YYYY-MM')
+      ORDER BY cohort_month
+    `);
+
     // Current active weekly subscribers (renewed in last 14 days)
     const activeWeeklyResult = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as active_weekly
@@ -1166,6 +1196,14 @@ router.get('/forecast', async (req, res) => {
       yearlyCohorts[row.cohort_month] = {
         subscribers: parseInt(row.subscribers),
         avgPrice: parseFloat(row.avg_price) || YEARLY_PRICE,
+      };
+    }
+
+    // Build weekly cohort map
+    const weeklyCohorts = {};
+    for (const row of weeklyCohortsResult.rows) {
+      weeklyCohorts[row.cohort_month] = {
+        subscribers: parseInt(row.subscribers),
       };
     }
 
@@ -1216,7 +1254,10 @@ router.get('/forecast', async (req, res) => {
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%weekly%' AND refund = false), 0) as weekly_revenue,
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%yearly%' AND refund = false), 0) as yearly_revenue,
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%monthly%' AND refund = false), 0) as monthly_revenue,
-        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as total_revenue
+        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as total_revenue,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Trial Converted' AND product_id LIKE '%weekly%'
+        ) as weekly_new_trials
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
@@ -1226,57 +1267,117 @@ router.get('/forecast', async (req, res) => {
     const currentMonthWeekly = parseFloat(currentMonthData.rows[0]?.weekly_revenue) || 0;
     const currentMonthYearly = parseFloat(currentMonthData.rows[0]?.yearly_revenue) || 0;
     const currentMonthMonthly = parseFloat(currentMonthData.rows[0]?.monthly_revenue) || 0;
-    const currentMonthTotal = parseFloat(currentMonthData.rows[0]?.total_revenue) || 0;
+    const currentMonthNewTrials = parseInt(currentMonthData.rows[0]?.weekly_new_trials) || 0;
 
     // ============================================
-    // 4. BUILD FORECAST (12 months)
+    // 4. BUILD COHORT-BASED FORECAST (12 months)
     // ============================================
+
+    // Track weekly subscriber base with cohort churn
+    let weeklyBaseRemaining = activeWeeklyBase;
+    let weeklyBaseOptimistic = activeWeeklyBase;
+    let weeklyBasePessimistic = activeWeeklyBase;
+
     const renewalForecast = [];
 
     for (let i = 0; i <= 12; i++) {
       const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastDate.getFullYear()}-${String(forecastDate.getMonth() + 1).padStart(2, '0')}`;
 
-      let weeklyRevenue, yearlyRevenue, monthlyRevenue;
+      let weeklyRevenue, weeklyRevenueOptimistic, weeklyRevenuePessimistic;
+      let yearlyRevenue, yearlyRevenueOptimistic, yearlyRevenuePessimistic;
+      let monthlyRevenue;
 
       if (i === 0) {
         // Current month: extrapolate from partial data
         weeklyRevenue = Math.round(currentMonthWeekly * extrapolationFactor);
+        weeklyRevenueOptimistic = Math.round(weeklyRevenue * 1.2);
+        weeklyRevenuePessimistic = Math.round(weeklyRevenue * 0.85);
+
         yearlyRevenue = Math.round(currentMonthYearly * extrapolationFactor);
+        yearlyRevenueOptimistic = Math.round(yearlyRevenue * 1.2);
+        yearlyRevenuePessimistic = Math.round(yearlyRevenue * 0.85);
+
         monthlyRevenue = Math.round(currentMonthMonthly * extrapolationFactor);
       } else {
         // Future months: use cohort model
 
-        // === WEEKLY REVENUE ===
-        // Model: stable base with churn-adjusted renewals
-        // Assuming performance stays same, weekly revenue = average of last 3 months
-        weeklyRevenue = Math.round(avgWeeklyRevenue);
+        // === WEEKLY REVENUE (cohort-based with churn) ===
+        // Apply monthly churn: ~4 weeks × weekly churn rate
+        const monthlyChurnFactor = Math.pow(WEEKLY_WEEKLY_RETENTION, 4);
+        const monthlyChurnFactorOptimistic = Math.pow(WEEKLY_WEEKLY_RETENTION_OPTIMISTIC, 4);
+        const monthlyChurnFactorPessimistic = Math.pow(WEEKLY_WEEKLY_RETENTION_PESSIMISTIC, 4);
+
+        // Decay existing base
+        weeklyBaseRemaining *= monthlyChurnFactor;
+        weeklyBaseOptimistic *= monthlyChurnFactorOptimistic;
+        weeklyBasePessimistic *= monthlyChurnFactorPessimistic;
+
+        // Add new trials (who survive W1 and contribute for the month)
+        const newTrials = avgWeeklyNewTrials;
+        const newTrialsOptimistic = Math.round(avgWeeklyNewTrials * 1.2);
+        const newTrialsPessimistic = Math.round(avgWeeklyNewTrials * 0.85);
+
+        const newTrialsContributing = newTrials * WEEKLY_W1_RETENTION;
+        const newTrialsContributingOptimistic = newTrialsOptimistic * WEEKLY_W1_RETENTION;
+        const newTrialsContributingPessimistic = newTrialsPessimistic * WEEKLY_W1_RETENTION;
+
+        weeklyBaseRemaining += newTrialsContributing;
+        weeklyBaseOptimistic += newTrialsContributingOptimistic;
+        weeklyBasePessimistic += newTrialsContributingPessimistic;
+
+        // Revenue from active base (4 renewals per month)
+        weeklyRevenue = Math.round(weeklyBaseRemaining * WEEKLY_PRICE * 4);
+        weeklyRevenueOptimistic = Math.round(weeklyBaseOptimistic * WEEKLY_PRICE * 4);
+        weeklyRevenuePessimistic = Math.round(weeklyBasePessimistic * WEEKLY_PRICE * 4);
 
         // === YEARLY REVENUE ===
-        // New subs: avgYearlyNewSubs × YEARLY_PRICE
+        // New subs
         const yearlyNewSubsRevenue = avgYearlyNewSubs * YEARLY_PRICE;
+        const yearlyNewSubsRevenueOptimistic = Math.round(avgYearlyNewSubs * 1.2) * YEARLY_PRICE;
+        const yearlyNewSubsRevenuePessimistic = Math.round(avgYearlyNewSubs * 0.85) * YEARLY_PRICE;
 
         // Renewals from cohort 12 months ago
         const renewalSourceMonth = addMonths(forecastMonthStr, -12);
         const sourceCohort = yearlyCohorts[renewalSourceMonth];
+
         const yearlyRenewalsRevenue = sourceCohort
           ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE * YEARLY_PRICE)
           : 0;
+        const yearlyRenewalsRevenueOptimistic = sourceCohort
+          ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE_OPTIMISTIC * YEARLY_PRICE)
+          : 0;
+        const yearlyRenewalsRevenuePessimistic = sourceCohort
+          ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE_PESSIMISTIC * YEARLY_PRICE)
+          : 0;
 
         yearlyRevenue = Math.round(yearlyNewSubsRevenue + yearlyRenewalsRevenue);
+        yearlyRevenueOptimistic = Math.round(yearlyNewSubsRevenueOptimistic + yearlyRenewalsRevenueOptimistic);
+        yearlyRevenuePessimistic = Math.round(yearlyNewSubsRevenuePessimistic + yearlyRenewalsRevenuePessimistic);
 
         // === MONTHLY REVENUE ===
         monthlyRevenue = Math.round(avgMonthlyRevenue);
       }
 
       const totalRevenue = weeklyRevenue + yearlyRevenue + monthlyRevenue;
+      const totalRevenueOptimistic = weeklyRevenueOptimistic + yearlyRevenueOptimistic + monthlyRevenue;
+      const totalRevenuePessimistic = weeklyRevenuePessimistic + yearlyRevenuePessimistic + monthlyRevenue;
 
       renewalForecast.push({
         month: forecastMonthStr,
         weeklyRevenue,
+        weeklyRevenueOptimistic,
+        weeklyRevenuePessimistic,
         yearlyRevenue,
+        yearlyRevenueOptimistic,
+        yearlyRevenuePessimistic,
         monthlyRevenue,
         totalRevenue,
+        totalRevenueOptimistic,
+        totalRevenuePessimistic,
+        weeklyBase: Math.round(weeklyBaseRemaining),
+        weeklyBaseOptimistic: Math.round(weeklyBaseOptimistic),
+        weeklyBasePessimistic: Math.round(weeklyBasePessimistic),
         // For backward compatibility
         totalForecastRevenue: totalRevenue,
         expectedRevenue: totalRevenue,
@@ -1284,7 +1385,31 @@ router.get('/forecast', async (req, res) => {
     }
 
     // ============================================
-    // 5. ADDITIONAL STATS
+    // 5. VALIDATION AGAINST HISTORICAL DATA
+    // ============================================
+
+    // Calculate forecast accuracy for last 3 months
+    const validationResults = [];
+    for (let i = 1; i <= 3; i++) {
+      const testMonth = addMonths(currentMonthStr, -i);
+      const historicalData = monthlyByTypeResult.rows.find(r => r.month === testMonth);
+
+      if (historicalData) {
+        const actualRevenue = parseFloat(historicalData.total_revenue) || 0;
+        const forecastedRevenue = avgWeeklyRevenue + avgYearlyRevenue + avgMonthlyRevenue;
+        const error = ((forecastedRevenue - actualRevenue) / actualRevenue) * 100;
+
+        validationResults.push({
+          month: testMonth,
+          actual: Math.round(actualRevenue),
+          forecasted: Math.round(forecastedRevenue),
+          errorPercent: error.toFixed(1),
+        });
+      }
+    }
+
+    // ============================================
+    // 6. ADDITIONAL STATS
     // ============================================
 
     // Get current month new subscribers for stats
@@ -1308,7 +1433,7 @@ router.get('/forecast', async (req, res) => {
     const avgMonthlySpend = avgDailySpend * 30;
 
     // ============================================
-    // 6. RESPONSE
+    // 7. RESPONSE
     // ============================================
     res.json({
       historical: monthlyByTypeResult.rows.map(r => ({
@@ -1323,13 +1448,23 @@ router.get('/forecast', async (req, res) => {
         yearlyRenewals: parseInt(r.yearly_renewals) || 0,
       })),
       renewalForecast,
+      validation: {
+        results: validationResults,
+        avgError: validationResults.length > 0
+          ? (validationResults.reduce((sum, v) => sum + Math.abs(parseFloat(v.errorPercent)), 0) / validationResults.length).toFixed(1)
+          : null,
+      },
       modelParameters: {
         weeklyPrice: WEEKLY_PRICE,
         weeklyTrialPrice: WEEKLY_TRIAL_PRICE,
         yearlyPrice: YEARLY_PRICE,
         yearlyRenewalRate: YEARLY_RENEWAL_RATE,
+        yearlyRenewalRateOptimistic: YEARLY_RENEWAL_RATE_OPTIMISTIC,
+        yearlyRenewalRatePessimistic: YEARLY_RENEWAL_RATE_PESSIMISTIC,
         weeklyW1Retention: WEEKLY_W1_RETENTION,
         weeklyWeeklyRetention: WEEKLY_WEEKLY_RETENTION,
+        weeklyWeeklyRetentionOptimistic: WEEKLY_WEEKLY_RETENTION_OPTIMISTIC,
+        weeklyWeeklyRetentionPessimistic: WEEKLY_WEEKLY_RETENTION_PESSIMISTIC,
       },
       currentMetrics: {
         activeWeeklyBase,
@@ -1346,7 +1481,7 @@ router.get('/forecast', async (req, res) => {
       projectionAssumptions: {
         avgDailySpend: Math.round(avgDailySpend),
         avgMonthlySpend: Math.round(avgMonthlySpend),
-        assumption: 'Apple Ads performance stays at current level with current budgets; organic volume stays the same',
+        assumption: 'Cohort-based model with weekly churn decay and yearly renewal rates. Optimistic: +20% acquisition, +2pp retention, +20% renewal. Pessimistic: -15% acquisition, -3pp retention, -14% renewal.',
       },
     });
   } catch (error) {

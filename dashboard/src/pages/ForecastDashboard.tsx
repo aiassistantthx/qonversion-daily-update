@@ -1,22 +1,37 @@
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, CartesianGrid } from 'recharts';
 import { api } from '../api';
 
 const COLORS = ['#00d4ff', '#00ff88', '#a371f7', '#ffcc00', '#ff4444', '#ff88aa'];
 
 export function ForecastDashboard() {
+  const { data: forecastData } = useQuery({
+    queryKey: ['forecast'],
+    queryFn: () => api.getForecast(),
+    refetchInterval: 60000,
+  });
+
   const { data: paybackData } = useQuery({
     queryKey: ['payback'],
     queryFn: () => api.getPayback(6),
     refetchInterval: 60000,
   });
 
-  // Health data available if needed
-  // const { data: health } = useQuery({
-  //   queryKey: ['health'],
-  //   queryFn: api.getHealth,
-  //   refetchInterval: 60000,
-  // });
+  // Transform forecast data for chart (historical + forecast)
+  const forecastChartData = [
+    ...(forecastData?.historical.map(h => ({
+      month: h.month,
+      actual: h.revenue,
+      type: 'historical',
+    })) || []),
+    ...(forecastData?.renewalForecast.map(f => ({
+      month: f.month,
+      forecast: f.totalRevenue,
+      optimistic: f.totalRevenueOptimistic,
+      pessimistic: f.totalRevenuePessimistic,
+      type: 'forecast',
+    })) || []),
+  ];
 
   // Transform payback data for chart
   const chartData: Record<number, Record<string, number>> = {};
@@ -57,6 +72,95 @@ export function ForecastDashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Revenue forecast with confidence intervals */}
+      <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-sm text-terminal-muted">Revenue Forecast (12 Months)</div>
+          {forecastData?.validation.avgError && (
+            <div className="text-xs text-terminal-muted">
+              Avg forecast error: ±{forecastData.validation.avgError}%
+            </div>
+          )}
+        </div>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={forecastChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+              <XAxis
+                dataKey="month"
+                stroke="#8b949e"
+                fontSize={11}
+                tickLine={false}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
+              <YAxis
+                stroke="#8b949e"
+                fontSize={12}
+                tickLine={false}
+                tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#161b22',
+                  border: '1px solid #30363d',
+                  borderRadius: '8px',
+                  color: '#e6edf3'
+                }}
+                formatter={(value: number) => [`$${(value / 1000).toFixed(1)}k`, '']}
+                labelFormatter={(label) => `Month: ${label}`}
+              />
+              <Area
+                type="monotone"
+                dataKey="optimistic"
+                fill="#00ff8820"
+                stroke="none"
+                name="Optimistic (+20%)"
+              />
+              <Area
+                type="monotone"
+                dataKey="pessimistic"
+                fill="#ff444420"
+                stroke="none"
+                name="Pessimistic (-15%)"
+              />
+              <Line
+                type="monotone"
+                dataKey="actual"
+                stroke="#8b949e"
+                strokeWidth={2}
+                dot={{ fill: '#8b949e', r: 3 }}
+                name="Historical"
+              />
+              <Line
+                type="monotone"
+                dataKey="forecast"
+                stroke="#00d4ff"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={{ fill: '#00d4ff', r: 3 }}
+                name="Base Forecast"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-4 flex gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-terminal-cyan rounded"></div>
+            <span className="text-terminal-muted">Base Case</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-terminal-green/30 border border-terminal-green rounded"></div>
+            <span className="text-terminal-muted">Optimistic (+20% acquisition, +2pp retention)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-terminal-red/30 border border-terminal-red rounded"></div>
+            <span className="text-terminal-muted">Pessimistic (-15% acquisition, -3pp retention)</span>
+          </div>
+        </div>
+      </div>
+
       {/* Payback curves */}
       <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
         <div className="text-sm text-terminal-muted mb-4">Payback Curves by Cohort</div>
@@ -210,6 +314,49 @@ export function ForecastDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Forecast validation */}
+      {forecastData?.validation.results && forecastData.validation.results.length > 0 && (
+        <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-terminal-border">
+            <div className="text-sm text-terminal-muted">Model Validation (Last 3 Months)</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-terminal-muted border-b border-terminal-border">
+                  <th className="text-left px-4 py-2 font-medium">Month</th>
+                  <th className="text-right px-4 py-2 font-medium">Actual</th>
+                  <th className="text-right px-4 py-2 font-medium">Forecasted</th>
+                  <th className="text-right px-4 py-2 font-medium">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecastData.validation.results.map((result) => {
+                  const errorNum = parseFloat(result.errorPercent);
+                  const errorColor = Math.abs(errorNum) < 5 ? 'text-terminal-green' :
+                                     Math.abs(errorNum) < 10 ? 'text-terminal-yellow' :
+                                     'text-terminal-red';
+                  return (
+                    <tr key={result.month} className="border-b border-terminal-border/50">
+                      <td className="px-4 py-3 font-mono text-terminal-text">{result.month}</td>
+                      <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                        ${(result.actual / 1000).toFixed(1)}k
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-terminal-muted">
+                        ${(result.forecasted / 1000).toFixed(1)}k
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono ${errorColor}`}>
+                        {errorNum > 0 ? '+' : ''}{result.errorPercent}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Scenario modeling placeholder */}
       <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
