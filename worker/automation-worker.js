@@ -212,6 +212,7 @@ async function runWorker() {
       // Hourly rules - run every hour
       if (shouldRunJob('hourly')) {
         await executeRulesForFrequency('hourly');
+        await checkBudgetAlerts(); // Check budget usage hourly
         lastRuns.hourly = Date.now();
       }
 
@@ -301,6 +302,117 @@ process.on('unhandledRejection', (reason, promise) => {
   log('error', `Unhandled rejection: ${reason}`);
   console.error(reason);
 });
+
+/**
+ * Check campaign budget usage and send alerts
+ */
+async function checkBudgetAlerts() {
+  log('info', 'Checking campaign budgets...');
+
+  try {
+    // Get today's spend vs daily budget
+    const result = await db.query(`
+      SELECT
+        campaign_id,
+        campaign_name,
+        daily_budget,
+        spend as today_spend,
+        CASE
+          WHEN daily_budget > 0 THEN ROUND((spend / daily_budget * 100)::numeric, 1)
+          ELSE 0
+        END as budget_used_pct
+      FROM apple_ads_campaigns
+      WHERE date = CURRENT_DATE
+        AND campaign_status = 'ENABLED'
+        AND daily_budget > 0
+      ORDER BY budget_used_pct DESC
+    `);
+
+    const alerts = [];
+
+    for (const campaign of result.rows) {
+      const pct = parseFloat(campaign.budget_used_pct);
+
+      if (pct >= 100) {
+        alerts.push({
+          level: 'critical',
+          campaign_id: campaign.campaign_id,
+          campaign_name: campaign.campaign_name,
+          message: `🚨 Budget EXHAUSTED: ${campaign.campaign_name} - ${pct}% used ($${campaign.today_spend}/$${campaign.daily_budget})`
+        });
+      } else if (pct >= 80) {
+        alerts.push({
+          level: 'warning',
+          campaign_id: campaign.campaign_id,
+          campaign_name: campaign.campaign_name,
+          message: `⚠️ Budget WARNING: ${campaign.campaign_name} - ${pct}% used ($${campaign.today_spend}/$${campaign.daily_budget})`
+        });
+      }
+    }
+
+    if (alerts.length > 0) {
+      log('info', `Found ${alerts.length} budget alerts`);
+
+      // Send Telegram notification
+      await sendTelegramAlert(alerts);
+
+      // Record alerts in database
+      for (const alert of alerts) {
+        await db.query(`
+          INSERT INTO asa_budget_alerts (campaign_id, alert_level, message, created_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (campaign_id, DATE(created_at)) DO UPDATE SET
+            alert_level = EXCLUDED.alert_level,
+            message = EXCLUDED.message
+        `, [alert.campaign_id, alert.level, alert.message]);
+      }
+    } else {
+      log('info', 'No budget alerts');
+    }
+
+    return alerts;
+
+  } catch (error) {
+    log('error', `Budget check failed: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Send alert to Telegram
+ */
+async function sendTelegramAlert(alerts) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+
+  if (!botToken || !chatId) {
+    log('warn', 'Telegram not configured, skipping notification');
+    return;
+  }
+
+  const message = `📊 *ASA Budget Alerts*\n\n${alerts.map(a => a.message).join('\n')}`;
+
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown'
+      })
+    });
+
+    if (!response.ok) {
+      log('error', `Telegram API error: ${response.status}`);
+    } else {
+      log('info', 'Telegram notification sent');
+    }
+  } catch (error) {
+    log('error', `Failed to send Telegram: ${error.message}`);
+  }
+}
 
 // Start the worker
 runWorker().catch(error => {

@@ -24,3 +24,6 @@ export type { WeeklyChurnData } from './WeeklyChurnChart';
 
 export { RenewalRatesTable } from './RenewalRatesTable';
 export type { RenewalRatesData } from './RenewalRatesTable';
+
+export { CountriesTable } from './CountriesTable';
+export type { CountriesData } from './CountriesTable';

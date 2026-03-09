@@ -15,11 +15,13 @@ import {
   RetentionChart,
   WeeklyChurnChart,
   RenewalRatesTable,
+  CountriesTable,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource,
   RevenueByDayData, TRoasData, SubscriptionBreakdownData,
-  RetentionData, WeeklyChurnData, RenewalRatesData
+  RetentionData, WeeklyChurnData, RenewalRatesData,
+  CountriesData
 } from './components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -301,6 +303,26 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?${buildParams()}`).then(r => r.json()),
   });
 
+  const { data: retentionData } = useQuery<RetentionData>({
+    queryKey: ['retention', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/retention?${buildParams({ months: 12 })}`).then(r => r.json()),
+  });
+
+  const { data: weeklyChurnData } = useQuery<WeeklyChurnData>({
+    queryKey: ['weekly-churn', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/weekly-churn?${buildParams({ months: 12 })}`).then(r => r.json()),
+  });
+
+  const { data: renewalRatesData } = useQuery<RenewalRatesData>({
+    queryKey: ['renewal-rates'],
+    queryFn: () => fetch(`${API_URL}/dashboard/renewal-rates`).then(r => r.json()),
+  });
+
+  const { data: countriesData } = useQuery<CountriesData>({
+    queryKey: ['countries', dateRange, trafficSource],
+    queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams()}`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -428,6 +450,18 @@ function Dashboard() {
 
       {/* tROAS Chart */}
       <TRoasChart data={tRoasData} />
+
+      {/* Retention Chart */}
+      <RetentionChart data={retentionData} />
+
+      {/* Weekly Churn Analysis */}
+      <WeeklyChurnChart data={weeklyChurnData} />
+
+      {/* Yearly Renewal Rates */}
+      <RenewalRatesTable data={renewalRatesData} />
+
+      {/* Countries Ranking */}
+      <CountriesTable data={countriesData} />
 
       {/* Daily Chart */}
       <div style={styles.chartCard}>

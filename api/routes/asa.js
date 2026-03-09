@@ -146,11 +146,36 @@ router.get('/campaigns', async (req, res) => {
     // Use string keys to ensure type matching
     const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.campaign_id), p]));
 
-    // Enrich campaigns with performance data
-    const enriched = filtered.map(campaign => ({
-      ...campaign,
-      performance: performanceMap.get(String(campaign.id)) || null
-    }));
+    // Get budget alerts for today
+    const alertsQuery = await db.query(`
+      SELECT campaign_id, alert_level, message
+      FROM asa_budget_alerts
+      WHERE DATE(created_at) = CURRENT_DATE
+        AND acknowledged = FALSE
+    `);
+    const alertsMap = new Map(alertsQuery.rows.map(a => [String(a.campaign_id), a]));
+
+    // Enrich campaigns with performance data and budget alerts
+    const enriched = filtered.map(campaign => {
+      const perf = performanceMap.get(String(campaign.id));
+      const alert = alertsMap.get(String(campaign.id));
+
+      // Calculate budget usage percentage
+      let budgetUsedPct = null;
+      if (perf && perf.daily_budget > 0) {
+        budgetUsedPct = Math.round((parseFloat(perf.spend) / parseFloat(perf.daily_budget)) * 100);
+      }
+
+      return {
+        ...campaign,
+        performance: perf || null,
+        budgetAlert: alert ? {
+          level: alert.alert_level,
+          message: alert.message
+        } : null,
+        budgetUsedPct
+      };
+    });
 
     // Sort
     enriched.sort((a, b) => {
