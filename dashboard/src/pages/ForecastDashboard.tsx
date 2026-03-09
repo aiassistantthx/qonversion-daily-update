@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, CartesianGrid } from 'recharts';
 import { api } from '../api';
 import { ScenarioModeling } from '../components/ScenarioModeling';
+import { PaybackGauge } from '../components/PaybackGauge';
 
 const COLORS = ['#00d4ff', '#00ff88', '#a371f7', '#ffcc00', '#ff4444', '#ff88aa'];
 
@@ -70,6 +71,18 @@ export function ForecastDashboard() {
     : 0;
 
   const ltvCacRatio = avgCac > 0 ? avgLtv / avgCac : 0;
+
+  // Calculate overall payback progress (average of most recent cohorts)
+  const recentCohorts = paybackData?.payback.slice(0, 3) || [];
+  const avgCurrentPercent = recentCohorts.length > 0
+    ? recentCohorts.reduce((sum, c) => sum + (c.curve[c.curve.length - 1]?.paybackPercent || 0), 0) / recentCohorts.length
+    : 0;
+
+  const avgBreakEvenDay = breakEvenDays.filter(b => b.days !== null).length > 0
+    ? Math.round(breakEvenDays.filter(b => b.days !== null).reduce((sum, b) => sum + (b.days || 0), 0) / breakEvenDays.filter(b => b.days !== null).length)
+    : null;
+
+  const mostRecentCohortDate = paybackData?.payback[0]?.cohortMonth;
 
   return (
     <div className="p-6 space-y-6">
@@ -215,7 +228,7 @@ export function ForecastDashboard() {
       </div>
 
       {/* Key metrics */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
           <div className="text-sm text-terminal-muted mb-2">Avg CAC</div>
           <div className="text-2xl font-mono text-terminal-text">
@@ -248,6 +261,13 @@ export function ForecastDashboard() {
               : '—'}
           </div>
         </div>
+
+        <PaybackGauge
+          currentPercent={avgCurrentPercent}
+          breakEvenDay={avgBreakEvenDay}
+          targetDays={60}
+          cohortStartDate={mostRecentCohortDate}
+        />
       </div>
 
       {/* Break-even table */}
