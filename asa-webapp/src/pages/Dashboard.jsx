@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { StatusBadge } from '../components/Badge';
 import { getCampaigns, getRules, getHistory } from '../lib/api';
+import { useDateRange } from '../context/DateRangeContext';
 import {
   TrendingUp,
-  TrendingDown,
   DollarSign,
   MousePointer,
   Download,
@@ -39,9 +39,11 @@ function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color 
 }
 
 export default function Dashboard() {
+  const { queryParams, label: dateLabel } = useDateRange();
+
   const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
-    queryKey: ['campaigns'],
-    queryFn: getCampaigns,
+    queryKey: ['campaigns', queryParams],
+    queryFn: () => getCampaigns(queryParams),
   });
 
   const { data: rulesData, isLoading: rulesLoading } = useQuery({
@@ -54,29 +56,36 @@ export default function Dashboard() {
     queryFn: () => getHistory({ limit: 10 }),
   });
 
+  // Helper to get performance value
+  const getPerf = (campaign, field) => {
+    const p = campaign.performance;
+    if (!p) return 0;
+    return parseFloat(p[field] || p[`${field}_7d`] || 0);
+  };
+
   // Calculate totals from campaign performance
   const campaigns = campaignsData?.data || [];
-  const totalSpend = campaigns.reduce((sum, c) => sum + parseFloat(c.performance?.spend_7d || 0), 0);
-  const totalImpressions = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.impressions_7d || 0), 0);
-  const totalTaps = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.taps_7d || 0), 0);
-  const totalInstalls = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.installs_7d || 0), 0);
-  const totalRevenue = campaigns.reduce((sum, c) => sum + parseFloat(c.performance?.revenue_7d || 0), 0);
-  const totalPaidUsers = campaigns.reduce((sum, c) => sum + parseInt(c.performance?.paid_users_7d || 0), 0);
+  const totalSpend = campaigns.reduce((sum, c) => sum + getPerf(c, 'spend'), 0);
+  const totalImpressions = campaigns.reduce((sum, c) => sum + getPerf(c, 'impressions'), 0);
+  const totalTaps = campaigns.reduce((sum, c) => sum + getPerf(c, 'taps'), 0);
+  const totalInstalls = campaigns.reduce((sum, c) => sum + getPerf(c, 'installs'), 0);
+  const totalRevenue = campaigns.reduce((sum, c) => sum + getPerf(c, 'revenue'), 0);
+  const totalPaidUsers = campaigns.reduce((sum, c) => sum + getPerf(c, 'paid_users'), 0);
 
   const avgCpa = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
   const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
   const cop = totalPaidUsers > 0 ? totalSpend / totalPaidUsers : 0;
 
-  // Sort campaigns by spend for top performers
+  // Sort campaigns by revenue for top performers
   const topCampaigns = [...campaigns]
-    .sort((a, b) => parseFloat(b.performance?.spend_7d || 0) - parseFloat(a.performance?.spend_7d || 0))
+    .sort((a, b) => getPerf(b, 'revenue') - getPerf(a, 'revenue'))
     .slice(0, 5);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500">Apple Search Ads performance overview (Last 7 days)</p>
+        <p className="text-gray-500">{dateLabel}</p>
       </div>
 
       {/* Main Metrics */}
@@ -154,7 +163,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Campaigns by Spend */}
+        {/* Top Campaigns by Revenue */}
         <Card>
           <CardHeader>
             <CardTitle>Top Campaigns</CardTitle>
@@ -179,8 +188,8 @@ export default function Dashboard() {
                 </TableRow>
               ) : (
                 topCampaigns.map((campaign) => {
-                  const spend = parseFloat(campaign.performance?.spend_7d || 0);
-                  const revenue = parseFloat(campaign.performance?.revenue_7d || 0);
+                  const spend = getPerf(campaign, 'spend');
+                  const revenue = getPerf(campaign, 'revenue');
                   const campaignRoas = spend > 0 ? revenue / spend : 0;
 
                   return (

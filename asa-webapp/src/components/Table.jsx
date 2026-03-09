@@ -35,10 +35,11 @@ export function TableRow({ children, className = '', onClick }) {
   );
 }
 
-export function TableHeader({ children, className = '' }) {
+export function TableHeader({ children, className = '', onClick }) {
   return (
     <th
       className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className}`}
+      onClick={onClick}
     >
       {children}
     </th>

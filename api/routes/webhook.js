@@ -405,7 +405,7 @@ router.get('/daily', async (req, res) => {
       SELECT
         DATE(event_date) as date,
         COUNT(*) as trials
-      FROM subscription_events
+      FROM events_v2
       WHERE event_name = 'Trial Started'
         AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
       GROUP BY DATE(event_date)
@@ -418,7 +418,7 @@ router.get('/daily', async (req, res) => {
       SELECT
         DATE(event_date) as date,
         COUNT(*) as subscribers
-      FROM subscription_events
+      FROM events_v2
       WHERE event_name IN ('Trial Converted', 'Subscription Started')
         AND (product_id ILIKE '%year%' OR product_id ILIKE '%1y%' OR product_id ILIKE '%annual%')
         AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
@@ -461,20 +461,19 @@ router.get('/stats', async (req, res) => {
       SELECT
         event_name,
         COUNT(*) as count,
-        SUM(revenue_usd) as total_revenue,
-        MIN(created_at) as first_event,
-        MAX(created_at) as last_event
-      FROM events
-      WHERE environment = 'production'
+        SUM(COALESCE(price_usd, 0)) as total_revenue,
+        MIN(event_date) as first_event,
+        MAX(event_date) as last_event
+      FROM events_v2
       GROUP BY event_name
       ORDER BY count DESC
     `);
 
     const attributions = await db.query(`
       SELECT
-        COUNT(*) as total_users,
-        COUNT(campaign_id) as attributed_users
-      FROM user_attributions
+        COUNT(DISTINCT q_user_id) as total_users,
+        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as attributed_users
+      FROM events_v2
     `);
 
     res.json({

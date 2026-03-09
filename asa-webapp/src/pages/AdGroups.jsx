@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { getCampaigns, getAdGroups } from '../lib/api';
+import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X
 } from 'lucide-react';
@@ -14,20 +15,21 @@ import {
 export default function AdGroups() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { queryParams, label: dateLabel } = useDateRange();
 
   const campaignIdsParam = searchParams.get('campaigns');
   const campaignIds = campaignIdsParam ? campaignIdsParam.split(',').map(Number) : [];
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortField, setSortField] = useState('name');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortField, setSortField] = useState('spend');
+  const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // Get campaigns for names
+  // Get campaigns with performance data
   const { data: campaignsData } = useQuery({
-    queryKey: ['campaigns'],
-    queryFn: getCampaigns,
+    queryKey: ['campaigns', queryParams],
+    queryFn: () => getCampaigns(queryParams),
   });
 
   const campaignMap = useMemo(() => {
@@ -38,47 +40,38 @@ export default function AdGroups() {
 
   // Get ad groups for selected campaigns
   const { data: adGroupsData, isLoading } = useQuery({
-    queryKey: ['adgroups', campaignIds],
+    queryKey: ['adgroups', campaignIds, queryParams],
     queryFn: async () => {
-      if (campaignIds.length === 0) {
-        // Get all ad groups from all campaigns
-        const campaigns = campaignsData?.data || [];
-        const allAdGroups = [];
-        for (const campaign of campaigns.slice(0, 20)) { // Limit to prevent too many requests
-          try {
-            const result = await getAdGroups(campaign.id);
-            const adGroups = (result?.data || []).map(ag => ({
-              ...ag,
-              campaignId: campaign.id,
-              campaignName: campaign.name,
-            }));
-            allAdGroups.push(...adGroups);
-          } catch (e) {
-            console.error(`Failed to fetch adgroups for campaign ${campaign.id}:`, e);
-          }
+      const targetCampaigns = campaignIds.length > 0
+        ? campaignIds.map(id => campaignMap.get(id)).filter(Boolean)
+        : (campaignsData?.data || []).slice(0, 20);
+
+      const allAdGroups = [];
+      for (const campaign of targetCampaigns) {
+        try {
+          const result = await getAdGroups(campaign.id);
+          const adGroups = (result?.data || []).map(ag => ({
+            ...ag,
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            // Ad group level performance would need separate API
+            // For now, we don't have per-adgroup metrics from API
+          }));
+          allAdGroups.push(...adGroups);
+        } catch (e) {
+          console.error(`Failed to fetch adgroups for campaign ${campaign.id}:`, e);
         }
-        return { data: allAdGroups };
-      } else {
-        const allAdGroups = [];
-        for (const campaignId of campaignIds) {
-          try {
-            const result = await getAdGroups(campaignId);
-            const campaign = campaignMap.get(campaignId);
-            const adGroups = (result?.data || []).map(ag => ({
-              ...ag,
-              campaignId,
-              campaignName: campaign?.name || `Campaign ${campaignId}`,
-            }));
-            allAdGroups.push(...adGroups);
-          } catch (e) {
-            console.error(`Failed to fetch adgroups for campaign ${campaignId}:`, e);
-          }
-        }
-        return { data: allAdGroups };
       }
+      return { data: allAdGroups };
     },
     enabled: !!campaignsData,
   });
+
+  // Helper to get value
+  const getVal = (ag, field) => {
+    if (field === 'bid') return parseFloat(ag.defaultBidAmount?.amount || 0);
+    return 0; // No performance data for ad groups yet
+  };
 
   // Filter and sort
   const adGroups = useMemo(() => {
@@ -112,15 +105,17 @@ export default function AdGroups() {
           bVal = b.status || '';
           break;
         case 'bid':
-          aVal = parseFloat(a.defaultBidAmount?.amount || 0);
-          bVal = parseFloat(b.defaultBidAmount?.amount || 0);
+          aVal = getVal(a, 'bid');
+          bVal = getVal(b, 'bid');
           break;
         default:
-          aVal = a.name || '';
-          bVal = b.name || '';
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
       }
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      if (aVal < bVal) return -1 * dir;
+      if (aVal > bVal) return 1 * dir;
       return 0;
     });
 
@@ -132,7 +127,7 @@ export default function AdGroups() {
       setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection(['name', 'campaign', 'status'].includes(field) ? 'asc' : 'desc');
     }
   };
 
@@ -140,11 +135,8 @@ export default function AdGroups() {
     const key = `${campaignId}-${id}`;
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -161,7 +153,6 @@ export default function AdGroups() {
     if (adGroupId) {
       navigate(`/keywords?campaigns=${campaignId}&adgroups=${adGroupId}`);
     } else {
-      // Multiple selected
       const selectedAdGroups = [...selectedIds].map(key => {
         const [cId, agId] = key.split('-');
         return { campaignId: cId, adGroupId: agId };
@@ -205,7 +196,7 @@ export default function AdGroups() {
             </Button>
             <h1 className="text-2xl font-bold text-gray-900">Ad Groups</h1>
           </div>
-          <p className="text-gray-500 ml-9">Manage ad groups across campaigns</p>
+          <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
       </div>
 
@@ -255,11 +246,7 @@ export default function AdGroups() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigateToKeywords()}
-            >
+            <Button variant="secondary" size="sm" onClick={() => navigateToKeywords()}>
               <KeyRound size={14} /> View Keywords
             </Button>
           </div>
@@ -282,7 +269,7 @@ export default function AdGroups() {
               <SortHeader field="name">Ad Group</SortHeader>
               <SortHeader field="campaign">Campaign</SortHeader>
               <SortHeader field="status">Status</SortHeader>
-              <SortHeader field="bid">Default Bid</SortHeader>
+              <SortHeader field="bid" className="text-right">Default Bid</SortHeader>
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
@@ -321,7 +308,9 @@ export default function AdGroups() {
                   <TableCell>
                     <StatusBadge status={ag.status} />
                   </TableCell>
-                  <TableCell>${ag.defaultBidAmount?.amount || '-'}</TableCell>
+                  <TableCell className="text-right">
+                    ${parseFloat(ag.defaultBidAmount?.amount || 0).toFixed(2)}
+                  </TableCell>
                   <TableCell>
                     <Button
                       size="sm"

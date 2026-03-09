@@ -1,51 +1,28 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { StatusBadge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getCampaigns, updateCampaignStatus, updateCampaignBudget } from '../lib/api';
+import { getCampaigns, updateCampaignStatus } from '../lib/api';
+import { useDateRange } from '../context/DateRangeContext';
 import {
-  ChevronUp, ChevronDown, Play, Pause, Edit2, X, Check,
-  Search, ArrowRight, Layers, KeyRound, Calendar
+  ChevronUp, ChevronDown, Play, Pause,
+  Search, ArrowRight, Layers, KeyRound
 } from 'lucide-react';
-
-// Date range presets
-const DATE_PRESETS = [
-  { label: 'Last 7 days', days: 7 },
-  { label: 'Last 14 days', days: 14 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 90 days', days: 90 },
-  { label: 'Custom', days: null },
-];
 
 export default function Campaigns() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { queryParams, label: dateLabel } = useDateRange();
 
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [editingBudgetId, setEditingBudgetId] = useState(null);
-  const [newBudget, setNewBudget] = useState('');
-
-  // Date range state
-  const [days, setDays] = useState(7);
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
-  const [showCustomDates, setShowCustomDates] = useState(false);
-
-  // Build query params for API
-  const queryParams = useMemo(() => {
-    if (showCustomDates && customFrom && customTo) {
-      return { from: customFrom, to: customTo, sort: sortField };
-    }
-    return { days, sort: sortField };
-  }, [days, customFrom, customTo, showCustomDates, sortField]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -57,13 +34,12 @@ export default function Campaigns() {
     onSuccess: () => queryClient.invalidateQueries(['campaigns']),
   });
 
-  const budgetMutation = useMutation({
-    mutationFn: ({ id, dailyBudget }) => updateCampaignBudget(id, dailyBudget),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['campaigns']);
-      setEditingBudgetId(null);
-    },
-  });
+  // Helper to get performance value
+  const getPerf = (campaign, field) => {
+    const p = campaign.performance;
+    if (!p) return 0;
+    return parseFloat(p[field] || p[`${field}_7d`] || 0);
+  };
 
   // Filter and sort campaigns
   const campaigns = useMemo(() => {
@@ -96,45 +72,34 @@ export default function Campaigns() {
           aVal = a.status;
           bVal = b.status;
           break;
-        case 'budget':
-          aVal = parseFloat(a.dailyBudgetAmount?.amount || 0);
-          bVal = parseFloat(b.dailyBudgetAmount?.amount || 0);
-          break;
         case 'spend':
-          aVal = parseFloat(a.performance?.spend || a.performance?.spend_7d || 0);
-          bVal = parseFloat(b.performance?.spend || b.performance?.spend_7d || 0);
+          aVal = getPerf(a, 'spend');
+          bVal = getPerf(b, 'spend');
           break;
         case 'revenue':
-          aVal = parseFloat(a.performance?.revenue || a.performance?.revenue_7d || 0);
-          bVal = parseFloat(b.performance?.revenue || b.performance?.revenue_7d || 0);
+          aVal = getPerf(a, 'revenue');
+          bVal = getPerf(b, 'revenue');
           break;
         case 'roas':
-          aVal = parseFloat(a.performance?.roas || a.performance?.roas_7d || 0);
-          bVal = parseFloat(b.performance?.roas || b.performance?.roas_7d || 0);
-          break;
-        case 'impressions':
-          aVal = parseInt(a.performance?.impressions || a.performance?.impressions_7d || 0);
-          bVal = parseInt(b.performance?.impressions || b.performance?.impressions_7d || 0);
-          break;
-        case 'taps':
-          aVal = parseInt(a.performance?.taps || a.performance?.taps_7d || 0);
-          bVal = parseInt(b.performance?.taps || b.performance?.taps_7d || 0);
+          aVal = getPerf(a, 'roas');
+          bVal = getPerf(b, 'roas');
           break;
         case 'installs':
-          aVal = parseInt(a.performance?.installs || a.performance?.installs_7d || 0);
-          bVal = parseInt(b.performance?.installs || b.performance?.installs_7d || 0);
+          aVal = getPerf(a, 'installs');
+          bVal = getPerf(b, 'installs');
           break;
         case 'cpa':
-          aVal = parseFloat(a.performance?.cpa || a.performance?.cpa_7d || 999999);
-          bVal = parseFloat(b.performance?.cpa || b.performance?.cpa_7d || 999999);
+          aVal = getPerf(a, 'cpa') || 999999;
+          bVal = getPerf(b, 'cpa') || 999999;
           break;
         default:
-          aVal = a.name;
-          bVal = b.name;
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      if (aVal < bVal) return -1 * dir;
+      if (aVal > bVal) return 1 * dir;
       return 0;
     });
 
@@ -142,22 +107,21 @@ export default function Campaigns() {
   }, [data, statusFilter, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field) => {
+    console.log('Sort clicked:', field, 'current:', sortField, sortDirection);
     if (sortField === field) {
       setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      // Default to desc for numeric fields, asc for text
+      setSortDirection(['name', 'status'].includes(field) ? 'asc' : 'desc');
     }
   };
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -168,16 +132,6 @@ export default function Campaigns() {
     } else {
       setSelectedIds(new Set(campaigns.map(c => c.id)));
     }
-  };
-
-  const navigateToAdGroups = (campaignIds) => {
-    const ids = Array.isArray(campaignIds) ? campaignIds : [campaignIds];
-    navigate(`/adgroups?campaigns=${ids.join(',')}`);
-  };
-
-  const navigateToKeywords = (campaignIds) => {
-    const ids = Array.isArray(campaignIds) ? campaignIds : [campaignIds];
-    navigate(`/keywords?campaigns=${ids.join(',')}`);
   };
 
   const SortHeader = ({ field, children, className = '' }) => (
@@ -199,60 +153,9 @@ export default function Campaigns() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
-          <p className="text-gray-500">Manage your Apple Search Ads campaigns</p>
+          <p className="text-gray-500">{dateLabel}</p>
         </div>
       </div>
-
-      {/* Date Range Selector */}
-      <Card className="p-4">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Date Range:</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {DATE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                onClick={() => {
-                  if (preset.days === null) {
-                    setShowCustomDates(true);
-                  } else {
-                    setShowCustomDates(false);
-                    setDays(preset.days);
-                  }
-                }}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                  (!showCustomDates && days === preset.days) || (showCustomDates && preset.days === null)
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          {showCustomDates && (
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                className="w-40"
-              />
-              <span className="text-gray-500">to</span>
-              <Input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                className="w-40"
-              />
-            </div>
-          )}
-        </div>
-      </Card>
 
       {/* Filters and Actions */}
       <div className="flex items-center justify-between gap-4">
@@ -282,18 +185,10 @@ export default function Campaigns() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigateToAdGroups([...selectedIds])}
-            >
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/adgroups?campaigns=${[...selectedIds].join(',')}`)}>
               <Layers size={14} /> Ad Groups
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigateToKeywords([...selectedIds])}
-            >
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/keywords?campaigns=${[...selectedIds].join(',')}`)}>
               <KeyRound size={14} /> Keywords
             </Button>
           </div>
@@ -330,15 +225,11 @@ export default function Campaigns() {
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-red-500">
-                  Error: {error.message}
-                </TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
               </TableRow>
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                  No campaigns found
-                </TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
               </TableRow>
             ) : (
               campaigns.map((campaign) => (
@@ -353,48 +244,41 @@ export default function Campaigns() {
                   </TableCell>
                   <TableCell>
                     <button
-                      onClick={() => navigateToAdGroups(campaign.id)}
+                      onClick={() => navigate(`/adgroups?campaigns=${campaign.id}`)}
                       className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
                     >
                       {campaign.name}
                       <ArrowRight size={14} />
                     </button>
                     {campaign.countriesOrRegions && (
-                      <span className="text-xs text-gray-400 ml-1">
-                        {campaign.countriesOrRegions.join(', ')}
-                      </span>
+                      <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
                     )}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={campaign.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    ${parseFloat(campaign.performance?.spend || campaign.performance?.spend_7d || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right font-medium text-green-600">
-                    ${parseFloat(campaign.performance?.revenue || campaign.performance?.revenue_7d || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={parseFloat(campaign.performance?.roas || campaign.performance?.roas_7d || 0) >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                      {parseFloat(campaign.performance?.roas || campaign.performance?.roas_7d || 0).toFixed(2)}x
+                    <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                      {getPerf(campaign, 'roas').toFixed(2)}x
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {parseInt(campaign.performance?.installs || campaign.performance?.installs_7d || 0).toLocaleString()}
+                    {getPerf(campaign, 'installs').toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    {(campaign.performance?.cpa || campaign.performance?.cpa_7d)
-                      ? `$${parseFloat(campaign.performance.cpa || campaign.performance.cpa_7d).toFixed(2)}`
-                      : '-'}
+                    {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
                   </TableCell>
                   <TableCell>
                     <Button
                       size="sm"
                       variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
-                      onClick={() => {
-                        const newStatus = campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED';
-                        statusMutation.mutate({ id: campaign.id, status: newStatus });
-                      }}
+                      onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
                       loading={statusMutation.isPending}
                     >
                       {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}

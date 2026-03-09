@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids } from '../lib/api';
+import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check
 } from 'lucide-react';
@@ -15,6 +16,7 @@ export default function Keywords() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { queryParams, label: dateLabel } = useDateRange();
 
   const campaignIdsParam = searchParams.get('campaigns');
   const adGroupIdsParam = searchParams.get('adgroups');
