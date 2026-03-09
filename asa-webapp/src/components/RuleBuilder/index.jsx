@@ -65,6 +65,8 @@ export default function RuleBuilder({ initialRule, onSave, onCancel }) {
       }
     } else if (rule.action_type === 'set_bid') {
       if (!rule.action_params?.bidAmount) return false;
+    } else if (rule.action_type === 'schedule_bid') {
+      if (!rule.action_params?.schedule) return false;
     }
 
     return true;

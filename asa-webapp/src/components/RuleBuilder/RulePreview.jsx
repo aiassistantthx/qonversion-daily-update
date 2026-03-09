@@ -15,6 +15,8 @@ export default function RulePreview({ rule, isValid }) {
         return `Adjust bid by ${rule.action_params?.adjustmentValue || 0}% (Min: $${rule.action_params?.minBid || 0}, Max: $${rule.action_params?.maxBid || 0})`;
       case 'set_bid':
         return `Set bid to $${rule.action_params?.bidAmount || 0}`;
+      case 'schedule_bid':
+        return 'Apply scheduled bid multipliers (dayparting)';
       case 'pause':
         return 'Pause entity';
       case 'enable':
@@ -58,6 +60,10 @@ export default function RulePreview({ rule, isValid }) {
     } else if (rule.action_type === 'set_bid') {
       if (!rule.action_params?.bidAmount) {
         issues.push('Bid amount is required');
+      }
+    } else if (rule.action_type === 'schedule_bid') {
+      if (!rule.action_params?.schedule) {
+        issues.push('Bid schedule is required');
       }
     }
 
@@ -129,6 +135,11 @@ export default function RulePreview({ rule, isValid }) {
                 <span className="font-medium text-blue-900">THEN:</span>
                 <div className="ml-4 mt-1">
                   <span className="text-blue-800">{formatAction()}</span>
+                  {rule.action_type === 'schedule_bid' && rule.action_params?.schedule && (
+                    <div className="mt-2 text-xs">
+                      <div className="text-blue-600">Schedule configured: 7 days × 24 hours</div>
+                    </div>
+                  )}
                 </div>
               </div>
 

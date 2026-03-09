@@ -1,9 +1,11 @@
 import { Select, Input } from '../Input';
 import { Badge } from '../Badge';
+import BidScheduler from '../BidScheduler';
 
 const ACTION_TYPES = [
   { value: 'adjust_bid', label: 'Adjust Bid (%)', description: 'Increase or decrease bid by percentage' },
   { value: 'set_bid', label: 'Set Bid ($)', description: 'Set a fixed bid amount' },
+  { value: 'schedule_bid', label: 'Schedule Bid', description: 'Set bid multipliers by day and hour' },
   { value: 'pause', label: 'Pause', description: 'Pause the entity' },
   { value: 'enable', label: 'Enable', description: 'Enable the entity' },
   { value: 'send_alert', label: 'Send Alert', description: 'Send a notification' },
@@ -122,6 +124,15 @@ export default function ActionSelector({ actionType, actionParams, onChange }) {
               className="w-full"
             />
           </div>
+        </div>
+      )}
+
+      {actionType === 'schedule_bid' && (
+        <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+          <BidScheduler
+            schedule={actionParams.schedule}
+            onChange={(schedule) => handleParamChange('schedule', schedule)}
+          />
         </div>
       )}
 
