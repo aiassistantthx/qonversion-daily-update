@@ -27,3 +27,5 @@ export type { RenewalRatesData } from './RenewalRatesTable';
 
 export { CountriesTable } from './CountriesTable';
 export type { CountriesData } from './CountriesTable';
+
+export { YoYComparisonCards } from './YoYComparisonCards';

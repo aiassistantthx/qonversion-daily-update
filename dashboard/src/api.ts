@@ -110,6 +110,41 @@ export interface IntradayData {
   hourly: Array<{ hour: string; revenue: number; events: number }>;
 }
 
+export interface YoYData {
+  currentYear: number;
+  lastYear: number;
+  currentMonth: string;
+  monthComparison: {
+    thisMonth: number;
+    lastYearSameMonth: number;
+    change: number | null;
+    thisMonthSubs: number;
+    lastYearSameMonthSubs: number;
+    subsChange: number | null;
+  };
+  ytdComparison: {
+    thisYear: number;
+    lastYear: number;
+    change: number | null;
+    thisYearSubs: number;
+    lastYearSubs: number;
+    subsChange: number | null;
+  };
+  fullYearComparison: {
+    thisYear: number;
+    lastYear: number;
+    change: number | null;
+  };
+  monthlyTrend: Array<{
+    month: string;
+    monthNum: number;
+    thisYear: number;
+    lastYear: number;
+    thisYearSubs: number;
+    lastYearSubs: number;
+  }>;
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -121,4 +156,5 @@ export const api = {
   getRevenueBySource: (days = 30) => fetchApi<RevenueBySource>(`/dashboard/revenue-by-source?days=${days}`),
   getCohorts: (months = 6) => fetchApi<{ cohorts: CohortData[] }>(`/dashboard/cohorts?months=${months}`),
   getPayback: (months = 6) => fetchApi<{ payback: PaybackData[] }>(`/dashboard/payback?months=${months}`),
+  getYoY: () => fetchApi<YoYData>('/dashboard/yoy'),
 };

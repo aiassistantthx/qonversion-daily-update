@@ -2607,4 +2607,142 @@ router.get('/countries', async (req, res) => {
   }
 });
 
+// ============================================
+// YEAR-OVER-YEAR COMPARISON
+// ============================================
+router.get('/yoy', async (req, res) => {
+  try {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const lastYear = currentYear - 1;
+
+    // Get revenue by month for current and last year
+    const monthlyResult = await db.query(`
+      WITH monthly_data AS (
+        SELECT
+          EXTRACT(YEAR FROM event_date) as year,
+          EXTRACT(MONTH FROM event_date) as month,
+          SUM(CASE WHEN event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+                   AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted')
+                   THEN q_user_id END) as subscribers,
+          COUNT(DISTINCT CASE WHEN event_name = 'Trial Started' THEN q_user_id END) as trials
+        FROM events_v2
+        WHERE EXTRACT(YEAR FROM event_date) >= $1
+        GROUP BY year, month
+      )
+      SELECT * FROM monthly_data
+      ORDER BY year, month
+    `, [lastYear]);
+
+    // Build comparison data
+    const monthlyMap = new Map();
+    monthlyResult.rows.forEach(r => {
+      const key = `${r.year}-${r.month}`;
+      monthlyMap.set(key, {
+        revenue: parseFloat(r.revenue) || 0,
+        subscribers: parseInt(r.subscribers) || 0,
+        trials: parseInt(r.trials) || 0,
+      });
+    });
+
+    // This month vs same month last year
+    const thisMonthKey = `${currentYear}-${currentMonth}`;
+    const lastYearSameMonthKey = `${lastYear}-${currentMonth}`;
+    const thisMonth = monthlyMap.get(thisMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
+    const lastYearSameMonth = monthlyMap.get(lastYearSameMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
+
+    // Calculate % change
+    const monthChange = lastYearSameMonth.revenue > 0
+      ? ((thisMonth.revenue - lastYearSameMonth.revenue) / lastYearSameMonth.revenue) * 100
+      : null;
+    const monthSubsChange = lastYearSameMonth.subscribers > 0
+      ? ((thisMonth.subscribers - lastYearSameMonth.subscribers) / lastYearSameMonth.subscribers) * 100
+      : null;
+
+    // YTD comparison (Jan to current month)
+    let ytdThisYear = 0;
+    let ytdLastYear = 0;
+    let ytdSubsThisYear = 0;
+    let ytdSubsLastYear = 0;
+    for (let m = 1; m <= currentMonth; m++) {
+      const thisYearData = monthlyMap.get(`${currentYear}-${m}`);
+      const lastYearData = monthlyMap.get(`${lastYear}-${m}`);
+      if (thisYearData) {
+        ytdThisYear += thisYearData.revenue;
+        ytdSubsThisYear += thisYearData.subscribers;
+      }
+      if (lastYearData) {
+        ytdLastYear += lastYearData.revenue;
+        ytdSubsLastYear += lastYearData.subscribers;
+      }
+    }
+
+    const ytdChange = ytdLastYear > 0
+      ? ((ytdThisYear - ytdLastYear) / ytdLastYear) * 100
+      : null;
+    const ytdSubsChange = ytdSubsLastYear > 0
+      ? ((ytdSubsThisYear - ytdSubsLastYear) / ytdSubsLastYear) * 100
+      : null;
+
+    // Full year comparison (all 12 months available)
+    let fullYearThisYear = 0;
+    let fullYearLastYear = 0;
+    for (let m = 1; m <= 12; m++) {
+      const thisYearData = monthlyMap.get(`${currentYear}-${m}`);
+      const lastYearData = monthlyMap.get(`${lastYear}-${m}`);
+      if (thisYearData) fullYearThisYear += thisYearData.revenue;
+      if (lastYearData) fullYearLastYear += lastYearData.revenue;
+    }
+
+    // Monthly trend for chart
+    const monthlyTrend = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let m = 1; m <= 12; m++) {
+      const thisYearData = monthlyMap.get(`${currentYear}-${m}`);
+      const lastYearData = monthlyMap.get(`${lastYear}-${m}`);
+      monthlyTrend.push({
+        month: monthNames[m - 1],
+        monthNum: m,
+        thisYear: thisYearData?.revenue || 0,
+        lastYear: lastYearData?.revenue || 0,
+        thisYearSubs: thisYearData?.subscribers || 0,
+        lastYearSubs: lastYearData?.subscribers || 0,
+      });
+    }
+
+    res.json({
+      currentYear,
+      lastYear,
+      currentMonth: monthNames[currentMonth - 1],
+      monthComparison: {
+        thisMonth: thisMonth.revenue,
+        lastYearSameMonth: lastYearSameMonth.revenue,
+        change: monthChange,
+        thisMonthSubs: thisMonth.subscribers,
+        lastYearSameMonthSubs: lastYearSameMonth.subscribers,
+        subsChange: monthSubsChange,
+      },
+      ytdComparison: {
+        thisYear: ytdThisYear,
+        lastYear: ytdLastYear,
+        change: ytdChange,
+        thisYearSubs: ytdSubsThisYear,
+        lastYearSubs: ytdSubsLastYear,
+        subsChange: ytdSubsChange,
+      },
+      fullYearComparison: {
+        thisYear: fullYearThisYear,
+        lastYear: fullYearLastYear,
+        change: fullYearLastYear > 0 ? ((fullYearThisYear - fullYearLastYear) / fullYearLastYear) * 100 : null,
+      },
+      monthlyTrend,
+    });
+  } catch (error) {
+    console.error('YoY error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

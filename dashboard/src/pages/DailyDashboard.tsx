@@ -3,6 +3,7 @@ import { XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'rec
 import { api } from '../api';
 import { MetricCard } from '../components/MetricCard';
 import { HealthGauge } from '../components/HealthGauge';
+import { YoYComparisonCards } from '../components/YoYComparisonCards';
 import { AlertTriangle, CheckCircle, DollarSign, Users, Zap } from 'lucide-react';
 
 export function DailyDashboard() {
@@ -28,6 +29,12 @@ export function DailyDashboard() {
     queryKey: ['intraday'],
     queryFn: api.getIntraday,
     refetchInterval: 60000,
+  });
+
+  const { data: yoyData } = useQuery({
+    queryKey: ['yoy'],
+    queryFn: api.getYoY,
+    refetchInterval: 300000, // 5 minutes
   });
 
   const revenueSparkline = dailyData?.metrics
@@ -146,6 +153,9 @@ export function DailyDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Year-over-Year Comparison */}
+      <YoYComparisonCards data={yoyData} />
 
       {/* Intraday chart */}
       <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
