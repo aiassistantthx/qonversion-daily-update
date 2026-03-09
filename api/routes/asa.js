@@ -1263,6 +1263,121 @@ router.patch('/keywords/bulk/status', async (req, res) => {
 });
 
 // ================================================
+// NEGATIVE KEYWORDS
+// ================================================
+
+/**
+ * GET /asa/negative-keywords
+ * Get negative keywords for campaign or ad group
+ */
+router.get('/negative-keywords', async (req, res) => {
+  try {
+    const { campaign_id, adgroup_id } = req.query;
+
+    if (!campaign_id) {
+      return res.status(400).json({ error: 'campaign_id required' });
+    }
+
+    let keywords;
+    if (adgroup_id) {
+      keywords = await appleAds.getAdGroupNegativeKeywords(campaign_id, adgroup_id);
+    } else {
+      keywords = await appleAds.getNegativeKeywords(campaign_id);
+    }
+
+    res.json({
+      total: keywords.length,
+      data: keywords
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /asa/negative-keywords
+ * Create negative keywords for campaign or ad group
+ */
+router.post('/negative-keywords', async (req, res) => {
+  try {
+    const { campaignId, adGroupId, keywords } = req.body;
+
+    if (!campaignId || !keywords || !Array.isArray(keywords)) {
+      return res.status(400).json({ error: 'campaignId and keywords array required' });
+    }
+
+    const keywordsPayload = keywords.map(kw => ({
+      text: typeof kw === 'string' ? kw : kw.text,
+      matchType: typeof kw === 'string' ? 'EXACT' : (kw.matchType || 'EXACT')
+    }));
+
+    let result;
+    if (adGroupId) {
+      result = await appleAds.createAdGroupNegativeKeywords(campaignId, adGroupId, keywordsPayload);
+    } else {
+      result = await appleAds.createNegativeKeywords(campaignId, keywordsPayload);
+    }
+
+    await recordChange(
+      adGroupId ? 'adgroup' : 'campaign',
+      adGroupId || campaignId,
+      'create',
+      'negative_keywords',
+      null,
+      JSON.stringify(keywordsPayload),
+      'api',
+      null,
+      req
+    );
+
+    res.json({
+      success: true,
+      created: keywordsPayload.length,
+      data: result
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /asa/negative-keywords/:keywordId
+ * Delete a negative keyword
+ */
+router.delete('/negative-keywords/:keywordId', async (req, res) => {
+  try {
+    const { keywordId } = req.params;
+    const { campaignId, adGroupId } = req.body;
+
+    if (!campaignId) {
+      return res.status(400).json({ error: 'campaignId required' });
+    }
+
+    if (adGroupId) {
+      await appleAds.deleteAdGroupNegativeKeyword(campaignId, adGroupId, keywordId);
+    } else {
+      await appleAds.deleteNegativeKeyword(campaignId, keywordId);
+    }
+
+    await recordChange(
+      adGroupId ? 'adgroup' : 'campaign',
+      adGroupId || campaignId,
+      'delete',
+      'negative_keyword',
+      keywordId,
+      null,
+      'api',
+      null,
+      req
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ================================================
 // AUTOMATION RULES
 // ================================================
 
@@ -2643,6 +2758,116 @@ router.get('/cohorts', async (req, res) => {
     });
   } catch (error) {
     console.error('Cohorts endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ================================================
+// SEARCH TERMS
+// ================================================
+
+/**
+ * GET /asa/search-terms
+ * Get search terms with metrics
+ *
+ * Query params:
+ * - campaign_id: filter by campaign (optional)
+ * - adgroup_id: filter by ad group (optional)
+ * - days: number of days (default 7)
+ * - from: start date (YYYY-MM-DD)
+ * - to: end date (YYYY-MM-DD)
+ */
+router.get('/search-terms', async (req, res) => {
+  try {
+    const { campaign_id, adgroup_id, limit = 100, offset = 0 } = req.query;
+
+    // Parse date range
+    let { days = 7, from, to } = req.query;
+    let dateFilter;
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
+    }
+
+    // Build date conditions
+    const dateCondition = dateFilter.days
+      ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+
+    // Build query with optional filters
+    let whereConditions = [dateCondition];
+    let params = [];
+    let paramCount = 0;
+
+    if (campaign_id) {
+      paramCount++;
+      whereConditions.push(`campaign_id = $${paramCount}`);
+      params.push(campaign_id);
+    }
+
+    if (adgroup_id) {
+      paramCount++;
+      whereConditions.push(`adgroup_id = $${paramCount}`);
+      params.push(adgroup_id);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // Get search terms from Apple Ads data
+    const query = `
+      SELECT
+        search_term,
+        campaign_id,
+        adgroup_id,
+        SUM(impressions) as impressions,
+        SUM(taps) as taps,
+        SUM(installs) as installs,
+        SUM(spend) as spend,
+        CASE
+          WHEN SUM(installs) > 0 THEN SUM(spend) / SUM(installs)
+          ELSE NULL
+        END as cpa,
+        CASE
+          WHEN SUM(taps) > 0 THEN SUM(spend) / SUM(taps)
+          ELSE NULL
+        END as cpt,
+        CASE
+          WHEN SUM(impressions) > 0 THEN (SUM(taps)::float / SUM(impressions)::float)
+          ELSE 0
+        END as ttr
+      FROM apple_ads_search_terms
+      WHERE ${whereClause}
+      GROUP BY search_term, campaign_id, adgroup_id
+      HAVING SUM(impressions) > 0
+      ORDER BY SUM(spend) DESC
+      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+    `;
+
+    params.push(limit, offset);
+
+    const result = await db.query(query, params);
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(DISTINCT search_term) as total
+      FROM apple_ads_search_terms
+      WHERE ${whereClause}
+    `;
+
+    const countResult = await db.query(countQuery, params.slice(0, paramCount));
+    const total = parseInt(countResult.rows[0]?.total || 0);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    console.error('Search terms endpoint error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -160,6 +160,10 @@ const findPaybackDaysWithinCurve = (currentRoas, currentDays, predictedFinalRoas
 
 router.get('/main', async (req, res) => {
   try {
+    // Get date range from query params (defaults to last 30 days)
+    const from = req.query.from || daysAgo(30);
+    const to = req.query.to || formatDate(new Date());
+
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -441,7 +445,7 @@ router.get('/main', async (req, res) => {
     // Also calculate forecast subscribers (current + expected additional conversions)
     const forecastSubscribers = Math.round(predictedMonthSubs);
 
-    // ---- DAILY DATA (last 30 days) ----
+    // ---- DAILY DATA (using date range from query params) ----
     // Revenue by event_date, but cohort conversions by install_date
     const dailyQuery = `
       WITH daily_revenue AS (
@@ -452,7 +456,7 @@ router.get('/main', async (req, res) => {
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
-        WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE event_date >= $1::date AND event_date <= $2::date
         GROUP BY DATE(event_date)
       ),
       cohort_conversions AS (
@@ -460,7 +464,7 @@ router.get('/main', async (req, res) => {
           DATE(install_date) as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE install_date >= $1::date AND install_date <= $2::date
           AND (
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
@@ -470,7 +474,7 @@ router.get('/main', async (req, res) => {
       daily_spend AS (
         SELECT date as day, SUM(spend) as spend
         FROM apple_ads_campaigns
-        WHERE date >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE date >= $1::date AND date <= $2::date
         GROUP BY date
       )
       SELECT
@@ -482,9 +486,8 @@ router.get('/main', async (req, res) => {
       LEFT JOIN daily_revenue dr ON ds.day = dr.day
       LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day
       ORDER BY ds.day DESC
-      LIMIT 34
     `;
-    const dailyResult = await db.query(dailyQuery);
+    const dailyResult = await db.query(dailyQuery, [from, to]);
 
     // Calculate COHORT COP for each day with predicted final COP
     const todayForCohort = new Date();
@@ -531,7 +534,7 @@ router.get('/main', async (req, res) => {
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE install_date >= $1::date AND install_date <= $2::date
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       cohort_metrics AS (
@@ -544,14 +547,14 @@ router.get('/main', async (req, res) => {
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE install_date >= $1::date AND install_date <= $2::date
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
         FROM apple_ads_campaigns
-        WHERE date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE date >= $1::date AND date <= $2::date
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       )
       SELECT
@@ -567,7 +570,7 @@ router.get('/main', async (req, res) => {
       ORDER BY ms.month DESC
       LIMIT ${monthsBack}
     `;
-    const monthlyResult = await db.query(monthlyQuery);
+    const monthlyResult = await db.query(monthlyQuery, [from, to]);
 
     const monthlyData = monthlyResult.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;

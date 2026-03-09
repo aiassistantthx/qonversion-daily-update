@@ -4,10 +4,12 @@ import {
   Megaphone,
   Layers,
   KeyRound,
+  XCircle,
   Cog,
   FileText,
   History,
   Globe,
+  Search,
 } from 'lucide-react';
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
 import { SyncStatus } from './SyncStatus';
@@ -17,6 +19,8 @@ const navItems = [
   { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { path: '/adgroups', label: 'Ad Groups', icon: Layers },
   { path: '/keywords', label: 'Keywords', icon: KeyRound },
+  { path: '/search-terms', label: 'Search Terms', icon: Search },
+  { path: '/negative-keywords', label: 'Negative Keywords', icon: XCircle },
   { path: '/countries', label: 'Countries', icon: Globe },
   { path: '/rules', label: 'Rules', icon: Cog },
   { path: '/templates', label: 'Templates', icon: FileText },

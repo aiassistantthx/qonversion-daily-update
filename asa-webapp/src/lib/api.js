@@ -32,6 +32,11 @@ export const bulkUpdateKeywordBids = (data) => api.patch('/keywords/bulk/bid', d
 export const bulkUpdateKeywordStatus = (data) => api.patch('/keywords/bulk/status', data).then(res => res.data);
 export const createKeywords = (data) => api.post('/keywords/bulk', data).then(res => res.data);
 
+// Negative Keywords
+export const getNegativeKeywords = (params) => api.get('/negative-keywords', { params }).then(res => res.data);
+export const createNegativeKeywords = (data) => api.post('/negative-keywords', data).then(res => res.data);
+export const deleteNegativeKeyword = (keywordId, data) => api.delete(`/negative-keywords/${keywordId}`, { data }).then(res => res.data);
+
 // Rules
 export const getRules = (params) => api.get('/rules', { params }).then(res => res.data);
 export const getRule = (id) => api.get(`/rules/${id}`).then(res => res.data);
@@ -69,5 +74,8 @@ export const getTrends = (params = {}) => api.get('/trends', { params }).then(re
 
 // Countries
 export const getCountries = (params = {}) => api.get('/countries', { params }).then(res => res.data);
+
+// Search Terms
+export const getSearchTerms = (params = {}) => api.get('/search-terms', { params }).then(res => res.data);
 
 export default api;
