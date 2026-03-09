@@ -1076,12 +1076,21 @@ router.get('/keywords', async (req, res) => {
 // ============================================
 router.get('/forecast', async (req, res) => {
   try {
-    const RENEWAL_RATE = 0.70;
-    const PROCEEDS_FACTOR = 0.82;
+    // ============================================
+    // MODEL PARAMETERS (from research 2026-03-09)
+    // ============================================
+    const YEARLY_RENEWAL_RATE = 0.35;  // 35% renewal rate for yearly
+    const WEEKLY_PRICE = 9.19;
+    const YEARLY_PRICE = 62;
+    const WEEKLY_W1_RETENTION = 0.48;  // 48% survive week 1
+    const WEEKLY_WEEKLY_RETENTION = 0.92;  // 92% weekly retention after W1
 
-    // Get ALL historical cohorts (by first subscription month)
-    // Going back 24 months to capture cohorts that will renew
-    const cohortsResult = await db.query(`
+    // ============================================
+    // 1. GET HISTORICAL DATA
+    // ============================================
+
+    // Yearly cohorts (for renewal predictions)
+    const yearlyCohortsResult = await db.query(`
       WITH first_subs AS (
         SELECT
           q_user_id,

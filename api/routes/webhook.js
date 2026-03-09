@@ -500,11 +500,46 @@ router.get('/stats', async (req, res) => {
       GROUP BY 1
     `);
 
+    // Check qonversion_events campaign text values
+    const qonversionCampaigns = await db.query(`
+      SELECT
+        campaign,
+        COUNT(DISTINCT q_user_id) as users,
+        MIN(install_date) as first_install,
+        MAX(install_date) as last_install
+      FROM qonversion_events
+      WHERE media_source = 'Apple AdServices'
+      GROUP BY campaign
+      ORDER BY users DESC
+      LIMIT 15
+    `);
+
+    // Check campaign name matching between qonversion_events and apple_ads_campaigns
+    const campaignMatching = await db.query(`
+      WITH qon_campaigns AS (
+        SELECT campaign, COUNT(DISTINCT q_user_id) as users
+        FROM qonversion_events
+        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+        GROUP BY campaign
+      ),
+      apple_campaigns AS (
+        SELECT DISTINCT campaign_name, campaign_id FROM apple_ads_campaigns
+      )
+      SELECT
+        (SELECT COUNT(*) FROM qon_campaigns) as qon_unique_campaigns,
+        (SELECT SUM(users) FROM qon_campaigns) as qon_total_users,
+        (SELECT COUNT(*) FROM apple_campaigns) as apple_unique_campaigns,
+        (SELECT COUNT(*) FROM qon_campaigns qc JOIN apple_campaigns ac ON qc.campaign = ac.campaign_name) as matching_campaigns,
+        (SELECT SUM(qc.users) FROM qon_campaigns qc JOIN apple_campaigns ac ON qc.campaign = ac.campaign_name) as matchable_users
+    `);
+
     res.json({
       events: stats.rows,
       attributions: attributions.rows[0],
       mediaSourceStats: mediaSourceStats.rows,
       campaignIdCoverage: campaignIdCoverage.rows,
+      qonversionCampaigns: qonversionCampaigns.rows,
+      campaignMatching: campaignMatching.rows[0],
     });
 
   } catch (error) {
