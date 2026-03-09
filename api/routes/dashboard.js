@@ -1074,6 +1074,12 @@ router.get('/keywords', async (req, res) => {
 // ============================================
 // REVENUE FORECAST - Cohort-based revenue prediction
 // ============================================
+// Model based on research 2026-03-09:
+// - Weekly subscriptions: 73% of revenue
+// - Yearly subscriptions: 27% of revenue
+// - Weekly W1 retention: 48%, then 92% weekly retention
+// - Yearly renewal rate: 35%
+// ============================================
 router.get('/forecast', async (req, res) => {
   try {
     // ============================================
@@ -1081,6 +1087,7 @@ router.get('/forecast', async (req, res) => {
     // ============================================
     const YEARLY_RENEWAL_RATE = 0.35;  // 35% renewal rate for yearly
     const WEEKLY_PRICE = 9.19;
+    const WEEKLY_TRIAL_PRICE = 9.50;
     const YEARLY_PRICE = 62;
     const WEEKLY_W1_RETENTION = 0.48;  // 48% survive week 1
     const WEEKLY_WEEKLY_RETENTION = 0.92;  // 92% weekly retention after W1
@@ -1089,7 +1096,35 @@ router.get('/forecast', async (req, res) => {
     // 1. GET HISTORICAL DATA
     // ============================================
 
-    // Yearly cohorts (for renewal predictions)
+    // Get historical monthly revenue by product type (last 12 months)
+    const monthlyByTypeResult = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        SUM(price_usd) FILTER (WHERE product_id LIKE '%weekly%' AND refund = false) as weekly_revenue,
+        SUM(price_usd) FILTER (WHERE product_id LIKE '%yearly%' AND refund = false) as yearly_revenue,
+        SUM(price_usd) FILTER (WHERE product_id LIKE '%monthly%' AND refund = false) as monthly_revenue,
+        SUM(price_usd) FILTER (WHERE refund = false) as total_revenue,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Trial Converted' AND product_id LIKE '%weekly%'
+        ) as weekly_new_trials,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Subscription Renewed' AND product_id LIKE '%weekly%'
+        ) as weekly_renewals,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name IN ('Subscription Started', 'Trial Converted') AND product_id LIKE '%yearly%'
+        ) as yearly_new_subs,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Subscription Renewed' AND product_id LIKE '%yearly%'
+        ) as yearly_renewals
+      FROM events_v2
+      WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
+        AND event_date < DATE_TRUNC('month', CURRENT_DATE)
+        AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+      ORDER BY month
+    `);
+
+    // Yearly cohorts for renewal predictions
     const yearlyCohortsResult = await db.query(`
       WITH first_subs AS (
         SELECT
@@ -1112,43 +1147,27 @@ router.get('/forecast', async (req, res) => {
       ORDER BY cohort_month
     `);
 
-    // Get historical monthly revenue for chart
-    const monthlyRevenueResult = await db.query(`
-      SELECT
-        TO_CHAR(event_date, 'YYYY-MM') as month,
-        SUM(price_usd) FILTER (WHERE refund = false) as revenue,
-        COUNT(DISTINCT q_user_id) FILTER (
-          WHERE event_name IN ('Subscription Started', 'Trial Converted')
-        ) as new_subs,
-        COUNT(DISTINCT q_user_id) FILTER (
-          WHERE event_name = 'Subscription Renewed'
-        ) as renewals
+    // Current active weekly subscribers (renewed in last 14 days)
+    const activeWeeklyResult = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as active_weekly
       FROM events_v2
-      WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
-        AND event_date < DATE_TRUNC('month', CURRENT_DATE)
-        AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
-      GROUP BY TO_CHAR(event_date, 'YYYY-MM')
-      ORDER BY month
+      WHERE event_date >= CURRENT_DATE - INTERVAL '14 days'
+        AND event_name = 'Subscription Renewed'
+        AND product_id LIKE '%weekly%'
     `);
 
-    // Build cohort map: month -> {subscribers, avgPrice}
-    const cohorts = {};
-    for (const row of cohortsResult.rows) {
-      cohorts[row.cohort_month] = {
+    // ============================================
+    // 2. BUILD COHORT MAPS
+    // ============================================
+
+    // Build yearly cohort map: month -> {subscribers, avgPrice}
+    const yearlyCohorts = {};
+    for (const row of yearlyCohortsResult.rows) {
+      yearlyCohorts[row.cohort_month] = {
         subscribers: parseInt(row.subscribers),
-        avgPrice: parseFloat(row.avg_price) || 50,
+        avgPrice: parseFloat(row.avg_price) || YEARLY_PRICE,
       };
     }
-
-    // Get average new subscribers per month (for projecting future cohorts)
-    const last3Months = monthlyRevenueResult.rows.slice(-3);
-    const avgNewSubsPerMonth = last3Months.length > 0
-      ? Math.round(last3Months.reduce((s, r) => s + parseInt(r.new_subs || 0), 0) / last3Months.length)
-      : 1000;
-    const avgPrice = last3Months.length > 0
-      ? last3Months.reduce((s, r) => s + parseFloat(r.revenue || 0), 0) /
-        last3Months.reduce((s, r) => s + parseInt(r.new_subs || 0) + parseInt(r.renewals || 0), 0)
-      : 50;
 
     // Helper to add months to a date string
     const addMonths = (monthStr, months) => {
@@ -1157,7 +1176,36 @@ router.get('/forecast', async (req, res) => {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     };
 
-    // Get current month partial data for extrapolation
+    // Get averages from last 3 full months
+    const last3Months = monthlyByTypeResult.rows.slice(-3);
+
+    // Weekly metrics (averages)
+    const avgWeeklyNewTrials = last3Months.length > 0
+      ? Math.round(last3Months.reduce((s, r) => s + parseInt(r.weekly_new_trials || 0), 0) / last3Months.length)
+      : 1400;
+    const avgWeeklyRevenue = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseFloat(r.weekly_revenue || 0), 0) / last3Months.length
+      : 80000;
+
+    // Yearly metrics (averages)
+    const avgYearlyNewSubs = last3Months.length > 0
+      ? Math.round(last3Months.reduce((s, r) => s + parseInt(r.yearly_new_subs || 0), 0) / last3Months.length)
+      : 300;
+    const avgYearlyRevenue = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseFloat(r.yearly_revenue || 0), 0) / last3Months.length
+      : 30000;
+
+    // Monthly baseline (negligible)
+    const avgMonthlyRevenue = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseFloat(r.monthly_revenue || 0), 0) / last3Months.length
+      : 300;
+
+    // Active weekly base
+    const activeWeeklyBase = parseInt(activeWeeklyResult.rows[0]?.active_weekly) || 2700;
+
+    // ============================================
+    // 3. CURRENT MONTH DATA (for extrapolation)
+    // ============================================
     const today = new Date();
     const currentDay = today.getDate();
     const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -1165,106 +1213,81 @@ router.get('/forecast', async (req, res) => {
 
     const currentMonthData = await db.query(`
       SELECT
-        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as revenue,
-        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Subscription Started', 'Trial Converted')) as new_subs
+        COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%weekly%' AND refund = false), 0) as weekly_revenue,
+        COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%yearly%' AND refund = false), 0) as yearly_revenue,
+        COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%monthly%' AND refund = false), 0) as monthly_revenue,
+        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as total_revenue
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
     `, [currentMonthStr]);
 
-    const currentMonthPartialRevenue = parseFloat(currentMonthData.rows[0]?.revenue) || 0;
-    const currentMonthNewSubs = parseInt(currentMonthData.rows[0]?.new_subs) || 0;
-    const extrapolatedCurrentMonthRevenue = currentDay > 0
-      ? (currentMonthPartialRevenue / currentDay) * daysInCurrentMonth
-      : 0;
-    const extrapolatedCurrentMonthNewSubs = currentDay > 0
-      ? Math.round((currentMonthNewSubs / currentDay) * daysInCurrentMonth)
-      : avgNewSubsPerMonth;
+    const extrapolationFactor = currentDay > 0 ? daysInCurrentMonth / currentDay : 1;
+    const currentMonthWeekly = parseFloat(currentMonthData.rows[0]?.weekly_revenue) || 0;
+    const currentMonthYearly = parseFloat(currentMonthData.rows[0]?.yearly_revenue) || 0;
+    const currentMonthMonthly = parseFloat(currentMonthData.rows[0]?.monthly_revenue) || 0;
+    const currentMonthTotal = parseFloat(currentMonthData.rows[0]?.total_revenue) || 0;
 
-    // Get baseline renewals from last 3 full months
-    // This represents ongoing renewals from ALL historical cohorts
-    const baselineRenewalsCount = last3Months.length > 0
-      ? Math.round(last3Months.reduce((s, r) => s + parseInt(r.renewals || 0), 0) / last3Months.length)
-      : 2000;
-    const baselineRenewalsRevenue = baselineRenewalsCount * avgPrice;
-
-    // Build forecast using cohort model
+    // ============================================
+    // 4. BUILD FORECAST (12 months)
+    // ============================================
     const renewalForecast = [];
-    const projectedCohorts = []; // Track new cohorts for future renewal calculation
 
     for (let i = 0; i <= 12; i++) {
       const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastDate.getFullYear()}-${String(forecastDate.getMonth() + 1).padStart(2, '0')}`;
 
-      let newSubsRevenue = 0;
-      let newSubsCount = 0;
+      let weeklyRevenue, yearlyRevenue, monthlyRevenue;
 
       if (i === 0) {
         // Current month: extrapolate from partial data
-        // extrapolatedCurrentMonthRevenue already includes BOTH new subs and renewals
-        newSubsCount = extrapolatedCurrentMonthNewSubs;
-        // For current month, we'll set totalRevenue directly to avoid double-counting renewals
-        newSubsRevenue = extrapolatedCurrentMonthRevenue; // This is actually total, not just new subs
+        weeklyRevenue = Math.round(currentMonthWeekly * extrapolationFactor);
+        yearlyRevenue = Math.round(currentMonthYearly * extrapolationFactor);
+        monthlyRevenue = Math.round(currentMonthMonthly * extrapolationFactor);
       } else {
-        // Future month: new subscribers at avg rate
-        newSubsCount = avgNewSubsPerMonth;
-        newSubsRevenue = newSubsCount * avgPrice;
+        // Future months: use cohort model
+
+        // === WEEKLY REVENUE ===
+        // Model: stable base with churn-adjusted renewals
+        // Assuming performance stays same, weekly revenue = average of last 3 months
+        weeklyRevenue = Math.round(avgWeeklyRevenue);
+
+        // === YEARLY REVENUE ===
+        // New subs: avgYearlyNewSubs × YEARLY_PRICE
+        const yearlyNewSubsRevenue = avgYearlyNewSubs * YEARLY_PRICE;
+
+        // Renewals from cohort 12 months ago
+        const renewalSourceMonth = addMonths(forecastMonthStr, -12);
+        const sourceCohort = yearlyCohorts[renewalSourceMonth];
+        const yearlyRenewalsRevenue = sourceCohort
+          ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE * YEARLY_PRICE)
+          : 0;
+
+        yearlyRevenue = Math.round(yearlyNewSubsRevenue + yearlyRenewalsRevenue);
+
+        // === MONTHLY REVENUE ===
+        monthlyRevenue = Math.round(avgMonthlyRevenue);
       }
 
-      // Track this cohort for future renewals
-      projectedCohorts.push({ month: forecastMonthStr, subscribers: newSubsCount });
-
-      // Renewals = baseline renewals + delta from cohort size changes
-      // The baseline already includes renewals from all historical cohorts
-      // We need to adjust for:
-      // 1. Cohort that's renewing now vs cohort from 12 months ago in baseline
-      // 2. Growth/decline in cohort sizes over time
-
-      // Get cohort from 12 months ago (relative to this forecast month)
-      const renewalSourceMonth = addMonths(forecastMonthStr, -12);
-      const historicalCohort = cohorts[renewalSourceMonth];
-
-      // Get the cohort from 12 months before the baseline period (for delta calculation)
-      const lastFullMonthStr = last3Months[last3Months.length - 1]?.month;
-      const baselineSourceMonth = lastFullMonthStr ? addMonths(lastFullMonthStr, -12) : null;
-      const baselineCohort = baselineSourceMonth ? cohorts[baselineSourceMonth] : null;
-
-      // Calculate renewal delta: (current renewing cohort - baseline renewing cohort) * renewal_rate
-      let renewalsDelta = 0;
-      if (historicalCohort && baselineCohort) {
-        const cohortDiff = historicalCohort.subscribers - baselineCohort.subscribers;
-        renewalsDelta = Math.round(cohortDiff * RENEWAL_RATE);
-      }
-
-      // Add renewals from projected cohorts that reach 12 months during this forecast
-      let projectedRenewals = 0;
-      if (i >= 12 && projectedCohorts[i - 12]) {
-        projectedRenewals = Math.round(projectedCohorts[i - 12].subscribers * RENEWAL_RATE);
-      }
-
-      const renewalsCount = baselineRenewalsCount + renewalsDelta + projectedRenewals;
-      const renewalsRevenue = renewalsCount * avgPrice;
-
-      // For current month, extrapolatedCurrentMonthRevenue already includes renewals
-      // So totalRevenue = extrapolated revenue (not newSubs + renewals)
-      const totalRevenue = (i === 0)
-        ? extrapolatedCurrentMonthRevenue
-        : newSubsRevenue + renewalsRevenue;
+      const totalRevenue = weeklyRevenue + yearlyRevenue + monthlyRevenue;
 
       renewalForecast.push({
         month: forecastMonthStr,
-        newSubs: newSubsCount,
-        newSubsRevenue: Math.round(newSubsRevenue),
-        renewals: renewalsCount,
-        renewalsRevenue: Math.round(renewalsRevenue),
-        totalRevenue: Math.round(totalRevenue),
+        weeklyRevenue,
+        yearlyRevenue,
+        monthlyRevenue,
+        totalRevenue,
         // For backward compatibility
-        expectedRevenue: Math.round(totalRevenue),
-        expectedRenewals: renewalsCount,
+        totalForecastRevenue: totalRevenue,
+        expectedRevenue: totalRevenue,
       });
     }
 
-    // Get current month subscribers for stats
+    // ============================================
+    // 5. ADDITIONAL STATS
+    // ============================================
+
+    // Get current month new subscribers for stats
     const currentMonthSubs = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as subs
       FROM events_v2
@@ -1272,7 +1295,7 @@ router.get('/forecast', async (req, res) => {
         AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
     `);
 
-    // Get last 30 days spend and metrics for projection
+    // Get last 30 days spend for projection context
     const last30DaysMetrics = await db.query(`
       SELECT
         SUM(spend) as total_spend,
@@ -1281,63 +1304,46 @@ router.get('/forecast', async (req, res) => {
       WHERE date >= CURRENT_DATE - INTERVAL '30 days'
     `);
 
-    // Get average COP (cost per paid user) from last 30 days
-    const last30DaysCOP = await db.query(`
-      SELECT
-        COUNT(DISTINCT q_user_id) as paid_users
-      FROM events_v2
-      WHERE install_date >= CURRENT_DATE - INTERVAL '30 days'
-        AND media_source = 'Apple AdServices'
-        AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
-    `);
-
     const avgDailySpend = parseFloat(last30DaysMetrics.rows[0]?.avg_daily_spend) || 0;
     const avgMonthlySpend = avgDailySpend * 30;
-    const paidUsersLast30 = parseInt(last30DaysCOP.rows[0]?.paid_users) || 1;
-    const totalSpendLast30 = parseFloat(last30DaysMetrics.rows[0]?.total_spend) || 1;
-    const currentCOP = totalSpendLast30 / paidUsersLast30;
 
-    // Get average yearly subscription price
-    const avgYearlyPrice = await db.query(`
-      SELECT AVG(price_usd) as avg_price
-      FROM events_v2
-      WHERE event_date >= CURRENT_DATE - INTERVAL '90 days'
-        AND event_name IN ('Subscription Started', 'Trial Converted')
-        AND product_id LIKE '%yearly%'
-        AND price_usd > 0
-    `);
-    const avgSubPrice = parseFloat(avgYearlyPrice.rows[0]?.avg_price) || 50;
-
-    // Calculate projected new subscribers per month (assuming same spend as last 30 days)
-    const projectedNewSubsPerMonth = avgMonthlySpend > 0 && currentCOP > 0
-      ? Math.round(avgMonthlySpend / currentCOP)
-      : 0;
-
-    // Add totalForecastRevenue for backward compatibility
-    for (let i = 0; i < renewalForecast.length; i++) {
-      renewalForecast[i].projectedNewSubs = projectedNewSubsPerMonth;
-      renewalForecast[i].totalForecastRevenue = renewalForecast[i].totalRevenue;
-    }
-
+    // ============================================
+    // 6. RESPONSE
+    // ============================================
     res.json({
-      historical: monthlyRevenueResult.rows.map(r => ({
+      historical: monthlyByTypeResult.rows.map(r => ({
         month: r.month,
-        revenue: parseFloat(r.revenue) || 0,
-        newSubs: parseInt(r.new_subs) || 0,
-        renewals: parseInt(r.renewals) || 0,
+        revenue: parseFloat(r.total_revenue) || 0,
+        weeklyRevenue: parseFloat(r.weekly_revenue) || 0,
+        yearlyRevenue: parseFloat(r.yearly_revenue) || 0,
+        monthlyRevenue: parseFloat(r.monthly_revenue) || 0,
+        weeklyNewTrials: parseInt(r.weekly_new_trials) || 0,
+        weeklyRenewals: parseInt(r.weekly_renewals) || 0,
+        yearlyNewSubs: parseInt(r.yearly_new_subs) || 0,
+        yearlyRenewals: parseInt(r.yearly_renewals) || 0,
       })),
       renewalForecast,
-      avgNewSubsPerMonth: Math.round(avgNewSubsPerMonth),
+      modelParameters: {
+        weeklyPrice: WEEKLY_PRICE,
+        weeklyTrialPrice: WEEKLY_TRIAL_PRICE,
+        yearlyPrice: YEARLY_PRICE,
+        yearlyRenewalRate: YEARLY_RENEWAL_RATE,
+        weeklyW1Retention: WEEKLY_W1_RETENTION,
+        weeklyWeeklyRetention: WEEKLY_WEEKLY_RETENTION,
+      },
+      currentMetrics: {
+        activeWeeklyBase,
+        avgWeeklyNewTrials,
+        avgWeeklyRevenue: Math.round(avgWeeklyRevenue),
+        avgYearlyNewSubs,
+        avgYearlyRevenue: Math.round(avgYearlyRevenue),
+        avgMonthlyRevenue: Math.round(avgMonthlyRevenue),
+      },
       currentMonthSubs: parseInt(currentMonthSubs.rows[0]?.subs) || 0,
-      projectedNewSubsPerMonth,
       projectionAssumptions: {
         avgDailySpend: Math.round(avgDailySpend),
         avgMonthlySpend: Math.round(avgMonthlySpend),
-        currentCOP: Math.round(currentCOP),
-        projectedNewSubsPerMonth,
-        avgSubPrice: Math.round(avgSubPrice),
-        renewalRate: RENEWAL_RATE,
-        proceedsFactor: PROCEEDS_FACTOR,
+        assumption: 'Apple Ads performance stays at current level with current budgets; organic volume stays the same',
       },
     });
   } catch (error) {
