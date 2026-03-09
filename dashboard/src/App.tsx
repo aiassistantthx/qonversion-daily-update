@@ -513,14 +513,14 @@ function Dashboard() {
                   <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d7 ? fmt(row.cop.d7) : '—'}</td>
                   <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d30 ? fmt(row.cop.d30) : '—'}</td>
                   <td style={{ ...styles.tdRight, background: '#f0fdf4' }}>{row.cop.d60 ? fmt(row.cop.d60) : '—'}</td>
-                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d4 ? `${(row.roas.d4 * 0.82).toFixed(2)}x` : '—'}</td>
-                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d7 ? `${(row.roas.d7 * 0.82).toFixed(2)}x` : '—'}</td>
-                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d30 ? `${(row.roas.d30 * 0.82).toFixed(2)}x` : '—'}</td>
-                  <td style={{ ...styles.tdRight, background: '#dbeafe', color: row.roas.d60 && row.roas.d60 * 0.82 >= 1 ? '#10b981' : '#ef4444' }}>
-                    {row.roas.d60 ? `${(row.roas.d60 * 0.82).toFixed(2)}x` : '—'}
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d4 ? `${row.roas.d4.toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d7 ? `${row.roas.d7.toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe' }}>{row.roas.d30 ? `${row.roas.d30.toFixed(2)}x` : '—'}</td>
+                  <td style={{ ...styles.tdRight, background: '#dbeafe', color: row.roas.d60 && row.roas.d60 >= 1 ? '#10b981' : '#ef4444' }}>
+                    {row.roas.d60 ? `${row.roas.d60.toFixed(2)}x` : '—'}
                   </td>
                   <td style={{ ...styles.tdRight, background: '#fef3c7', fontWeight: 500 }}>
-                    {row.roas.predicted ? `${(row.roas.predicted * 0.82).toFixed(2)}x` : '—'}
+                    {row.roas.predicted ? `${row.roas.predicted.toFixed(2)}x` : '—'}
                   </td>
                   <td style={styles.tdRight}>{row.paybackMonths ? `${row.paybackMonths}mo` : '—'}</td>
                 </tr>

@@ -665,6 +665,9 @@ router.get('/marketing', async (req, res) => {
       ORDER BY ms.month DESC
     `);
 
+    // Apple commission factor: sales * 0.82 = proceeds (Apple takes ~18%)
+    const PROCEEDS_FACTOR = 0.82;
+
     const data = result.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
       const cohortAge = parseInt(row.cohort_age) || 0;
@@ -677,13 +680,13 @@ router.get('/marketing', async (req, res) => {
       const cop180d = cohortAge >= 180 && row.subs_180d > 0 ? spend / row.subs_180d : null;
       const copTotal = row.subs_total > 0 ? spend / row.subs_total : null;
 
-      // Calculate ROAS at each age (only show if cohort is old enough)
-      const roas4d = cohortAge >= 4 && spend > 0 ? parseFloat(row.rev_4d) / spend : null;
-      const roas7d = cohortAge >= 7 && spend > 0 ? parseFloat(row.rev_7d) / spend : null;
-      const roas30d = cohortAge >= 30 && spend > 0 ? parseFloat(row.rev_30d) / spend : null;
-      const roas60d = cohortAge >= 60 && spend > 0 ? parseFloat(row.rev_60d) / spend : null;
-      const roas180d = cohortAge >= 180 && spend > 0 ? parseFloat(row.rev_180d) / spend : null;
-      const roasTotal = spend > 0 ? parseFloat(row.rev_total) / spend : null;
+      // Calculate ROAS at each age using proceeds (sales * 0.82)
+      const roas4d = cohortAge >= 4 && spend > 0 ? (parseFloat(row.rev_4d) * PROCEEDS_FACTOR) / spend : null;
+      const roas7d = cohortAge >= 7 && spend > 0 ? (parseFloat(row.rev_7d) * PROCEEDS_FACTOR) / spend : null;
+      const roas30d = cohortAge >= 30 && spend > 0 ? (parseFloat(row.rev_30d) * PROCEEDS_FACTOR) / spend : null;
+      const roas60d = cohortAge >= 60 && spend > 0 ? (parseFloat(row.rev_60d) * PROCEEDS_FACTOR) / spend : null;
+      const roas180d = cohortAge >= 180 && spend > 0 ? (parseFloat(row.rev_180d) * PROCEEDS_FACTOR) / spend : null;
+      const roasTotal = spend > 0 ? (parseFloat(row.rev_total) * PROCEEDS_FACTOR) / spend : null;
 
       // Predict final COP and ROAS based on decay curve
       // Use the current cohort age to determine decay factor
@@ -691,9 +694,9 @@ router.get('/marketing', async (req, res) => {
       const subsTotal = parseInt(row.subs_total) || 0;
       const revTotal = parseFloat(row.rev_total) || 0;
 
-      // Predict final values
+      // Predict final values (revenue uses proceeds factor)
       const predictedSubs = subsTotal > 0 ? subsTotal / decayFactor : 0;
-      const predictedRev = revTotal > 0 ? revTotal / decayFactor : 0;
+      const predictedRev = revTotal > 0 ? (revTotal * PROCEEDS_FACTOR) / decayFactor : 0;
 
       const copPredicted = predictedSubs > 0 ? spend / predictedSubs : null;
       const roasPredicted = spend > 0 ? predictedRev / spend : null;
