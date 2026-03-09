@@ -3108,10 +3108,11 @@ router.get('/countries', async (req, res) => {
     const to = req.query.to || formatDate(new Date());
     const limit = parseInt(req.query.limit) || 20;
 
+    // Simplified query - group by source only for now
     const query = `
       SELECT
-        COALESCE(storefront_country_code, 'XX') as country,
-        COALESCE(storefront_country_code, 'XX') as country_code,
+        'Global' as country,
+        'XX' as country_code,
         CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END as source,
         COALESCE(SUM(CASE WHEN event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN price_usd ELSE 0 END), 0) as revenue,
         COUNT(DISTINCT CASE WHEN event_name IN ('Trial Converted', 'Subscription Started') AND product_id LIKE '%yearly%' THEN q_user_id END) +
@@ -3119,7 +3120,7 @@ router.get('/countries', async (req, res) => {
         COUNT(DISTINCT CASE WHEN event_name = 'Trial Started' THEN q_user_id END) as trials
       FROM events_v2
       WHERE created_at >= $1 AND created_at < $2::date + 1
-      GROUP BY storefront_country_code, CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
+      GROUP BY CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
       ORDER BY revenue DESC
       LIMIT $3
     `;
