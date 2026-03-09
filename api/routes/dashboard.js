@@ -2098,7 +2098,7 @@ router.get('/cohort-analysis', async (req, res) => {
         cs.initial_size,
         COALESCE(r.renewed_users, 0) as renewed_users,
         ROUND((COALESCE(r.renewed_users, 0)::numeric / cs.initial_size) * 100, 1) as renewal_rate,
-        EXTRACT(DAYS FROM (CURRENT_DATE - (cs.cohort_month || '-01')::date)) as cohort_age_days
+        (CURRENT_DATE - (cs.cohort_month || '-01')::date) as cohort_age_days
       FROM cohort_sizes cs
       LEFT JOIN renewals r ON cs.cohort_month = r.cohort_month
       ORDER BY cs.cohort_month
