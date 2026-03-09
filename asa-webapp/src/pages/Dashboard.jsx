@@ -4,6 +4,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { StatusBadge } from '../components/Badge';
 import { HealthScoreWidget } from '../components/HealthScoreWidget';
 import ConversionFunnelChart from '../components/ConversionFunnelChart';
+import TrendChart from '../components/TrendChart';
 import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
 import { getCampaigns, getRules, getHistory, getTrends } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
@@ -73,7 +74,6 @@ export default function Dashboard() {
   const { data: trendsData } = useQuery({
     queryKey: ['trends', queryParams],
     queryFn: () => getTrends(queryParams),
-    enabled: showConversionChart,
   });
 
   // Helper to get performance value
@@ -248,6 +248,9 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Trends Chart */}
+      <TrendChart data={trendsData} />
 
       {/* Conversion Funnel Chart */}
       <Card>

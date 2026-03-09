@@ -1,13 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
+  Line, Area, ComposedChart
 } from 'recharts';
-import { TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Users, Activity } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface Assumptions {
   copTarget: number;
-  churnRate: number;
+  churnRate: number;        // Blended monthly churn rate
   monthlySpend: number;
+  initialActiveBase: number;
+}
+
+interface CurrentMetrics {
+  activeSubscribers: {
+    weekly: number;
+    yearly: number;
+    total: number;
+  };
+  churn: {
+    current: number;
+    trend: number;
+    history: { week: string; rate: number }[];
+  };
+  loading: boolean;
 }
 
 interface Scenario {
@@ -19,32 +37,115 @@ interface Scenario {
 }
 
 export function ScenarioModeling() {
+  const [currentMetrics, setCurrentMetrics] = useState<CurrentMetrics>({
+    activeSubscribers: { weekly: 0, yearly: 0, total: 0 },
+    churn: { current: 27, trend: 0, history: [] },
+    loading: true,
+  });
+
   const [baseCase, setBaseCase] = useState<Assumptions>({
     copTarget: 65,
     churnRate: 27,
     monthlySpend: 40000,
+    initialActiveBase: 0,
   });
 
   const [optimistic, setOptimistic] = useState<Assumptions>({
     copTarget: 50,
     churnRate: 20,
     monthlySpend: 50000,
+    initialActiveBase: 0,
   });
 
   const [conservative, setConservative] = useState<Assumptions>({
     copTarget: 80,
     churnRate: 35,
     monthlySpend: 30000,
+    initialActiveBase: 0,
   });
 
+  // Load current metrics from API
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const [activeRes, churnRes] = await Promise.all([
+          fetch(`${API_BASE}/dashboard/active-subscribers`),
+          fetch(`${API_BASE}/dashboard/weekly-churn`),
+        ]);
+
+        const activeData = await activeRes.json();
+        const churnData = await churnRes.json();
+
+        // Calculate blended monthly churn based on subscriber mix
+        const weeklySubChurn = churnData.stats?.churnRate || 15; // Weekly subs: ~15%/week
+        const weeklySubMonthlyChurn = (1 - Math.pow(1 - weeklySubChurn / 100, 4.33)) * 100; // ~51%/month
+        const yearlySubMonthlyChurn = 1; // Yearly subs: ~1%/month (very low)
+
+        const weeklyCount = activeData.current?.weekly || 0;
+        const yearlyCount = activeData.current?.yearly || 0;
+        const totalCount = weeklyCount + yearlyCount || 1;
+
+        // Blended churn weighted by subscriber count
+        const blendedChurn = Math.round(
+          (weeklyCount * weeklySubMonthlyChurn + yearlyCount * yearlySubMonthlyChurn) / totalCount
+        );
+        const monthlyChurn = Math.max(5, Math.min(blendedChurn, 60)); // Clamp 5-60%
+
+        // Build churn history from retention curve
+        const churnHistory = (churnData.retentionCurve || []).map((point: any, i: number) => ({
+          week: `W${point.week || i + 1}`,
+          rate: 100 - (point.retention || 100),
+        }));
+
+        const totalActive = (activeData.current?.total || 0);
+
+        setCurrentMetrics({
+          activeSubscribers: {
+            weekly: activeData.current?.weekly || 0,
+            yearly: activeData.current?.yearly || 0,
+            total: totalActive,
+          },
+          churn: {
+            current: monthlyChurn,
+            trend: churnData.stats?.trend || 0,
+            history: churnHistory,
+          },
+          loading: false,
+        });
+
+        // Update scenarios with real data
+        setBaseCase(prev => ({
+          ...prev,
+          initialActiveBase: totalActive,
+          churnRate: monthlyChurn,
+        }));
+        setOptimistic(prev => ({
+          ...prev,
+          initialActiveBase: totalActive,
+          churnRate: Math.max(5, monthlyChurn - 7),
+        }));
+        setConservative(prev => ({
+          ...prev,
+          initialActiveBase: totalActive,
+          churnRate: monthlyChurn + 8,
+        }));
+      } catch (error) {
+        console.error('Failed to fetch metrics:', error);
+        setCurrentMetrics(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchMetrics();
+  }, []);
+
   const calculateRevenue = (assumptions: Assumptions, months: number) => {
-    const { copTarget, churnRate, monthlySpend } = assumptions;
+    const { copTarget, churnRate, monthlySpend, initialActiveBase } = assumptions;
     const avgSubscriptionValue = 350; // Average yearly subscription value
     const newSubsPerMonth = monthlySpend / copTarget;
     const retentionRate = 1 - churnRate / 100;
 
     let totalRevenue = 0;
-    let activeBase = 0;
+    let activeBase = initialActiveBase; // Start with existing subscriber base
 
     for (let i = 0; i < months; i++) {
       activeBase = activeBase * retentionRate + newSubsPerMonth;
@@ -53,6 +154,25 @@ export function ScenarioModeling() {
     }
 
     return totalRevenue;
+  };
+
+  // Calculate monthly revenue for chart (returns array of monthly values)
+  const calculateMonthlyRevenue = (assumptions: Assumptions, months: number) => {
+    const { copTarget, churnRate, monthlySpend, initialActiveBase } = assumptions;
+    const avgSubscriptionValue = 350;
+    const newSubsPerMonth = monthlySpend / copTarget;
+    const retentionRate = 1 - churnRate / 100;
+
+    const monthlyData: number[] = [];
+    let activeBase = initialActiveBase;
+
+    for (let i = 0; i < months; i++) {
+      activeBase = activeBase * retentionRate + newSubsPerMonth;
+      const monthlyRevenue = activeBase * (avgSubscriptionValue / 12);
+      monthlyData.push(monthlyRevenue);
+    }
+
+    return monthlyData;
   };
 
   const months = 12;
@@ -80,12 +200,13 @@ export function ScenarioModeling() {
     },
   ];
 
+  // Chart data showing monthly revenue (not cumulative)
   const chartData = Array.from({ length: months }, (_, i) => {
-    const month = i + 1;
-    const data: any = { month: `M${month}` };
+    const data: any = { month: `M${i + 1}` };
 
     scenarios.forEach(scenario => {
-      data[scenario.name] = calculateRevenue(scenario.assumptions, month) / 1000;
+      const monthlyRevenues = calculateMonthlyRevenue(scenario.assumptions, months);
+      data[scenario.name] = monthlyRevenues[i] / 1000;
     });
 
     return data;
@@ -100,6 +221,15 @@ export function ScenarioModeling() {
     const Icon = scenario.icon;
     const revenue12M = calculateRevenue(scenario.assumptions, 12);
     const subscribers12M = (scenario.assumptions.monthlySpend / scenario.assumptions.copTarget) * 12;
+
+    // Calculate ending active base
+    const { copTarget, churnRate, monthlySpend, initialActiveBase } = scenario.assumptions;
+    const newSubsPerMonth = monthlySpend / copTarget;
+    const retentionRate = 1 - churnRate / 100;
+    let endingActiveBase = initialActiveBase;
+    for (let i = 0; i < 12; i++) {
+      endingActiveBase = endingActiveBase * retentionRate + newSubsPerMonth;
+    }
 
     return (
       <div
@@ -181,6 +311,25 @@ export function ScenarioModeling() {
                 }}
               />
             </div>
+
+            <div>
+              <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+                Initial Active Base
+              </label>
+              <input
+                type="number"
+                value={scenario.assumptions.initialActiveBase}
+                onChange={(e) => setAssumptions(prev => ({ ...prev, initialActiveBase: Number(e.target.value) }))}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -199,10 +348,23 @@ export function ScenarioModeling() {
             </div>
 
             <div>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>Total Subscribers</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>New Subscribers</div>
               <div style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>
                 {Math.round(subscribers12M).toLocaleString()}
               </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>Ending Active Base</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>
+                {Math.round(endingActiveBase).toLocaleString()}
+              </div>
+              {scenario.assumptions.initialActiveBase > 0 && (
+                <div style={{ fontSize: 10, color: endingActiveBase > scenario.assumptions.initialActiveBase ? '#10b981' : '#ef4444' }}>
+                  {endingActiveBase > scenario.assumptions.initialActiveBase ? '+' : ''}
+                  {Math.round(endingActiveBase - scenario.assumptions.initialActiveBase).toLocaleString()} vs start
+                </div>
+              )}
             </div>
 
             <div>
@@ -241,6 +403,90 @@ export function ScenarioModeling() {
         </p>
       </div>
 
+      {/* Current Metrics */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: currentMetrics.churn.history.length > 0 ? '1fr 2fr' : '1fr',
+        gap: 16,
+        marginBottom: 24,
+        padding: 16,
+        background: '#f9fafb',
+        borderRadius: 8,
+      }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Activity size={14} />
+            Current Metrics
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={16} color="#3b82f6" />
+              <div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Active Subscribers</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: '#111827' }}>
+                  {currentMetrics.loading ? '...' : currentMetrics.activeSubscribers.total.toLocaleString()}
+                </div>
+                {!currentMetrics.loading && (
+                  <div style={{ fontSize: 10, color: '#6b7280' }}>
+                    Weekly: {currentMetrics.activeSubscribers.weekly.toLocaleString()} |
+                    Yearly: {currentMetrics.activeSubscribers.yearly.toLocaleString()}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <TrendingDown size={16} color="#ef4444" />
+              <div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Blended Monthly Churn</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: '#111827' }}>
+                    {currentMetrics.loading ? '...' : `${currentMetrics.churn.current}%`}
+                  </span>
+                  {!currentMetrics.loading && currentMetrics.churn.trend !== 0 && (
+                    <span style={{
+                      fontSize: 11,
+                      color: currentMetrics.churn.trend > 0 ? '#ef4444' : '#10b981',
+                      fontWeight: 500,
+                    }}>
+                      {currentMetrics.churn.trend > 0 ? '+' : ''}{currentMetrics.churn.trend.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+                {!currentMetrics.loading && (
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                    Weekly: ~51%/mo | Yearly: ~1%/mo
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {currentMetrics.churn.history.length > 0 && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 8 }}>
+              Churn by Cohort Week
+            </div>
+            <div style={{ height: 100 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={currentMetrics.churn.history}>
+                  <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                  <Tooltip
+                    formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Churn']}
+                    contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11 }}
+                  />
+                  <Area type="monotone" dataKey="rate" fill="#fee2e2" stroke="transparent" />
+                  <Line type="monotone" dataKey="rate" stroke="#ef4444" strokeWidth={2} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Scenario Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {renderScenarioCard(scenarios[0], setBaseCase)}
@@ -251,7 +497,7 @@ export function ScenarioModeling() {
       {/* Comparison Chart */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 12 }}>
-          Revenue Projection Comparison
+          Monthly Revenue Projection
         </div>
         <div style={{ height: 350 }}>
           <ResponsiveContainer width="100%" height="100%">
