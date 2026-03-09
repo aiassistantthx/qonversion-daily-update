@@ -101,32 +101,32 @@ export default function Campaigns() {
           bVal = parseFloat(b.dailyBudgetAmount?.amount || 0);
           break;
         case 'spend':
-          aVal = parseFloat(a.performance?.spend || 0);
-          bVal = parseFloat(b.performance?.spend || 0);
+          aVal = parseFloat(a.performance?.spend || a.performance?.spend_7d || 0);
+          bVal = parseFloat(b.performance?.spend || b.performance?.spend_7d || 0);
           break;
         case 'revenue':
-          aVal = parseFloat(a.performance?.revenue || 0);
-          bVal = parseFloat(b.performance?.revenue || 0);
+          aVal = parseFloat(a.performance?.revenue || a.performance?.revenue_7d || 0);
+          bVal = parseFloat(b.performance?.revenue || b.performance?.revenue_7d || 0);
           break;
         case 'roas':
-          aVal = parseFloat(a.performance?.roas || 0);
-          bVal = parseFloat(b.performance?.roas || 0);
+          aVal = parseFloat(a.performance?.roas || a.performance?.roas_7d || 0);
+          bVal = parseFloat(b.performance?.roas || b.performance?.roas_7d || 0);
           break;
         case 'impressions':
-          aVal = parseInt(a.performance?.impressions || 0);
-          bVal = parseInt(b.performance?.impressions || 0);
+          aVal = parseInt(a.performance?.impressions || a.performance?.impressions_7d || 0);
+          bVal = parseInt(b.performance?.impressions || b.performance?.impressions_7d || 0);
           break;
         case 'taps':
-          aVal = parseInt(a.performance?.taps || 0);
-          bVal = parseInt(b.performance?.taps || 0);
+          aVal = parseInt(a.performance?.taps || a.performance?.taps_7d || 0);
+          bVal = parseInt(b.performance?.taps || b.performance?.taps_7d || 0);
           break;
         case 'installs':
-          aVal = parseInt(a.performance?.installs || 0);
-          bVal = parseInt(b.performance?.installs || 0);
+          aVal = parseInt(a.performance?.installs || a.performance?.installs_7d || 0);
+          bVal = parseInt(b.performance?.installs || b.performance?.installs_7d || 0);
           break;
         case 'cpa':
-          aVal = parseFloat(a.performance?.cpa || 999999);
-          bVal = parseFloat(b.performance?.cpa || 999999);
+          aVal = parseFloat(a.performance?.cpa || a.performance?.cpa_7d || 999999);
+          bVal = parseFloat(b.performance?.cpa || b.performance?.cpa_7d || 999999);
           break;
         default:
           aVal = a.name;
@@ -369,22 +369,22 @@ export default function Campaigns() {
                     <StatusBadge status={campaign.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    ${parseFloat(campaign.performance?.spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${parseFloat(campaign.performance?.spend || campaign.performance?.spend_7d || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right font-medium text-green-600">
-                    ${parseFloat(campaign.performance?.revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${parseFloat(campaign.performance?.revenue || campaign.performance?.revenue_7d || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right">
-                    <span className={parseFloat(campaign.performance?.roas || 0) >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                      {parseFloat(campaign.performance?.roas || 0).toFixed(2)}x
+                    <span className={parseFloat(campaign.performance?.roas || campaign.performance?.roas_7d || 0) >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                      {parseFloat(campaign.performance?.roas || campaign.performance?.roas_7d || 0).toFixed(2)}x
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {parseInt(campaign.performance?.installs || 0).toLocaleString()}
+                    {parseInt(campaign.performance?.installs || campaign.performance?.installs_7d || 0).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    {campaign.performance?.cpa
-                      ? `$${parseFloat(campaign.performance.cpa).toFixed(2)}`
+                    {(campaign.performance?.cpa || campaign.performance?.cpa_7d)
+                      ? `$${parseFloat(campaign.performance.cpa || campaign.performance.cpa_7d).toFixed(2)}`
                       : '-'}
                   </TableCell>
                   <TableCell>
