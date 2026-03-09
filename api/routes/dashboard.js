@@ -2762,7 +2762,7 @@ router.get('/subscription-breakdown', async (req, res) => {
           ELSE 'weekly'
         END as sub_type,
         SUM(price_usd) as revenue,
-        COUNT(DISTINCT user_id) as subscribers
+        COUNT(DISTINCT q_user_id) as subscribers
       FROM events_v2
       WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
         AND DATE_TRUNC('month', created_at) = $1::date
@@ -2848,7 +2848,7 @@ router.get('/revenue-by-day', async (req, res) => {
       WITH cohorts AS (
         SELECT
           TO_CHAR(DATE_TRUNC('month', e.created_at), 'YYYY-MM') as cohort_month,
-          e.user_id,
+          e.q_user_id,
           MIN(e.created_at) as first_event
         FROM events_v2 e
         WHERE e.event_name = 'Trial Started'
@@ -2858,16 +2858,16 @@ router.get('/revenue-by-day', async (req, res) => {
       revenue_events AS (
         SELECT
           c.cohort_month,
-          c.user_id,
+          c.q_user_id,
           EXTRACT(DAY FROM (e.created_at - c.first_event)) as days_since_start,
           e.price_usd
         FROM cohorts c
-        JOIN events_v2 e ON c.user_id = e.user_id
+        JOIN events_v2 e ON c.q_user_id = e.q_user_id
         WHERE e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND e.created_at >= c.first_event
       ),
       cohort_sizes AS (
-        SELECT cohort_month, COUNT(DISTINCT user_id) as users
+        SELECT cohort_month, COUNT(DISTINCT q_user_id) as users
         FROM cohorts
         GROUP BY 1
       )
@@ -2942,7 +2942,7 @@ router.get('/troas', async (req, res) => {
       cohort_users AS (
         SELECT
           TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as cohort_month,
-          user_id,
+          q_user_id,
           MIN(created_at) as first_event
         FROM events_v2
         WHERE event_name = 'Trial Started'
@@ -2956,7 +2956,7 @@ router.get('/troas', async (req, res) => {
           EXTRACT(DAY FROM (e.created_at - cu.first_event)) as days_since_start,
           e.price_usd
         FROM cohort_users cu
-        JOIN events_v2 e ON cu.user_id = e.user_id
+        JOIN events_v2 e ON cu.q_user_id = e.q_user_id
         WHERE e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND e.created_at >= cu.first_event
       )
@@ -3032,7 +3032,7 @@ router.get('/renewal-rates', async (req, res) => {
       WITH yearly_subs AS (
         SELECT
           TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as cohort_month,
-          user_id,
+          q_user_id,
           MIN(created_at) as first_purchase
         FROM events_v2
         WHERE event_name IN ('Trial Converted', 'Subscription Started')
@@ -3043,10 +3043,10 @@ router.get('/renewal-rates', async (req, res) => {
       renewals AS (
         SELECT
           ys.cohort_month,
-          ys.user_id,
+          ys.q_user_id,
           COUNT(*) as renewal_count
         FROM yearly_subs ys
-        JOIN events_v2 e ON ys.user_id = e.user_id
+        JOIN events_v2 e ON ys.q_user_id = e.q_user_id
         WHERE e.event_name = 'Subscription Renewed'
           AND e.product_id LIKE '%yearly%'
           AND e.created_at > ys.first_purchase + INTERVAL '330 days'
@@ -3054,11 +3054,11 @@ router.get('/renewal-rates', async (req, res) => {
       )
       SELECT
         ys.cohort_month,
-        COUNT(DISTINCT ys.user_id) as yearly_subscribers,
-        COUNT(DISTINCT r.user_id) as renewed,
+        COUNT(DISTINCT ys.q_user_id) as yearly_subscribers,
+        COUNT(DISTINCT r.q_user_id) as renewed,
         EXTRACT(MONTH FROM AGE(NOW(), MIN(ys.first_purchase))) as cohort_age_months
       FROM yearly_subs ys
-      LEFT JOIN renewals r ON ys.cohort_month = r.cohort_month AND ys.user_id = r.user_id
+      LEFT JOIN renewals r ON ys.cohort_month = r.cohort_month AND ys.q_user_id = r.q_user_id
       GROUP BY ys.cohort_month
       ORDER BY ys.cohort_month DESC
     `;
@@ -3115,9 +3115,9 @@ router.get('/countries', async (req, res) => {
           COALESCE(e.country_code, 'XX') as country_code,
           CASE WHEN e.campaign_id IS NOT NULL THEN 'apple_ads' ELSE 'organic' END as source,
           SUM(CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN e.price_usd ELSE 0 END) as revenue,
-          COUNT(DISTINCT CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started') AND e.product_id LIKE '%yearly%' THEN e.user_id END) +
-          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Converted' AND e.product_id NOT LIKE '%yearly%' THEN e.user_id END) as subscribers,
-          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.user_id END) as trials
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started') AND e.product_id LIKE '%yearly%' THEN e.q_user_id END) +
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Converted' AND e.product_id NOT LIKE '%yearly%' THEN e.q_user_id END) as subscribers,
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.q_user_id END) as trials
         FROM events_v2 e
         WHERE e.created_at >= $1 AND e.created_at < $2::date + 1
         GROUP BY 1, 2, 3
