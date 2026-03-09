@@ -36,18 +36,81 @@ const COP_DECAY_CURVE = {
   365: 1.00,  // 100% by 1 year
 };
 
-// Get interpolated decay factor for any day
-const getDecayFactor = (days) => {
+// ROAS decay curve - % of final ROAS by cohort age
+// Based on analysis of mature cohorts (300+ days) from /dashboard/roas-evolution
+// Includes both initial purchases and subscription renewals
+const ROAS_DECAY_CURVE = {
+  0: 0.05,    // ~5% - minimal revenue day 0
+  4: 0.15,    // ~15% - first trial conversions
+  7: 0.22,    // 22% by week 1
+  14: 0.28,   // ~28% by week 2
+  30: 0.37,   // 37% by month 1
+  60: 0.50,   // 50% by month 2
+  90: 0.60,   // 60% by month 3
+  120: 0.68,  // 68% by month 4
+  150: 0.75,  // 75% by month 5
+  180: 0.81,  // 81% by month 6
+  270: 0.91,  // ~91% by month 9
+  365: 1.00,  // 100% by 1 year
+};
+
+// Get interpolated decay factor for any day from a curve
+const getDecayFactor = (days, curve = COP_DECAY_CURVE) => {
   if (days >= 365) return 1.0;
-  if (days < 0) return COP_DECAY_CURVE[0];
-  const keys = Object.keys(COP_DECAY_CURVE).map(Number).sort((a, b) => a - b);
+  if (days < 0) return curve[Object.keys(curve)[0]];
+  const keys = Object.keys(curve).map(Number).sort((a, b) => a - b);
   for (let i = 0; i < keys.length - 1; i++) {
     if (days >= keys[i] && days < keys[i + 1]) {
       const t = (days - keys[i]) / (keys[i + 1] - keys[i]);
-      return COP_DECAY_CURVE[keys[i]] + t * (COP_DECAY_CURVE[keys[i + 1]] - COP_DECAY_CURVE[keys[i]]);
+      return curve[keys[i]] + t * (curve[keys[i + 1]] - curve[keys[i]]);
     }
   }
-  return COP_DECAY_CURVE[keys[keys.length - 1]];
+  return curve[keys[keys.length - 1]];
+};
+
+// Get ROAS decay factor
+const getRoasDecayFactor = (days) => getDecayFactor(days, ROAS_DECAY_CURVE);
+
+// Find days when ROAS reaches target using the decay curve
+const findPaybackDays = (currentRoas, currentDays, predictedFinalRoas) => {
+  if (!predictedFinalRoas || predictedFinalRoas <= 0) return null;
+
+  // If predicted final ROAS < 1.0, cohort will never pay back
+  if (predictedFinalRoas < 1.0) return null;
+
+  // If already paid back
+  if (currentRoas >= 1.0) {
+    // Find when it crossed 1.0 by interpolating
+    const keys = Object.keys(ROAS_DECAY_CURVE).map(Number).sort((a, b) => a - b);
+    for (let i = 0; i < keys.length; i++) {
+      const day = keys[i];
+      const roasAtDay = predictedFinalRoas * ROAS_DECAY_CURVE[day];
+      if (roasAtDay >= 1.0) {
+        if (i === 0) return day;
+        const prevDay = keys[i - 1];
+        const prevRoas = predictedFinalRoas * ROAS_DECAY_CURVE[prevDay];
+        const t = (1.0 - prevRoas) / (roasAtDay - prevRoas);
+        return Math.round(prevDay + t * (day - prevDay));
+      }
+    }
+    return 365;
+  }
+
+  // Will pay back - find when by interpolating the curve
+  const keys = Object.keys(ROAS_DECAY_CURVE).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i < keys.length; i++) {
+    const day = keys[i];
+    const roasAtDay = predictedFinalRoas * ROAS_DECAY_CURVE[day];
+    if (roasAtDay >= 1.0) {
+      if (i === 0) return day;
+      const prevDay = keys[i - 1];
+      const prevRoas = predictedFinalRoas * ROAS_DECAY_CURVE[prevDay];
+      const t = (1.0 - prevRoas) / (roasAtDay - prevRoas);
+      return Math.round(prevDay + t * (day - prevDay));
+    }
+  }
+
+  return null; // Never pays back within 365 days
 };
 
 // ============================================
@@ -688,73 +751,30 @@ router.get('/marketing', async (req, res) => {
       const roas180d = cohortAge >= 180 && spend > 0 ? (parseFloat(row.rev_180d) * PROCEEDS_FACTOR) / spend : null;
       const roasTotal = spend > 0 ? (parseFloat(row.rev_total) * PROCEEDS_FACTOR) / spend : null;
 
-      // Predict final COP and ROAS based on decay curve
-      // Use the current cohort age to determine decay factor
-      const decayFactor = getDecayFactor(cohortAge);
+      // Predict final COP and ROAS based on decay curves
+      const copDecayFactor = getDecayFactor(cohortAge, COP_DECAY_CURVE);
+      const roasDecayFactor = getRoasDecayFactor(cohortAge);
       const subsTotal = parseInt(row.subs_total) || 0;
       const revTotal = parseFloat(row.rev_total) || 0;
 
-      // Predict final values (revenue uses proceeds factor)
-      const predictedSubs = subsTotal > 0 ? subsTotal / decayFactor : 0;
-      const predictedRev = revTotal > 0 ? (revTotal * PROCEEDS_FACTOR) / decayFactor : 0;
-
+      // Predict final COP using COP decay curve
+      const predictedSubs = subsTotal > 0 ? subsTotal / copDecayFactor : 0;
       const copPredicted = predictedSubs > 0 ? spend / predictedSubs : null;
-      const roasPredicted = spend > 0 ? predictedRev / spend : null;
 
-      // Payback calculation - find when ROAS reaches 1x (breakeven)
-      // Build ROAS curve points: [days, roas] - include current total as last known point
-      const roasPoints = [
-        [4, roas4d],
-        [7, roas7d],
-        [30, roas30d],
-        [60, roas60d],
-        [180, roas180d],
-        [cohortAge, roasTotal],  // Current total ROAS at current age
-        [365, roasPredicted],
-      ]
-        .filter(([d, r]) => r != null && d <= Math.max(cohortAge, 365))
-        .sort((a, b) => a[0] - b[0]);
+      // Predict final ROAS using ROAS decay curve (with proceeds factor)
+      const roasPredicted = roasTotal && roasDecayFactor > 0 ? roasTotal / roasDecayFactor : null;
 
+      // Payback calculation using the ROAS decay curve
       let paybackDays = null;
       let predictedPaybackDays = null;
       const isPaidBack = roasTotal && roasTotal >= 1;
 
       if (isPaidBack) {
-        // Already paid back - find when it crossed 1x by interpolating
-        for (let i = 0; i < roasPoints.length; i++) {
-          const [days, roas] = roasPoints[i];
-          if (roas >= 1) {
-            if (i === 0) {
-              paybackDays = days;
-            } else {
-              // Interpolate between previous point and this one
-              const [prevDays, prevRoas] = roasPoints[i - 1];
-              const t = (1 - prevRoas) / (roas - prevRoas);
-              paybackDays = Math.round(prevDays + t * (days - prevDays));
-            }
-            break;
-          }
-        }
-      } else if (roasPredicted && roasPredicted > 0 && roasTotal && roasTotal > 0) {
-        // Not paid back yet - calculate predicted payback based on ROAS growth rate
-        // Use the growth from current ROAS (roasTotal at cohortAge) to predicted ROAS (at 365 days)
-        if (roasPredicted > roasTotal && cohortAge < 365) {
-          // Calculate daily ROAS growth rate from current age to 365 days
-          const daysRemaining = 365 - cohortAge;
-          const roasGrowth = roasPredicted - roasTotal;
-          const dailyGrowth = roasGrowth / daysRemaining;
-
-          // Calculate days needed to reach 1.0 from current position
-          const roasNeeded = 1 - roasTotal;
-          if (dailyGrowth > 0) {
-            const daysToPayback = roasNeeded / dailyGrowth;
-            predictedPaybackDays = Math.round(cohortAge + daysToPayback);
-            // Cap at reasonable maximum (5 years)
-            if (predictedPaybackDays > 1825) {
-              predictedPaybackDays = null;
-            }
-          }
-        }
+        // Already paid back - find when it crossed 1x using the curve
+        paybackDays = findPaybackDays(roasTotal, cohortAge, roasPredicted);
+      } else if (roasPredicted && roasPredicted >= 1) {
+        // Will pay back eventually - find predicted payback day
+        predictedPaybackDays = findPaybackDays(roasTotal, cohortAge, roasPredicted);
       }
 
       const paybackMonths = paybackDays ? Math.round(paybackDays / 30) : null;
