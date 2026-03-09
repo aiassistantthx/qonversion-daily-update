@@ -195,9 +195,24 @@ app.get('/debug/subscription-events', async (req, res) => {
       SELECT q_user_id, event_name, campaign_id FROM subscription_events WHERE event_date >= CURRENT_DATE - INTERVAL '7 days' LIMIT 3
     `);
 
+    // Debug: events by type for Mar 8-9
+    const recentEvents = await db.query(`
+      SELECT
+        DATE(event_date) as day,
+        event_name,
+        COUNT(*) as cnt,
+        SUM(COALESCE(price_usd, 0)) as total_price,
+        COUNT(*) FILTER (WHERE price_usd IS NOT NULL AND price_usd > 0) as with_price
+      FROM subscription_events
+      WHERE event_date >= '2026-03-08'
+      GROUP BY DATE(event_date), event_name
+      ORDER BY day DESC, cnt DESC
+    `);
+
     res.json({
       dateRange: dateRange.rows[0],
       dailyRevenue: dailyRevenue.rows,
+      recentEvents: recentEvents.rows,
       stats: stats.rows[0],
       attributed: attributed.rows[0],
       sample_user_attributions: sample_ua.rows,
