@@ -10,8 +10,11 @@ import {
   History,
   Globe,
   Search,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
+import { useTheme } from '../context/ThemeContext';
 import { SyncStatus } from './SyncStatus';
 
 const navItems = [
@@ -40,7 +43,7 @@ function DateRangePicker() {
             className={`px-2 py-1 text-xs rounded transition-colors ${
               (!isCustom && days === preset.days) || (isCustom && preset.days === null)
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                : 'bg-gray-700 dark:bg-gray-800 text-gray-300 hover:bg-gray-600 dark:hover:bg-gray-700'
             }`}
           >
             {preset.label}
@@ -53,13 +56,13 @@ function DateRangePicker() {
             type="date"
             value={customFrom}
             onChange={(e) => setCustomFrom(e.target.value)}
-            className="w-full px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
+            className="w-full px-2 py-1 text-xs bg-gray-700 dark:bg-gray-800 border border-gray-600 dark:border-gray-700 rounded text-white"
           />
           <input
             type="date"
             value={customTo}
             onChange={(e) => setCustomTo(e.target.value)}
-            className="w-full px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
+            className="w-full px-2 py-1 text-xs bg-gray-700 dark:bg-gray-800 border border-gray-600 dark:border-gray-700 rounded text-white"
           />
         </div>
       )}
@@ -69,7 +72,7 @@ function DateRangePicker() {
           id="compare-toggle"
           checked={compareEnabled}
           onChange={(e) => setCompareEnabled(e.target.checked)}
-          className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+          className="w-3 h-3 rounded border-gray-600 dark:border-gray-700 bg-gray-700 dark:bg-gray-800 text-blue-600 focus:ring-blue-500"
         />
         <label htmlFor="compare-toggle" className="text-xs text-gray-300 cursor-pointer">
           Compare to previous period
@@ -81,18 +84,28 @@ function DateRangePicker() {
 
 export default function Layout({ children }) {
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-white dark:bg-gray-950">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-white flex flex-col">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-xl font-bold">ASA Manager</h1>
-          <p className="text-xs text-gray-400 mt-1">Apple Search Ads</p>
+      <aside className="w-64 bg-gray-900 dark:bg-gray-950 text-white flex flex-col border-r border-gray-800 dark:border-gray-900">
+        <div className="p-4 border-b border-gray-800 dark:border-gray-900 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">ASA Manager</h1>
+            <p className="text-xs text-gray-400 mt-1">Apple Search Ads</p>
+          </div>
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-900 transition-colors"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </div>
 
         {/* Global Date Range Picker */}
-        <div className="p-4 border-b border-gray-800">
+        <div className="p-4 border-b border-gray-800 dark:border-gray-900">
           <p className="text-xs text-gray-400 mb-2">Date Range</p>
           <DateRangePicker />
         </div>
@@ -110,7 +123,7 @@ export default function Layout({ children }) {
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                       isActive
                         ? 'bg-blue-600 text-white'
-                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                        : 'text-gray-300 hover:bg-gray-800 dark:hover:bg-gray-900 hover:text-white'
                     }`}
                   >
                     <Icon size={18} />
@@ -122,13 +135,13 @@ export default function Layout({ children }) {
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-gray-800 dark:border-gray-900">
           <SyncStatus />
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
         <div className="p-6">{children}</div>
       </main>
     </div>
