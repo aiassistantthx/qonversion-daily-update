@@ -24,7 +24,6 @@ export default function Keywords() {
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [matchTypeFilter, setMatchTypeFilter] = useState('');
   const [sortField, setSortField] = useState('spend');
   const [sortDirection, setSortDirection] = useState('desc');
@@ -88,10 +87,6 @@ export default function Keywords() {
       result = result.filter(k => adGroupIds.includes(String(k.adgroup_id)));
     }
 
-    if (statusFilter) {
-      result = result.filter(k => k.keyword_status === statusFilter);
-    }
-
     if (matchTypeFilter) {
       result = result.filter(k => k.match_type === matchTypeFilter);
     }
@@ -114,13 +109,9 @@ export default function Keywords() {
           aVal = a.match_type || '';
           bVal = b.match_type || '';
           break;
-        case 'status':
-          aVal = a.keyword_status || '';
-          bVal = b.keyword_status || '';
-          break;
         case 'bid':
-          aVal = parseFloat(a.current_bid || a.bid_amount || 0);
-          bVal = parseFloat(b.current_bid || b.bid_amount || 0);
+          aVal = parseFloat(a.bid_amount || 0);
+          bVal = parseFloat(b.bid_amount || 0);
           break;
         case 'spend':
           aVal = parseFloat(a.spend_7d || 0);
@@ -168,7 +159,7 @@ export default function Keywords() {
     });
 
     return result;
-  }, [keywordsData, campaignIds, adGroupIds, statusFilter, matchTypeFilter, searchQuery, sortField, sortDirection]);
+  }, [keywordsData, campaignIds, adGroupIds, matchTypeFilter, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -434,16 +425,6 @@ export default function Keywords() {
         </div>
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-        >
-          <option value="">All Status</option>
-          <option value="ACTIVE">Active</option>
-          <option value="PAUSED">Paused</option>
-        </select>
-
-        <select
           value={matchTypeFilter}
           onChange={(e) => setMatchTypeFilter(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -478,17 +459,16 @@ export default function Keywords() {
                 <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
                 <SortHeader field="roas" className="text-right">ROAS</SortHeader>
                 <SortHeader field="cop" className="text-right">COP</SortHeader>
-                <TableHeader>Actions</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={11} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                     No keywords found. Select a campaign from the Campaigns page.
                   </TableCell>
                 </TableRow>
@@ -497,7 +477,7 @@ export default function Keywords() {
                   const spend = parseFloat(kw.spend_7d || 0);
                   const revenue = parseFloat(kw.revenue_7d || 0);
                   const roas = spend > 0 ? revenue / spend : 0;
-                  const bid = kw.current_bid || kw.bid_amount || 0;
+                  const bid = kw.bid_amount || 0;
 
                   return (
                     <TableRow key={kw.keyword_id} className="hover:bg-gray-50">
@@ -584,9 +564,6 @@ export default function Keywords() {
                       </TableCell>
                       <TableCell className="text-right">
                         {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={kw.keyword_status} />
                       </TableCell>
                     </TableRow>
                   );
