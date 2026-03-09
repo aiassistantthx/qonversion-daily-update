@@ -6,11 +6,12 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus } from '../lib/api';
+import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { Modal } from '../components/Modal';
+import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
 
 export default function Keywords() {
@@ -35,6 +36,7 @@ export default function Keywords() {
   const [bulkBidAmount, setBulkBidAmount] = useState('');
   const [bulkBidMode, setBulkBidMode] = useState('absolute'); // 'absolute' or 'percent'
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, message: '' });
+  const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 
@@ -87,6 +89,13 @@ export default function Keywords() {
       queryClient.invalidateQueries(['keywords']);
       setSelectedIds(new Set());
       setConfirmModal({ open: false, action: null, message: '' });
+    },
+  });
+
+  const createKeywordsMutation = useMutation({
+    mutationFn: (data) => createKeywords(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['keywords']);
     },
   });
 
@@ -346,6 +355,21 @@ export default function Keywords() {
     });
   };
 
+  const handleBulkCreate = async (keywords) => {
+    if (!campaignIds.length || !adGroupIds.length) {
+      throw new Error('Please select a campaign and ad group first');
+    }
+
+    const campaignId = campaignIds[0];
+    const adGroupId = adGroupIds[0];
+
+    await createKeywordsMutation.mutateAsync({
+      campaignId,
+      adGroupId,
+      keywords,
+    });
+  };
+
   const exportCSV = () => {
     const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Bid vs CPA Ratio', 'Recommended Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
@@ -434,9 +458,18 @@ export default function Keywords() {
           <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
 
-        <Button variant="secondary" onClick={exportCSV}>
-          <Download size={16} /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => setBulkAddModalOpen(true)}
+            disabled={!campaignIds.length || !adGroupIds.length}
+          >
+            <Plus size={16} /> Add Keywords
+          </Button>
+          <Button variant="secondary" onClick={exportCSV}>
+            <Download size={16} /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Active Filters */}
@@ -586,6 +619,15 @@ export default function Keywords() {
           </div>
         </Card>
       )}
+
+      {/* Bulk Add Modal */}
+      <BulkKeywordAdd
+        isOpen={bulkAddModalOpen}
+        onClose={() => setBulkAddModalOpen(false)}
+        campaignId={campaignIds[0]}
+        adGroupId={adGroupIds[0]}
+        onSuccess={handleBulkCreate}
+      />
 
       {/* Confirmation Modal */}
       {confirmModal.open && (
