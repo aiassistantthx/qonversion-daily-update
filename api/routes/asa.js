@@ -92,8 +92,8 @@ router.get('/campaigns', async (req, res) => {
       : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
 
     const revenueCondition = dateFilter.days
-      ? `se.event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `se.event_date >= '${dateFilter.from}' AND se.event_date <= '${dateFilter.to}'`;
+      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
 
     const performanceQuery = await db.query(`
       SELECT
