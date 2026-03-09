@@ -525,7 +525,7 @@ function Dashboard() {
                   </td>
                   <td style={{ ...styles.tdRight, color: row.isPaidBack ? '#10b981' : (row.predictedPaybackMonths ? '#f59e0b' : '#9ca3af') }}>
                     {row.paybackMonths ? `${row.paybackMonths}mo` :
-                     row.predictedPaybackMonths ? `~${row.predictedPaybackMonths}mo` : '—'}
+                     row.predictedPaybackMonths ? (row.predictedPaybackMonths > 24 ? '>2yr' : `~${row.predictedPaybackMonths}mo`) : '—'}
                   </td>
                 </tr>
               ))}
