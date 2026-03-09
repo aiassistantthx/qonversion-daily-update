@@ -1,6 +1,8 @@
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -49,11 +51,50 @@ export function RevenueByDayChart({ data, selectedCohorts }: RevenueByDayChartPr
     ? cohortMonths.filter(m => selectedCohorts.includes(m))
     : cohortMonths.slice(-8); // Last 8 cohorts by default
 
+  const handleExport = () => {
+    const headers = ['Cohort', 'Users', 'D0', 'D7', 'D14', 'D30', 'D60', 'D90', 'D120', 'D180'];
+    const rows = data.cohorts.map(c => [
+      c.month,
+      c.users,
+      c.revenue.d0.toFixed(2),
+      c.revenue.d7.toFixed(2),
+      c.revenue.d14.toFixed(2),
+      c.revenue.d30.toFixed(2),
+      c.revenue.d60.toFixed(2),
+      c.revenue.d90.toFixed(2),
+      c.revenue.d120.toFixed(2),
+      c.revenue.d180.toFixed(2),
+    ]);
+    exportToCSV('revenue-per-user', headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Cumulative Revenue per User by Day
-      </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+          Cumulative Revenue per User by Day
+        </h3>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
         How revenue accumulates as cohorts mature. Each line = one monthly cohort. Y-axis = cumulative ARPU.
       </p>

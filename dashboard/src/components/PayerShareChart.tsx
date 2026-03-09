@@ -1,6 +1,8 @@
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -56,11 +58,52 @@ export function PayerShareChart({ data, mode = 'all' }: PayerShareChartProps) {
   const chartData = data.chartData || [];
   const cohortMonths = data.cohorts?.map(c => c.month).slice(-6) || [];
 
+  const handleExport = () => {
+    const modeLabel = mode === 'trial' ? 'trial-conversions' : mode === 'direct' ? 'direct-purchases' : 'all-payers';
+    const headers = ['Cohort', 'Users', 'D1', 'D3', 'D7', 'D14', 'D30', 'D60'];
+    const rows = data.cohorts.map(c => {
+      const dataToShow = mode === 'trial' ? c.trialConversions : mode === 'direct' ? c.directPurchases : c.payerShare;
+      return [
+        c.month,
+        c.totalUsers,
+        formatPct(dataToShow.d1),
+        formatPct(dataToShow.d3),
+        formatPct(dataToShow.d7),
+        formatPct(dataToShow.d14),
+        formatPct(dataToShow.d30),
+        formatPct(dataToShow.d60),
+      ];
+    });
+    exportToCSV(`payer-share-${modeLabel}`, headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Payer Share by Day
-      </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+          Payer Share by Day
+        </h3>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
         % of users who became paying customers after N days. Each line = one monthly cohort.
       </p>

@@ -1,6 +1,8 @@
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -50,11 +52,51 @@ export function RetentionChart({ data, subscriptionType = 'all' }: RetentionChar
   ) || [];
   const cohortMonths = filteredCohorts.map(c => c.month).slice(-6);
 
+  const handleExport = () => {
+    const typeLabel = subscriptionType === 'all' ? 'all' : subscriptionType;
+    const headers = ['Cohort', 'Type', 'Users', 'D1', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90'];
+    const rows = filteredCohorts.map(c => [
+      c.month,
+      c.subscriptionType,
+      c.users,
+      formatRetention(c.retention.d1),
+      formatRetention(c.retention.d3),
+      formatRetention(c.retention.d7),
+      formatRetention(c.retention.d14),
+      formatRetention(c.retention.d30),
+      formatRetention(c.retention.d60),
+      formatRetention(c.retention.d90),
+    ]);
+    exportToCSV(`retention-${typeLabel}`, headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Retention by Day
-      </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+          Retention by Day
+        </h3>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
         % of users with active subscription after N days. Each line = one monthly cohort.
       </p>
