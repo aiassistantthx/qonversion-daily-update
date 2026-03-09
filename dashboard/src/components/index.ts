@@ -55,3 +55,5 @@ export type { MetricOption } from './MetricSelector';
 
 export { PayerShareChart } from './PayerShareChart';
 export type { PayerShareData } from './PayerShareChart';
+
+export { useSortableData, SortIcon } from './SortableTable';

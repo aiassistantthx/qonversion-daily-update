@@ -1,5 +1,6 @@
 import { Download } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
+import { useSortableData, SortIcon } from './SortableTable';
 
 export interface RenewalRatesData {
   cohorts: Array<{
@@ -19,6 +20,8 @@ interface RenewalRatesTableProps {
   data: RenewalRatesData | undefined;
 }
 
+type CohortType = RenewalRatesData['cohorts'][0];
+
 export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
   if (!data) {
     return (
@@ -29,8 +32,10 @@ export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
     );
   }
 
-  const sortedCohorts = [...(data.cohorts || [])].sort((a, b) =>
-    b.month.localeCompare(a.month)
+  const { sortedData: sortedCohorts, sortKey, sortAsc, handleSort } = useSortableData<CohortType>(
+    data.cohorts || [],
+    'month' as keyof CohortType,
+    false
   );
 
   const maturedCohorts = sortedCohorts.filter(c => c.isMatured);
@@ -106,12 +111,42 @@ export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              <th style={thStyle}>Cohort</th>
-              <th style={thRightStyle}>Yearly Subs</th>
-              <th style={thRightStyle}>Eligible</th>
-              <th style={thRightStyle}>Renewed</th>
-              <th style={thRightStyle}>Rate</th>
-              <th style={thRightStyle}>Age</th>
+              <th
+                style={{ ...thStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('month' as keyof CohortType)}
+              >
+                Cohort <SortIcon column="month" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                style={{ ...thRightStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('yearlySubscribers' as keyof CohortType)}
+              >
+                Yearly Subs <SortIcon column="yearlySubscribers" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                style={{ ...thRightStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('eligibleForRenewal' as keyof CohortType)}
+              >
+                Eligible <SortIcon column="eligibleForRenewal" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                style={{ ...thRightStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('renewed' as keyof CohortType)}
+              >
+                Renewed <SortIcon column="renewed" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                style={{ ...thRightStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('renewalRate' as keyof CohortType)}
+              >
+                Rate <SortIcon column="renewalRate" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                style={{ ...thRightStyle, cursor: 'pointer' }}
+                onClick={() => handleSort('cohortAge' as keyof CohortType)}
+              >
+                Age <SortIcon column="cohortAge" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
               <th style={thStyle}>Status</th>
             </tr>
           </thead>

@@ -1,12 +1,18 @@
 import { TrendingUp, TrendingDown, Download } from 'lucide-react';
 import type { CampaignCop } from '../api';
 import { exportToCSV } from '../utils/export';
+import { useSortableData, SortIcon } from './SortableTable';
 
 interface CampaignTableProps {
   campaigns: CampaignCop[];
 }
 
 export function CampaignTable({ campaigns }: CampaignTableProps) {
+  const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<CampaignCop>(
+    campaigns,
+    'spend' as keyof CampaignCop,
+    false
+  );
   const totalSpend = campaigns.reduce((sum, c) => sum + c.spend, 0);
 
   const formatCurrency = (val: number) =>
@@ -14,7 +20,7 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
 
   const handleExport = () => {
     const headers = ['Campaign', 'Campaign ID', 'COP', 'Spend', 'Share %', 'ROAS', 'Payers', 'Installs'];
-    const rows = campaigns.map(c => {
+    const rows = sortedData.map(c => {
       const sharePercent = totalSpend > 0 ? (c.spend / totalSpend) * 100 : 0;
       return [
         c.campaignName || `Campaign ${c.campaignId}`,
@@ -48,15 +54,35 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
         <table className="w-full">
           <thead>
             <tr className="text-xs text-terminal-muted border-b border-terminal-border">
-              <th className="text-left px-4 py-2 font-medium">Campaign</th>
-              <th className="text-right px-4 py-2 font-medium">COP</th>
-              <th className="text-right px-4 py-2 font-medium">Spend</th>
+              <th
+                className="text-left px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                onClick={() => handleSort('campaignName' as keyof CampaignCop)}
+              >
+                Campaign <SortIcon column="campaignName" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                onClick={() => handleSort('cop' as keyof CampaignCop)}
+              >
+                COP <SortIcon column="cop" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th
+                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                onClick={() => handleSort('spend' as keyof CampaignCop)}
+              >
+                Spend <SortIcon column="spend" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
               <th className="text-right px-4 py-2 font-medium">Share</th>
-              <th className="text-right px-4 py-2 font-medium">ROAS</th>
+              <th
+                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                onClick={() => handleSort('roas' as keyof CampaignCop)}
+              >
+                ROAS <SortIcon column="roas" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
             </tr>
           </thead>
           <tbody>
-            {campaigns.map((campaign) => {
+            {sortedData.map((campaign) => {
               const sharePercent = totalSpend > 0 ? (campaign.spend / totalSpend) * 100 : 0;
               const isGoodCop = campaign.cop !== null && campaign.cop < 50;
               const isGoodRoas = campaign.roas !== null && campaign.roas > 1;
