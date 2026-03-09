@@ -10,7 +10,7 @@ import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bul
 import { useDateRange } from '../context/DateRangeContext';
 import { Modal } from '../components/Modal';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp
 } from 'lucide-react';
 
 export default function Keywords() {
@@ -190,6 +190,14 @@ export default function Keywords() {
           aVal = parseFloat(a.cpm_7d || 999999);
           bVal = parseFloat(b.cpm_7d || 999999);
           break;
+        case 'bidVsCpa':
+          const aBid = parseFloat(a.bid_amount || 0);
+          const aCpa = parseFloat(a.cpa_7d || 0);
+          aVal = aCpa > 0 ? aBid / aCpa : 0;
+          const bBid = parseFloat(b.bid_amount || 0);
+          const bCpa = parseFloat(b.cpa_7d || 0);
+          bVal = bCpa > 0 ? bBid / bCpa : 0;
+          break;
         default:
           aVal = a.keyword_text || '';
           bVal = b.keyword_text || '';
@@ -339,18 +347,24 @@ export default function Keywords() {
   };
 
   const exportCSV = () => {
-    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Bid vs CPA Ratio', 'Recommended Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
       const spend = parseFloat(k.spend_7d || 0);
       const revenue = parseFloat(k.revenue_7d || 0);
       const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
       const ttr = parseFloat(k.ttr_7d || 0);
       const cvr = parseFloat(k.cvr_7d || 0);
+      const bid = parseFloat(k.bid_amount || 0);
+      const cpa = parseFloat(k.cpa_7d || 0);
+      const bidVsCpaRatio = cpa > 0 ? (bid / cpa).toFixed(2) : '';
+      const recommendedBid = cpa > 0 ? Math.max(0.5, cpa * 1.2).toFixed(2) : '';
       return [
         `"${k.keyword_text}"`,
         k.match_type,
         k.keyword_status,
         k.current_bid || k.bid_amount || '',
+        bidVsCpaRatio,
+        recommendedBid,
         spend.toFixed(2),
         k.impressions_7d || 0,
         parseFloat(k.sov || 0).toFixed(2),
@@ -645,6 +659,7 @@ export default function Keywords() {
                 <SortHeader field="keyword">Keyword</SortHeader>
                 <SortHeader field="matchType">Match</SortHeader>
                 <SortHeader field="bid" className="text-right">Bid</SortHeader>
+                <SortHeader field="bidVsCpa" className="text-right">Bid vs CPA</SortHeader>
                 <SortHeader field="spend" className="text-right">Spend</SortHeader>
                 <SortHeader field="impressions" className="text-right">Impressions</SortHeader>
                 <SortHeader field="sov" className="text-right">SOV %</SortHeader>
@@ -663,11 +678,11 @@ export default function Keywords() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={17} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={18} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={17} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={18} className="text-center py-8 text-gray-500">
                     No keywords found. Select a campaign from the Campaigns page.
                   </TableCell>
                 </TableRow>
@@ -676,7 +691,11 @@ export default function Keywords() {
                   const spend = parseFloat(kw.spend_7d || 0);
                   const revenue = parseFloat(kw.revenue_7d || 0);
                   const roas = spend > 0 ? revenue / spend : 0;
-                  const bid = kw.bid_amount || 0;
+                  const bid = parseFloat(kw.bid_amount || 0);
+                  const cpa = parseFloat(kw.cpa_7d || 0);
+                  const bidVsCpaRatio = cpa > 0 ? bid / cpa : 0;
+                  const isOverpaying = bidVsCpaRatio > 1.5 && cpa > 0;
+                  const recommendedBid = cpa > 0 ? Math.max(0.5, cpa * 1.2) : bid;
 
                   return (
                     <TableRow key={kw.keyword_id} className="hover:bg-gray-50">
@@ -741,6 +760,25 @@ export default function Keywords() {
                               <Edit2 size={12} />
                             </button>
                           </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {cpa > 0 ? (
+                          <div className="flex items-center justify-end gap-2">
+                            {isOverpaying && (
+                              <AlertTriangle size={14} className="text-orange-500" title="Bid significantly higher than CPA" />
+                            )}
+                            <span className={isOverpaying ? 'text-orange-600 font-medium' : ''}>
+                              ${bid.toFixed(2)} / ${cpa.toFixed(2)}
+                            </span>
+                            {isOverpaying && (
+                              <span className="text-xs text-orange-600" title={`Recommended bid: $${recommendedBid.toFixed(2)}`}>
+                                ({(bidVsCpaRatio * 100).toFixed(0)}%)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
