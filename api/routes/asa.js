@@ -132,14 +132,13 @@ router.get('/campaigns', async (req, res) => {
       ) c
       LEFT JOIN (
         SELECT
-          ua.campaign_id,
-          SUM(CASE WHEN se.refund = false THEN COALESCE(se.price_usd, 0) ELSE 0 END) as revenue,
-          COUNT(DISTINCT CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN se.q_user_id END) as paid_users
-        FROM subscription_events se
-        JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
+          campaign_id,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
+        FROM events_v2
         WHERE ${revenueCondition}
-          AND ua.campaign_id IS NOT NULL
-        GROUP BY ua.campaign_id
+          AND campaign_id IS NOT NULL
+        GROUP BY campaign_id
       ) r ON c.campaign_id = r.campaign_id
     `);
 
