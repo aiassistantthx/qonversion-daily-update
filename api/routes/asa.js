@@ -565,6 +565,117 @@ router.patch('/campaigns/:id/budget', async (req, res) => {
   }
 });
 
+/**
+ * POST /asa/campaigns/:id/copy
+ * Copy existing campaign with optional modifications
+ */
+router.post('/campaigns/:id/copy', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      copyAdGroups = true,
+      copyKeywords = true
+    } = req.body;
+
+    // Get original campaign
+    const originalCampaign = await appleAds.getCampaign(id);
+
+    if (!originalCampaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    // Create new campaign with copied settings
+    const campaignPayload = {
+      name: name || `${originalCampaign.name} (Copy)`,
+      adamId: originalCampaign.adamId,
+      countriesOrRegions: originalCampaign.countriesOrRegions,
+      supplySources: originalCampaign.supplySources,
+      budgetAmount: originalCampaign.budgetAmount,
+      dailyBudgetAmount: originalCampaign.dailyBudgetAmount,
+      status: 'PAUSED'
+    };
+
+    const newCampaign = await appleAds.createCampaign(campaignPayload);
+
+    let copiedAdGroups = [];
+    let copiedKeywords = 0;
+
+    // Copy ad groups if requested
+    if (copyAdGroups) {
+      const originalAdGroups = await appleAds.getAdGroups(id);
+
+      for (const adGroup of originalAdGroups) {
+        // Create ad group copy
+        const adGroupPayload = {
+          name: adGroup.name,
+          defaultBidAmount: adGroup.defaultBidAmount,
+          status: 'PAUSED'
+        };
+
+        const newAdGroupResponse = await appleAds.request(
+          `/campaigns/${newCampaign.id}/adgroups`,
+          'POST',
+          adGroupPayload
+        );
+        const newAdGroup = newAdGroupResponse.data;
+        copiedAdGroups.push(newAdGroup);
+
+        // Copy keywords if requested
+        if (copyKeywords) {
+          const keywordsResponse = await appleAds.request(
+            `/campaigns/${id}/adgroups/${adGroup.id}/keywords`,
+            'GET'
+          );
+          const keywords = keywordsResponse.data;
+
+          if (keywords && keywords.length > 0) {
+            const keywordsToCreate = keywords.map(kw => ({
+              text: kw.text,
+              matchType: kw.matchType,
+              bidAmount: kw.bidAmount,
+              status: 'PAUSED'
+            }));
+
+            await appleAds.createKeywords(newCampaign.id, newAdGroup.id, keywordsToCreate);
+            copiedKeywords += keywordsToCreate.length;
+          }
+        }
+      }
+    }
+
+    // Record change
+    await recordChange(
+      'campaign',
+      newCampaign.id,
+      'create',
+      'campaign',
+      null,
+      JSON.stringify({
+        name: newCampaign.name,
+        copiedFrom: id,
+        copiedAdGroups: copiedAdGroups.length,
+        copiedKeywords
+      }),
+      'api',
+      null,
+      req
+    );
+
+    res.json({
+      success: true,
+      data: {
+        campaign: newCampaign,
+        adGroupsCopied: copiedAdGroups.length,
+        keywordsCopied: copiedKeywords
+      }
+    });
+  } catch (error) {
+    console.error('Failed to copy campaign:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================
 // AD GROUPS
 // ================================================

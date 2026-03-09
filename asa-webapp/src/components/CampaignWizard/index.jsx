@@ -13,22 +13,41 @@ const STEPS = [
   { id: 'review', title: 'Review', component: ReviewStep },
 ];
 
-export default function CampaignWizard({ onSubmit, onCancel, isSubmitting }) {
+export default function CampaignWizard({ onSubmit, onCancel, isSubmitting, initialData }) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [data, setData] = useState({
-    name: '',
-    adamId: '',
-    countriesOrRegions: [],
-    supplySources: ['APPSTORE_SEARCH_RESULTS'],
-    adGroupName: '',
-    defaultBid: '1.00',
-    keywords: [],
-    negativeKeywords: [],
-    dailyBudget: '',
-    totalBudget: '',
-    startDate: '',
-    endDate: '',
-    status: 'PAUSED',
+  const [data, setData] = useState(() => {
+    if (initialData) {
+      return {
+        name: `${initialData.name} (Copy)`,
+        adamId: initialData.adamId || '',
+        countriesOrRegions: initialData.countriesOrRegions || [],
+        supplySources: initialData.supplySources || ['APPSTORE_SEARCH_RESULTS'],
+        adGroupName: initialData.adGroups?.[0]?.name ? `${initialData.adGroups[0].name} (Copy)` : '',
+        defaultBid: initialData.adGroups?.[0]?.defaultBidAmount?.amount || '1.00',
+        keywords: [],
+        negativeKeywords: [],
+        dailyBudget: initialData.dailyBudgetAmount?.amount || '',
+        totalBudget: initialData.budgetAmount?.amount || '',
+        startDate: '',
+        endDate: '',
+        status: 'PAUSED',
+      };
+    }
+    return {
+      name: '',
+      adamId: '',
+      countriesOrRegions: [],
+      supplySources: ['APPSTORE_SEARCH_RESULTS'],
+      adGroupName: '',
+      defaultBid: '1.00',
+      keywords: [],
+      negativeKeywords: [],
+      dailyBudget: '',
+      totalBudget: '',
+      startDate: '',
+      endDate: '',
+      status: 'PAUSED',
+    };
   });
   const [errors, setErrors] = useState({});
 

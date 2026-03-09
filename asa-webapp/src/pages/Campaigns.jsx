@@ -13,7 +13,7 @@ import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import {
   ChevronUp, ChevronDown, Play, Pause,
-  Search, ArrowRight, Layers, KeyRound, Download
+  Search, ArrowRight, Layers, KeyRound, Download, Copy
 } from 'lucide-react';
 
 const DEFAULT_COLUMNS = {
@@ -445,14 +445,24 @@ export default function Campaigns() {
                       </TableCell>
                     )}
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
-                        onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
-                        loading={statusMutation.isPending}
-                      >
-                        {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(`/campaigns/create?copy=${campaign.id}`)}
+                          title="Copy campaign"
+                        >
+                          <Copy size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
+                          onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
+                          loading={statusMutation.isPending}
+                        >
+                          {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
