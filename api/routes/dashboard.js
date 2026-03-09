@@ -1172,52 +1172,67 @@ router.get('/forecast', async (req, res) => {
       ? Math.round((currentMonthNewSubs / currentDay) * daysInCurrentMonth)
       : avgNewSubsPerMonth;
 
+    // Get baseline renewals from last 3 full months
+    // This represents ongoing renewals from ALL historical cohorts
+    const baselineRenewalsCount = last3Months.length > 0
+      ? Math.round(last3Months.reduce((s, r) => s + parseInt(r.renewals || 0), 0) / last3Months.length)
+      : 2000;
+    const baselineRenewalsRevenue = baselineRenewalsCount * avgPrice;
+
     // Build forecast using cohort model
     const renewalForecast = [];
-    const projectedCohorts = {}; // Track new cohorts we project
+    const projectedCohorts = []; // Track new cohorts for future renewal calculation
 
     for (let i = 0; i <= 12; i++) {
       const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastDate.getFullYear()}-${String(forecastDate.getMonth() + 1).padStart(2, '0')}`;
 
       let newSubsRevenue = 0;
-      let renewalsRevenue = 0;
-      let renewalsCount = 0;
       let newSubsCount = 0;
 
       if (i === 0) {
         // Current month: extrapolate from partial data
         newSubsRevenue = extrapolatedCurrentMonthRevenue;
         newSubsCount = extrapolatedCurrentMonthNewSubs;
-        // Add this as a projected cohort for future renewal calculation
-        projectedCohorts[forecastMonthStr] = { subscribers: newSubsCount, avgPrice };
       } else {
         // Future month: new subscribers at avg rate
         newSubsCount = avgNewSubsPerMonth;
         newSubsRevenue = newSubsCount * avgPrice;
-        projectedCohorts[forecastMonthStr] = { subscribers: newSubsCount, avgPrice };
       }
 
-      // Calculate renewals from historical cohorts (subscribed 12 months ago)
+      // Track this cohort for future renewals
+      projectedCohorts.push({ month: forecastMonthStr, subscribers: newSubsCount });
+
+      // Renewals = baseline renewals + delta from cohort size changes
+      // The baseline already includes renewals from all historical cohorts
+      // We need to adjust for:
+      // 1. Cohort that's renewing now vs cohort from 12 months ago in baseline
+      // 2. Growth/decline in cohort sizes over time
+
+      // Get cohort from 12 months ago (relative to this forecast month)
       const renewalSourceMonth = addMonths(forecastMonthStr, -12);
-      if (cohorts[renewalSourceMonth]) {
-        const cohort = cohorts[renewalSourceMonth];
-        const renewingSubs = Math.round(cohort.subscribers * RENEWAL_RATE);
-        renewalsCount += renewingSubs;
-        renewalsRevenue += renewingSubs * cohort.avgPrice;
+      const historicalCohort = cohorts[renewalSourceMonth];
+
+      // Get the cohort from 12 months before the baseline period (for delta calculation)
+      const lastFullMonthStr = last3Months[last3Months.length - 1]?.month;
+      const baselineSourceMonth = lastFullMonthStr ? addMonths(lastFullMonthStr, -12) : null;
+      const baselineCohort = baselineSourceMonth ? cohorts[baselineSourceMonth] : null;
+
+      // Calculate renewal delta: (current renewing cohort - baseline renewing cohort) * renewal_rate
+      let renewalsDelta = 0;
+      if (historicalCohort && baselineCohort) {
+        const cohortDiff = historicalCohort.subscribers - baselineCohort.subscribers;
+        renewalsDelta = Math.round(cohortDiff * RENEWAL_RATE);
       }
 
-      // Calculate renewals from projected cohorts (for months 12+)
-      if (i >= 12) {
-        const projectedSourceMonth = addMonths(forecastMonthStr, -12);
-        if (projectedCohorts[projectedSourceMonth]) {
-          const cohort = projectedCohorts[projectedSourceMonth];
-          const renewingSubs = Math.round(cohort.subscribers * RENEWAL_RATE);
-          renewalsCount += renewingSubs;
-          renewalsRevenue += renewingSubs * cohort.avgPrice;
-        }
+      // Add renewals from projected cohorts that reach 12 months during this forecast
+      let projectedRenewals = 0;
+      if (i >= 12 && projectedCohorts[i - 12]) {
+        projectedRenewals = Math.round(projectedCohorts[i - 12].subscribers * RENEWAL_RATE);
       }
 
+      const renewalsCount = baselineRenewalsCount + renewalsDelta + projectedRenewals;
+      const renewalsRevenue = renewalsCount * avgPrice;
       const totalRevenue = newSubsRevenue + renewalsRevenue;
 
       renewalForecast.push({
