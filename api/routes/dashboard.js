@@ -2154,4 +2154,102 @@ router.get('/cohort-analysis', async (req, res) => {
   }
 });
 
+// ============================================
+// DEBUG - Attribution timeline analysis
+// ============================================
+router.get('/debug-attribution', async (req, res) => {
+  try {
+    // 1. Campaign_id coverage by install date
+    const timelineResult = await db.query(`
+      SELECT
+        DATE_TRUNC('day', install_date)::date as date,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE media_source = 'Apple AdServices') as asa_users,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE media_source = 'Apple AdServices' AND campaign_id IS NOT NULL) as with_campaign_id,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE media_source = 'Apple AdServices' AND campaign_id IS NULL) as no_campaign_id
+      FROM events_v2
+      WHERE install_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY DATE_TRUNC('day', install_date)
+      ORDER BY date DESC
+    `);
+
+    // 2. Check user_attributions table coverage
+    const userAttributionsResult = await db.query(`
+      SELECT
+        COUNT(*) as total_users,
+        COUNT(campaign_id) as with_campaign_id,
+        COUNT(adgroup_id) as with_adgroup_id,
+        COUNT(keyword_id) as with_keyword_id
+      FROM user_attributions
+    `);
+
+    // 3. Compare events_v2 vs user_attributions for ASA users
+    const comparisonResult = await db.query(`
+      SELECT
+        'events_v2 ASA users' as source,
+        COUNT(DISTINCT q_user_id) as total,
+        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as with_campaign
+      FROM events_v2
+      WHERE media_source = 'Apple AdServices'
+      UNION ALL
+      SELECT
+        'user_attributions' as source,
+        COUNT(*) as total,
+        COUNT(CASE WHEN campaign_id IS NOT NULL THEN 1 END) as with_campaign
+      FROM user_attributions
+    `);
+
+    // 4. Sample ASA users without campaign_id (check if they exist in user_attributions)
+    const missingCampaignSample = await db.query(`
+      WITH missing_users AS (
+        SELECT DISTINCT q_user_id, install_date
+        FROM events_v2
+        WHERE media_source = 'Apple AdServices'
+          AND campaign_id IS NULL
+        ORDER BY install_date DESC
+        LIMIT 20
+      )
+      SELECT
+        mu.q_user_id,
+        mu.install_date,
+        ua.campaign_id as ua_campaign_id,
+        ua.adgroup_id as ua_adgroup_id,
+        ua.keyword_id as ua_keyword_id,
+        ua.created_at as ua_created_at
+      FROM missing_users mu
+      LEFT JOIN user_attributions ua ON mu.q_user_id = ua.q_user_id
+    `);
+
+    // 5. When did campaign_id start appearing in events_v2?
+    const firstCampaignIdResult = await db.query(`
+      SELECT
+        MIN(install_date) as first_install_with_campaign_id,
+        MIN(event_date) as first_event_with_campaign_id
+      FROM events_v2
+      WHERE campaign_id IS NOT NULL
+    `);
+
+    // 6. Check if user_attributions has data we can backfill
+    const backfillPotentialResult = await db.query(`
+      SELECT COUNT(DISTINCT e.q_user_id) as users_to_backfill
+      FROM events_v2 e
+      JOIN user_attributions ua ON e.q_user_id = ua.q_user_id
+      WHERE e.media_source = 'Apple AdServices'
+        AND e.campaign_id IS NULL
+        AND ua.campaign_id IS NOT NULL
+    `);
+
+    res.json({
+      timeline: timelineResult.rows,
+      userAttributions: userAttributionsResult.rows[0],
+      comparison: comparisonResult.rows,
+      missingCampaignSample: missingCampaignSample.rows,
+      firstCampaignId: firstCampaignIdResult.rows[0],
+      backfillPotential: backfillPotentialResult.rows[0],
+    });
+  } catch (error) {
+    console.error('Debug attribution error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
