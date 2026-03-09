@@ -1206,6 +1206,10 @@ router.get('/forecast', async (req, res) => {
       ? Math.round(avgMonthlySpend / currentCOP)
       : 0;
 
+    // Constants for projection assumptions
+    const RENEWAL_RATE = 0.70;
+    const PROCEEDS_FACTOR = 0.82;
+
     // Baseline already includes new subs + renewals at current marketing spend level
     // totalForecastRevenue = baseline (no need to add extra since marketing spend stays same)
     for (let i = 0; i < renewalForecast.length; i++) {
