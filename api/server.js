@@ -542,8 +542,7 @@ app.post('/migrate/asa', async (req, res) => {
       message TEXT,
       acknowledged BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW(),
-      acknowledged_at TIMESTAMP,
-      UNIQUE(campaign_id, DATE(created_at))
+      acknowledged_at TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_budget_alerts_campaign ON asa_budget_alerts(campaign_id);
     CREATE INDEX IF NOT EXISTS idx_budget_alerts_date ON asa_budget_alerts(created_at);
