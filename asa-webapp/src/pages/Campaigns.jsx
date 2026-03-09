@@ -7,12 +7,34 @@ import { Button } from '../components/Button';
 import { StatusBadge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
+import { ColumnPicker } from '../components/ColumnPicker';
 import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useColumnSettings } from '../hooks/useColumnSettings';
 import {
   ChevronUp, ChevronDown, Play, Pause,
   Search, ArrowRight, Layers, KeyRound, Download
 } from 'lucide-react';
+
+const DEFAULT_COLUMNS = {
+  status: true,
+  health: true,
+  spend: true,
+  revenue: true,
+  roas: true,
+  installs: true,
+  cpa: true,
+};
+
+const COLUMN_DEFINITIONS = [
+  { id: 'status', label: 'Status' },
+  { id: 'health', label: 'Health' },
+  { id: 'spend', label: 'Spend' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'roas', label: 'ROAS' },
+  { id: 'installs', label: 'Installs' },
+  { id: 'cpa', label: 'CPA' },
+];
 
 export default function Campaigns() {
   const navigate = useNavigate();
@@ -25,6 +47,11 @@ export default function Campaigns() {
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const { visibleColumns, toggleColumn, resetToDefault } = useColumnSettings(
+    'campaigns-columns',
+    DEFAULT_COLUMNS
+  );
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -189,6 +216,8 @@ export default function Campaigns() {
     </TableHeader>
   );
 
+  const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 3;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -196,9 +225,17 @@ export default function Campaigns() {
           <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
           <p className="text-gray-500">{dateLabel}</p>
         </div>
-        <Button variant="secondary" onClick={exportCSV}>
-          <Download size={16} /> Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <ColumnPicker
+            columns={COLUMN_DEFINITIONS}
+            visibleColumns={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetToDefault}
+          />
+          <Button variant="secondary" onClick={exportCSV}>
+            <Download size={16} /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Filters and Actions */}
@@ -265,28 +302,28 @@ export default function Campaigns() {
                 />
               </TableHeader>
               <SortHeader field="name">Campaign</SortHeader>
-              <SortHeader field="status">Status</SortHeader>
-              <TableHeader>Health</TableHeader>
-              <SortHeader field="spend" className="text-right">Spend</SortHeader>
-              <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
-              <SortHeader field="roas" className="text-right">ROAS</SortHeader>
-              <SortHeader field="installs" className="text-right">Installs</SortHeader>
-              <SortHeader field="cpa" className="text-right">CPA</SortHeader>
+              {visibleColumns.status && <SortHeader field="status">Status</SortHeader>}
+              {visibleColumns.health && <TableHeader>Health</TableHeader>}
+              {visibleColumns.spend && <SortHeader field="spend" className="text-right">Spend</SortHeader>}
+              {visibleColumns.revenue && <SortHeader field="revenue" className="text-right">Revenue</SortHeader>}
+              {visibleColumns.roas && <SortHeader field="roas" className="text-right">ROAS</SortHeader>}
+              {visibleColumns.installs && <SortHeader field="installs" className="text-right">Installs</SortHeader>}
+              {visibleColumns.cpa && <SortHeader field="cpa" className="text-right">CPA</SortHeader>}
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8">Loading campaigns...</TableCell>
+                <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading campaigns...</TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
+                <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
               </TableRow>
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
+                <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
               </TableRow>
             ) : (
               campaigns.map((campaign) => {
@@ -313,29 +350,43 @@ export default function Campaigns() {
                         <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <StatusBadge status={campaign.status} />
-                    </TableCell>
-                    <TableCell>
-                      <TrafficLight predictedRoas={predictedRoas} size="sm" />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-green-600">
-                      ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                        {getPerf(campaign, 'roas').toFixed(2)}x
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {getPerf(campaign, 'installs').toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
-                    </TableCell>
+                    {visibleColumns.status && (
+                      <TableCell>
+                        <StatusBadge status={campaign.status} />
+                      </TableCell>
+                    )}
+                    {visibleColumns.health && (
+                      <TableCell>
+                        <TrafficLight predictedRoas={predictedRoas} size="sm" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.spend && (
+                      <TableCell className="text-right">
+                        ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                    )}
+                    {visibleColumns.revenue && (
+                      <TableCell className="text-right font-medium text-green-600">
+                        ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                    )}
+                    {visibleColumns.roas && (
+                      <TableCell className="text-right">
+                        <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                          {getPerf(campaign, 'roas').toFixed(2)}x
+                        </span>
+                      </TableCell>
+                    )}
+                    {visibleColumns.installs && (
+                      <TableCell className="text-right">
+                        {getPerf(campaign, 'installs').toLocaleString()}
+                      </TableCell>
+                    )}
+                    {visibleColumns.cpa && (
+                      <TableCell className="text-right">
+                        {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Button
                         size="sm"
