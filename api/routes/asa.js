@@ -215,6 +215,30 @@ router.get('/campaigns', async (req, res) => {
     // Use string keys to ensure type matching
     const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.campaign_id), p]));
 
+    // Get 7-day trend data for sparklines
+    const trendQuery = await db.query(`
+      SELECT
+        campaign_id,
+        date,
+        spend
+      FROM apple_ads_campaigns
+      WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+        AND date < CURRENT_DATE
+      ORDER BY campaign_id, date
+    `);
+
+    const trendMap = new Map();
+    trendQuery.rows.forEach(row => {
+      const key = String(row.campaign_id);
+      if (!trendMap.has(key)) {
+        trendMap.set(key, []);
+      }
+      trendMap.get(key).push({
+        date: row.date,
+        value: parseFloat(row.spend) || 0
+      });
+    });
+
     // Get budget alerts for today
     const alertsQuery = await db.query(`
       SELECT campaign_id, alert_level, message
@@ -246,11 +270,14 @@ router.get('/campaigns', async (req, res) => {
         }
       }
 
+      const trend7d = trendMap.get(String(campaign.id)) || [];
+
       return {
         ...campaign,
         performance: perf ? {
           ...perf,
-          predicted_roas_365: predictedRoas365
+          predicted_roas_365: predictedRoas365,
+          trend_7d: trend7d
         } : null,
         budgetAlert: alert ? {
           level: alert.alert_level,

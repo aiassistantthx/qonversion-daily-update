@@ -9,6 +9,7 @@ import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { Sparkline } from '../components/Sparkline';
 import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -20,6 +21,7 @@ import {
 const DEFAULT_COLUMNS = {
   status: true,
   health: true,
+  trend: true,
   spend: true,
   revenue: true,
   roas: true,
@@ -34,6 +36,7 @@ const DEFAULT_COLUMNS = {
 const COLUMN_DEFINITIONS = [
   { id: 'status', label: 'Status' },
   { id: 'health', label: 'Health' },
+  { id: 'trend', label: 'Trend' },
   { id: 'spend', label: 'Spend' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'roas', label: 'ROAS' },
@@ -354,6 +357,7 @@ export default function Campaigns() {
               <SortHeader field="name">Campaign</SortHeader>
               {visibleColumns.status && <SortHeader field="status">Status</SortHeader>}
               {visibleColumns.health && <TableHeader>Health</TableHeader>}
+              {visibleColumns.trend && <TableHeader>Trend</TableHeader>}
               {visibleColumns.spend && <SortHeader field="spend" className="text-right">Spend</SortHeader>}
               {visibleColumns.revenue && <SortHeader field="revenue" className="text-right">Revenue</SortHeader>}
               {visibleColumns.roas && <SortHeader field="roas" className="text-right">ROAS</SortHeader>}
@@ -412,6 +416,11 @@ export default function Campaigns() {
                     {visibleColumns.health && (
                       <TableCell>
                         <TrafficLight predictedRoas={predictedRoas} size="sm" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.trend && (
+                      <TableCell>
+                        <Sparkline data={campaign.performance?.trend_7d || []} />
                       </TableCell>
                     )}
                     {visibleColumns.spend && (
