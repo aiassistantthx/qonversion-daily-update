@@ -2280,7 +2280,7 @@ router.get('/debug-attribution', async (req, res) => {
         ua.keyword_id as ua_keyword_id,
         ua.created_at as ua_created_at
       FROM missing_users mu
-      LEFT JOIN user_attributions ua ON mu.q_user_id = ua.q_user_id
+      LEFT JOIN user_attributions ua ON mu.q_user_id = ua.user_id
     `);
 
     // 5. When did campaign_id start appearing in events_v2?
@@ -2296,7 +2296,7 @@ router.get('/debug-attribution', async (req, res) => {
     const backfillPotentialResult = await db.query(`
       SELECT COUNT(DISTINCT e.q_user_id) as users_to_backfill
       FROM events_v2 e
-      JOIN user_attributions ua ON e.q_user_id = ua.q_user_id
+      JOIN user_attributions ua ON e.q_user_id = ua.user_id
       WHERE e.media_source = 'Apple AdServices'
         AND e.campaign_id IS NULL
         AND ua.campaign_id IS NOT NULL
