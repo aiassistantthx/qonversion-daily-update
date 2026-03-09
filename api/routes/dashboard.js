@@ -3328,7 +3328,16 @@ router.get('/mrr', async (req, res) => {
             WHEN new_revenue > 0 AND product_id LIKE '%yearly%' THEN new_revenue / 12
             WHEN new_revenue > 0 AND product_id LIKE '%monthly%' THEN new_revenue
             WHEN new_revenue > 0 ELSE new_revenue * 4.33
-          END) as new_mrr
+          END) as new_mrr,
+          SUM(CASE
+            WHEN product_id LIKE '%yearly%' THEN (new_revenue + renewal_revenue) / 12
+            ELSE 0
+          END) as yearly_mrr,
+          SUM(CASE
+            WHEN product_id LIKE '%monthly%' OR product_id LIKE '%weekly%' THEN new_revenue + renewal_revenue
+            WHEN NOT (product_id LIKE '%yearly%') THEN (new_revenue + renewal_revenue) * 4.33
+            ELSE 0
+          END) as weekly_mrr
         FROM monthly_subs
         GROUP BY 1
       )
@@ -3336,6 +3345,8 @@ router.get('/mrr', async (req, res) => {
         month,
         mrr,
         new_mrr,
+        yearly_mrr,
+        weekly_mrr,
         LAG(mrr, 1) OVER (ORDER BY month) as prev_mrr
       FROM monthly_mrr
       ORDER BY month DESC
@@ -3348,6 +3359,8 @@ router.get('/mrr', async (req, res) => {
       const currentMrr = parseFloat(row.mrr) || 0;
       const prevMrr = parseFloat(row.prev_mrr) || 0;
       const newMrr = parseFloat(row.new_mrr) || 0;
+      const yearlyMrr = parseFloat(row.yearly_mrr) || 0;
+      const weeklyMrr = parseFloat(row.weekly_mrr) || 0;
 
       // Calculate components
       const netMrr = currentMrr - prevMrr;
@@ -3366,6 +3379,8 @@ router.get('/mrr', async (req, res) => {
         netMrr,
         totalMrr: currentMrr,
         mrrGrowthRate,
+        yearlyMrr,
+        weeklyMrr,
       };
     });
 
@@ -3378,11 +3393,19 @@ router.get('/mrr', async (req, res) => {
       netMrr: 0,
       totalMrr: 0,
       mrrGrowthRate: 0,
+      yearlyMrr: 0,
+      weeklyMrr: 0,
     };
 
     res.json({
       current,
       breakdown,
+      byType: {
+        yearly: current.yearlyMrr,
+        weekly: current.weeklyMrr,
+        yearlyPercentage: current.totalMrr > 0 ? (current.yearlyMrr / current.totalMrr) * 100 : 0,
+        weeklyPercentage: current.totalMrr > 0 ? (current.weeklyMrr / current.totalMrr) * 100 : 0,
+      },
     });
   } catch (error) {
     console.error('MRR breakdown error:', error);

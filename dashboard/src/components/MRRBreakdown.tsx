@@ -1,5 +1,5 @@
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell, LineChart, Line
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell, LineChart, Line, PieChart, Pie
 } from 'recharts';
 import { Download, TrendingUp } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
@@ -13,6 +13,8 @@ export interface MRRBreakdownData {
     netMrr: number;
     totalMrr: number;
     mrrGrowthRate: number;
+    yearlyMrr?: number;
+    weeklyMrr?: number;
   };
   breakdown: Array<{
     month: string;
@@ -23,7 +25,15 @@ export interface MRRBreakdownData {
     netMrr: number;
     totalMrr: number;
     mrrGrowthRate: number;
+    yearlyMrr?: number;
+    weeklyMrr?: number;
   }>;
+  byType?: {
+    yearly: number;
+    weekly: number;
+    yearlyPercentage: number;
+    weeklyPercentage: number;
+  };
 }
 
 interface MRRBreakdownProps {
@@ -36,6 +46,8 @@ const COLORS = {
   churn: '#ef4444',
   reactivation: '#8b5cf6',
   net: '#111827',
+  yearly: '#10b981',
+  weekly: '#3b82f6',
 };
 
 export function MRRBreakdown({ data }: MRRBreakdownProps) {
@@ -262,6 +274,73 @@ export function MRRBreakdown({ data }: MRRBreakdownProps) {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Subscription Type Breakdown */}
+      {data.byType && (
+        <div style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 16 }}>
+            MRR by Subscription Type
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24 }}>
+            {/* Pie Chart */}
+            <div>
+              <div style={{ height: 250 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Yearly', value: data.byType.yearly },
+                        { name: 'Weekly', value: data.byType.weekly },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={(props) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
+                    >
+                      <Cell fill={COLORS.yearly} />
+                      <Cell fill={COLORS.weekly} />
+                    </Pie>
+                    <Tooltip
+                      formatter={(value) => [fmt(Number(value)), '']}
+                      contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Metrics Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, alignContent: 'start' }}>
+              <div style={{ background: '#ecfdf5', borderRadius: 8, padding: 16 }}>
+                <div style={{ fontSize: 12, color: '#10b981', fontWeight: 500, marginBottom: 4 }}>
+                  Yearly MRR
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#047857' }}>
+                  {fmtK(data.byType.yearly)}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                  {data.byType.yearlyPercentage.toFixed(1)}% of total MRR
+                </div>
+              </div>
+
+              <div style={{ background: '#eff6ff', borderRadius: 8, padding: 16 }}>
+                <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 500, marginBottom: 4 }}>
+                  Weekly MRR
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>
+                  {fmtK(data.byType.weekly)}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                  {data.byType.weeklyPercentage.toFixed(1)}% of total MRR
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

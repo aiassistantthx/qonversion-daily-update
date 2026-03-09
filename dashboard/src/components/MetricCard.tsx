@@ -21,7 +21,7 @@ export function detectAnomaly(
   currentValue: number,
   historicalValues: number[],
   metricName: string,
-  isLowerBetter = false
+  _isLowerBetter = false
 ): AnomalyInfo | undefined {
   if (!historicalValues || historicalValues.length < 3) return undefined;
 
