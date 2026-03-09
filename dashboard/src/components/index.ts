@@ -10,6 +10,9 @@ export type { TrafficSource } from './TrafficSourceFilter';
 export { CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter } from './CountryFilter';
 export type { CountrySelection } from './CountryFilter';
 
+export { CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter } from './CampaignFilter';
+export type { CampaignSelection } from './CampaignFilter';
+
 export { RevenueByDayChart } from './RevenueByDayChart';
 export type { RevenueByDayData } from './RevenueByDayChart';
 

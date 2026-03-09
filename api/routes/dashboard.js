@@ -164,6 +164,7 @@ router.get('/main', async (req, res) => {
     const from = req.query.from || daysAgo(30);
     const to = req.query.to || formatDate(new Date());
     const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
+    const { campaigns } = req.query;
 
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -175,6 +176,16 @@ router.get('/main', async (req, res) => {
     const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
     const prevMonthDays = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
 
+    // Campaign filter
+    let campaignCondition = '1=1';
+    if (campaigns && campaigns.trim()) {
+      const campaignList = campaigns.split(',').map(c => c.trim()).filter(Boolean);
+      if (campaignList.length > 0) {
+        const quotedCampaigns = campaignList.map(c => `'${c}'`).join(',');
+        campaignCondition = `campaign_id IN (${quotedCampaigns})`;
+      }
+    }
+
     // ---- CURRENT MONTH METRICS ----
 
     // Spend this month (from apple_ads_campaigns)
@@ -182,6 +193,7 @@ router.get('/main', async (req, res) => {
       SELECT COALESCE(SUM(spend), 0) as spend
       FROM apple_ads_campaigns
       WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND ${campaignCondition}
     `;
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
@@ -204,6 +216,7 @@ router.get('/main', async (req, res) => {
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND media_source = 'Apple AdServices'
+        AND ${campaignCondition}
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
@@ -233,6 +246,7 @@ router.get('/main', async (req, res) => {
         FROM events_v2
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
+          AND ${campaignCondition}
           AND (
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
@@ -244,6 +258,7 @@ router.get('/main', async (req, res) => {
         FROM apple_ads_campaigns
         WHERE TO_CHAR(date, 'YYYY-MM') = $1
           AND date <= CURRENT_DATE - INTERVAL '4 days'
+          AND ${campaignCondition}
         GROUP BY date
       )
       SELECT
@@ -268,12 +283,14 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
+          AND ${campaignCondition}
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
         FROM apple_ads_campaigns, period
         WHERE date BETWEEN start_date AND end_date
+          AND ${campaignCondition}
       )
       SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
     `;
@@ -293,12 +310,14 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
+          AND ${campaignCondition}
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
         FROM apple_ads_campaigns, period
         WHERE date BETWEEN start_date AND end_date
+          AND ${campaignCondition}
       )
       SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
     `;
