@@ -10,6 +10,7 @@ const router = express.Router();
 const db = require('../db');
 const appleAds = require('../services/appleAds');
 const rulesEngine = require('../services/rulesEngine');
+const { predictRoas } = require('../lib/predictions');
 
 // ================================================
 // MIDDLEWARE
@@ -1954,22 +1955,31 @@ router.get('/cohorts', async (req, res) => {
     res.json({
       period,
       total: result.rows.length,
-      cohorts: result.rows.map(row => ({
-        cohort: row.cohort,
-        cohortStart: row.cohort_start,
-        cohortAge: parseInt(row.cohort_age || 0),
-        spend: parseFloat(row.spend || 0),
-        users: parseInt(row.users || 0),
-        roas: {
-          d0: parseFloat(row.roas_d0 || 0),
-          d3: parseFloat(row.roas_d3 || 0),
-          d7: parseFloat(row.roas_d7 || 0),
-          d14: parseFloat(row.roas_d14 || 0),
-          d30: parseFloat(row.roas_d30 || 0),
-          d60: parseFloat(row.roas_d60 || 0),
-          d90: parseFloat(row.roas_d90 || 0),
-          total: parseFloat(row.roas_total || 0),
-        },
+      cohorts: result.rows.map(row => {
+        const cohortAge = parseInt(row.cohort_age || 0);
+        const currentRoas = parseFloat(row.roas_total || 0);
+        const predictions = predictRoas(currentRoas, cohortAge);
+
+        return {
+          cohort: row.cohort,
+          cohortStart: row.cohort_start,
+          cohortAge,
+          spend: parseFloat(row.spend || 0),
+          users: parseInt(row.users || 0),
+          roas: {
+            d0: parseFloat(row.roas_d0 || 0),
+            d3: parseFloat(row.roas_d3 || 0),
+            d7: parseFloat(row.roas_d7 || 0),
+            d14: parseFloat(row.roas_d14 || 0),
+            d30: parseFloat(row.roas_d30 || 0),
+            d60: parseFloat(row.roas_d60 || 0),
+            d90: parseFloat(row.roas_d90 || 0),
+            total: currentRoas,
+          },
+          predictedRoas: {
+            d180: predictions.predicted_roas_180,
+            d365: predictions.predicted_roas_365,
+          },
         revenue: {
           d0: parseFloat(row.revenue_d0 || 0),
           d3: parseFloat(row.revenue_d3 || 0),
@@ -1990,30 +2000,42 @@ router.get('/cohorts', async (req, res) => {
           d90: row.cop_d90 !== null ? parseFloat(row.cop_d90) : null,
           total: row.cop_total !== null ? parseFloat(row.cop_total) : null,
         },
-        paidUsers: {
-          d0: parseInt(row.paid_users_d0 || 0),
-          d3: parseInt(row.paid_users_d3 || 0),
-          d7: parseInt(row.paid_users_d7 || 0),
-          d14: parseInt(row.paid_users_d14 || 0),
-          d30: parseInt(row.paid_users_d30 || 0),
-          d60: parseInt(row.paid_users_d60 || 0),
-          d90: parseInt(row.paid_users_d90 || 0),
-          total: parseInt(row.paid_users_total || 0),
-        }
-      })),
-      totals: {
-        spend: totals.spend,
-        users: totals.users,
-        roas: {
-          d0: totals.spend > 0 ? totals.revenue_d0 / totals.spend : 0,
-          d3: totals.spend > 0 ? totals.revenue_d3 / totals.spend : 0,
-          d7: totals.spend > 0 ? totals.revenue_d7 / totals.spend : 0,
-          d14: totals.spend > 0 ? totals.revenue_d14 / totals.spend : 0,
-          d30: totals.spend > 0 ? totals.revenue_d30 / totals.spend : 0,
-          d60: totals.spend > 0 ? totals.revenue_d60 / totals.spend : 0,
-          d90: totals.spend > 0 ? totals.revenue_d90 / totals.spend : 0,
-          total: totals.spend > 0 ? totals.revenue_total / totals.spend : 0,
-        },
+          paidUsers: {
+            d0: parseInt(row.paid_users_d0 || 0),
+            d3: parseInt(row.paid_users_d3 || 0),
+            d7: parseInt(row.paid_users_d7 || 0),
+            d14: parseInt(row.paid_users_d14 || 0),
+            d30: parseInt(row.paid_users_d30 || 0),
+            d60: parseInt(row.paid_users_d60 || 0),
+            d90: parseInt(row.paid_users_d90 || 0),
+            total: parseInt(row.paid_users_total || 0),
+          }
+        };
+      }),
+      totals: (() => {
+        const avgCohortAge = result.rows.length > 0
+          ? Math.round(result.rows.reduce((sum, row) => sum + parseInt(row.cohort_age || 0), 0) / result.rows.length)
+          : 0;
+        const totalRoas = totals.spend > 0 ? totals.revenue_total / totals.spend : 0;
+        const totalPredictions = predictRoas(totalRoas, avgCohortAge);
+
+        return {
+          spend: totals.spend,
+          users: totals.users,
+          roas: {
+            d0: totals.spend > 0 ? totals.revenue_d0 / totals.spend : 0,
+            d3: totals.spend > 0 ? totals.revenue_d3 / totals.spend : 0,
+            d7: totals.spend > 0 ? totals.revenue_d7 / totals.spend : 0,
+            d14: totals.spend > 0 ? totals.revenue_d14 / totals.spend : 0,
+            d30: totals.spend > 0 ? totals.revenue_d30 / totals.spend : 0,
+            d60: totals.spend > 0 ? totals.revenue_d60 / totals.spend : 0,
+            d90: totals.spend > 0 ? totals.revenue_d90 / totals.spend : 0,
+            total: totalRoas,
+          },
+          predictedRoas: {
+            d180: totalPredictions.predicted_roas_180,
+            d365: totalPredictions.predicted_roas_365,
+          },
         revenue: {
           d0: totals.revenue_d0,
           d3: totals.revenue_d3,
@@ -2034,17 +2056,18 @@ router.get('/cohorts', async (req, res) => {
           d90: totals.paid_users_d90 > 0 ? totals.spend / totals.paid_users_d90 : null,
           total: totals.paid_users_total > 0 ? totals.spend / totals.paid_users_total : null,
         },
-        paidUsers: {
-          d0: totals.paid_users_d0,
-          d3: totals.paid_users_d3,
-          d7: totals.paid_users_d7,
-          d14: totals.paid_users_d14,
-          d30: totals.paid_users_d30,
-          d60: totals.paid_users_d60,
-          d90: totals.paid_users_d90,
-          total: totals.paid_users_total,
-        }
-      }
+          paidUsers: {
+            d0: totals.paid_users_d0,
+            d3: totals.paid_users_d3,
+            d7: totals.paid_users_d7,
+            d14: totals.paid_users_d14,
+            d30: totals.paid_users_d30,
+            d60: totals.paid_users_d60,
+            d90: totals.paid_users_d90,
+            total: totals.paid_users_total,
+          }
+        };
+      })()
     });
   } catch (error) {
     console.error('Cohorts endpoint error:', error);

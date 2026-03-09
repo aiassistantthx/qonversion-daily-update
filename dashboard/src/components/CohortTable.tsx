@@ -18,6 +18,10 @@ export interface CohortData {
     d90: number;
     total: number;
   };
+  predictedRoas?: {
+    d180: number | null;
+    d365: number | null;
+  };
   revenue: {
     d0: number;
     d3: number;
@@ -66,6 +70,10 @@ export interface CohortsData {
       d60: number;
       d90: number;
       total: number;
+    };
+    predictedRoas?: {
+      d180: number | null;
+      d365: number | null;
     };
     revenue: {
       d0: number;
@@ -179,7 +187,7 @@ export function CohortTable({ data }: CohortTableProps) {
   );
 
   const handleExport = () => {
-    const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total'];
+    const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total', 'Predicted D180', 'Predicted D365'];
     const rows = data.cohorts.map(c => {
       if (viewMode === 'roas') {
         return [
@@ -195,6 +203,8 @@ export function CohortTable({ data }: CohortTableProps) {
           (c.roas.d60 * 100).toFixed(1) + '%',
           (c.roas.d90 * 100).toFixed(1) + '%',
           (c.roas.total * 100).toFixed(1) + '%',
+          c.predictedRoas?.d180 !== null && c.predictedRoas?.d180 !== undefined ? ((c.predictedRoas.d180 * 100).toFixed(1) + '%') : 'N/A',
+          c.predictedRoas?.d365 !== null && c.predictedRoas?.d365 !== undefined ? ((c.predictedRoas.d365 * 100).toFixed(1) + '%') : 'N/A',
         ];
       } else if (viewMode === 'cop') {
         return [
@@ -333,6 +343,12 @@ export function CohortTable({ data }: CohortTableProps) {
               <th style={thRightStyle}>D60</th>
               <th style={thRightStyle}>D90</th>
               <th style={{ ...thRightStyle, background: '#f0fdf4', fontWeight: 600 }}>Total</th>
+              {viewMode === 'roas' && (
+                <>
+                  <th style={{ ...thRightStyle, background: '#fef3c7', fontWeight: 600 }} title="Predicted ROAS at day 180">D180*</th>
+                  <th style={{ ...thRightStyle, background: '#fef3c7', fontWeight: 600 }} title="Predicted ROAS at day 365">D365*</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -502,6 +518,28 @@ export function CohortTable({ data }: CohortTableProps) {
                       }}>
                         {(cohort.roas.total * 100).toFixed(0)}%
                       </td>
+                      {viewMode === 'roas' && cohort.predictedRoas && (
+                        <>
+                          <td style={{
+                            ...tdRightStyle,
+                            background: '#fef3c7',
+                            color: '#92400e',
+                            fontWeight: 500,
+                            fontStyle: 'italic',
+                          }}>
+                            {cohort.predictedRoas.d180 !== null ? `${(cohort.predictedRoas.d180 * 100).toFixed(0)}%` : 'N/A'}
+                          </td>
+                          <td style={{
+                            ...tdRightStyle,
+                            background: '#fef3c7',
+                            color: '#92400e',
+                            fontWeight: 500,
+                            fontStyle: 'italic',
+                          }}>
+                            {cohort.predictedRoas.d365 !== null ? `${(cohort.predictedRoas.d365 * 100).toFixed(0)}%` : 'N/A'}
+                          </td>
+                        </>
+                      )}
                     </>
                   )}
                 </tr>
@@ -552,6 +590,16 @@ export function CohortTable({ data }: CohortTableProps) {
                   <td style={{ ...tdRightStyle, background: '#f0fdf4' }}>
                     {(data.totals.roas.total * 100).toFixed(0)}%
                   </td>
+                  {data.totals.predictedRoas && (
+                    <>
+                      <td style={{ ...tdRightStyle, background: '#fef3c7', fontStyle: 'italic' }}>
+                        {data.totals.predictedRoas.d180 !== null ? `${(data.totals.predictedRoas.d180 * 100).toFixed(0)}%` : 'N/A'}
+                      </td>
+                      <td style={{ ...tdRightStyle, background: '#fef3c7', fontStyle: 'italic' }}>
+                        {data.totals.predictedRoas.d365 !== null ? `${(data.totals.predictedRoas.d365 * 100).toFixed(0)}%` : 'N/A'}
+                      </td>
+                    </>
+                  )}
                 </>
               )}
             </tr>
@@ -563,9 +611,15 @@ export function CohortTable({ data }: CohortTableProps) {
         <strong>How to read:</strong> Each row is a cohort (users who installed in that {data.period}).
         Columns show {viewMode === 'roas' ? 'ROAS' : viewMode === 'cop' ? 'COP (Cost of Payment)' : 'Revenue'} at different ages (D0 = day 0, D3 = day 3, etc.).
         {viewMode === 'roas' && (
-          <> Colors indicate ROAS: <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (low),
-          <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (medium),
-          <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (high).</>
+          <>
+            {' '}Colors indicate ROAS: <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (low),
+            <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (medium),
+            <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (high).
+            <br />
+            <strong>Predicted columns (D180*, D365*):</strong> Forecast future ROAS based on decay curves from mature cohorts.
+            The model uses current performance and cohort age to extrapolate expected ROAS at 180 and 365 days.
+            Predictions assume similar retention and monetization patterns to historical data.
+          </>
         )}
         {viewMode === 'cop' && (
           <> Colors indicate COP: <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (low/good),
