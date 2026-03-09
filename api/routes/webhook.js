@@ -22,6 +22,15 @@ function verifySignature(payload, signature) {
   );
 }
 
+// Convert snake_case to Title Case (subscription_renewed -> Subscription Renewed)
+function toTitleCase(str) {
+  if (!str) return str;
+  return str
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // Extract event data from Qonversion webhook payload
 function parseWebhookPayload(payload) {
   // Qonversion webhook structure:
@@ -55,7 +64,7 @@ function parseWebhookPayload(payload) {
   return {
     eventId: id || `${user_id}_${event_name}_${created_at}`,
     userId: user_id,
-    eventName: event_name,
+    eventName: toTitleCase(event_name),  // Normalize to Title Case for consistency
     productId: product_id,
     revenueUsd,
     platform: platform || 'unknown',

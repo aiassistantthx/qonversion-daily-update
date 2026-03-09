@@ -223,6 +223,27 @@ app.get('/debug/subscription-events', async (req, res) => {
   }
 });
 
+// Fix event_name format: snake_case -> Title Case
+app.post('/migrate/fix-event-names', async (req, res) => {
+  try {
+    // Update snake_case event names to Title Case
+    const result = await db.query(`
+      UPDATE subscription_events
+      SET event_name = INITCAP(REPLACE(event_name, '_', ' '))
+      WHERE event_name LIKE '%_%'
+      RETURNING id
+    `);
+
+    res.json({
+      success: true,
+      updated: result.rowCount,
+      message: 'Event names converted from snake_case to Title Case'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Database migration endpoint for ASA management tables
 app.post('/migrate/asa', async (req, res) => {
   const migrationSQL = `
