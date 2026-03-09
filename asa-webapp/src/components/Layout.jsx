@@ -16,6 +16,7 @@ import {
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
 import { useTheme } from '../context/ThemeContext';
 import { SyncStatus } from './SyncStatus';
+import { DataFreshness } from './DataFreshness';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -142,6 +143,9 @@ export default function Layout({ children }) {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+        <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-6 py-3">
+          <DataFreshness />
+        </div>
         <div className="p-6">{children}</div>
       </main>
     </div>
