@@ -2934,7 +2934,7 @@ router.get('/troas', async (req, res) => {
       WITH cohort_spend AS (
         SELECT
           TO_CHAR(date, 'YYYY-MM') as cohort_month,
-          SUM(local_spend) as spend
+          SUM(spend) as spend
         FROM apple_ads_campaigns
         WHERE date >= NOW() - INTERVAL '${months} months'
         GROUP BY 1
@@ -3109,31 +3109,38 @@ router.get('/countries', async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
 
     const query = `
-      WITH country_metrics AS (
+      WITH user_countries AS (
         SELECT
-          COALESCE(e.country, 'Unknown') as country,
-          COALESCE(e.country_code, 'XX') as country_code,
-          CASE WHEN e.campaign_id IS NOT NULL THEN 'apple_ads' ELSE 'organic' END as source,
-          SUM(CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN e.price_usd ELSE 0 END) as revenue,
+          q_user_id,
+          COALESCE(country, 'Unknown') as country,
+          media_source
+        FROM events_v2
+        WHERE created_at >= $1 AND created_at < $2::date + 1
+        GROUP BY q_user_id, country, media_source
+      ),
+      country_metrics AS (
+        SELECT
+          uc.country,
+          CASE WHEN uc.media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END as source,
+          COALESCE(SUM(CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN e.price_usd ELSE 0 END), 0) as revenue,
           COUNT(DISTINCT CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started') AND e.product_id LIKE '%yearly%' THEN e.q_user_id END) +
           COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Converted' AND e.product_id NOT LIKE '%yearly%' THEN e.q_user_id END) as subscribers,
           COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.q_user_id END) as trials
-        FROM events_v2 e
-        WHERE e.created_at >= $1 AND e.created_at < $2::date + 1
-        GROUP BY 1, 2, 3
+        FROM user_countries uc
+        LEFT JOIN events_v2 e ON uc.q_user_id = e.q_user_id
+        GROUP BY uc.country, CASE WHEN uc.media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
       ),
       country_spend AS (
         SELECT
-          country,
-          country as country_code,
-          SUM(local_spend) as spend
+          COALESCE(country, 'Unknown') as country,
+          SUM(spend) as spend
         FROM apple_ads_campaigns
         WHERE date >= $1 AND date <= $2
         GROUP BY 1
       )
       SELECT
         cm.country,
-        cm.country_code,
+        cm.country as country_code,
         cm.source,
         cm.revenue,
         COALESCE(cs.spend, 0) as spend,
@@ -3143,7 +3150,7 @@ router.get('/countries', async (req, res) => {
         CASE WHEN COALESCE(cs.spend, 0) > 0 THEN cm.revenue / cs.spend ELSE NULL END as roas,
         CASE WHEN cm.subscribers > 0 AND COALESCE(cs.spend, 0) > 0 THEN cs.spend / cm.subscribers ELSE NULL END as cop
       FROM country_metrics cm
-      LEFT JOIN country_spend cs ON cm.country_code = cs.country_code AND cm.source = 'apple_ads'
+      LEFT JOIN country_spend cs ON cm.country = cs.country AND cm.source = 'apple_ads'
       WHERE cm.revenue > 0 OR cm.subscribers > 0
       ORDER BY cm.revenue DESC
       LIMIT $3
