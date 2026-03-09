@@ -1192,8 +1192,10 @@ router.get('/forecast', async (req, res) => {
 
       if (i === 0) {
         // Current month: extrapolate from partial data
-        newSubsRevenue = extrapolatedCurrentMonthRevenue;
+        // extrapolatedCurrentMonthRevenue already includes BOTH new subs and renewals
         newSubsCount = extrapolatedCurrentMonthNewSubs;
+        // For current month, we'll set totalRevenue directly to avoid double-counting renewals
+        newSubsRevenue = extrapolatedCurrentMonthRevenue; // This is actually total, not just new subs
       } else {
         // Future month: new subscribers at avg rate
         newSubsCount = avgNewSubsPerMonth;
@@ -1233,7 +1235,12 @@ router.get('/forecast', async (req, res) => {
 
       const renewalsCount = baselineRenewalsCount + renewalsDelta + projectedRenewals;
       const renewalsRevenue = renewalsCount * avgPrice;
-      const totalRevenue = newSubsRevenue + renewalsRevenue;
+
+      // For current month, extrapolatedCurrentMonthRevenue already includes renewals
+      // So totalRevenue = extrapolated revenue (not newSubs + renewals)
+      const totalRevenue = (i === 0)
+        ? extrapolatedCurrentMonthRevenue
+        : newSubsRevenue + renewalsRevenue;
 
       renewalForecast.push({
         month: forecastMonthStr,
