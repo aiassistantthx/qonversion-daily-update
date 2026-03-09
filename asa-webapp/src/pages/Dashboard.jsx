@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { StatusBadge } from '../components/Badge';
+import { HealthScoreWidget } from '../components/HealthScoreWidget';
 import { getCampaigns, getRules, getHistory } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
@@ -88,8 +89,10 @@ export default function Dashboard() {
         <p className="text-gray-500">{dateLabel}</p>
       </div>
 
-      {/* Main Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* Health Score and Main Metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <HealthScoreWidget campaigns={campaigns} />
+        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
         <MetricCard
           title="Spend"
           value={totalSpend.toFixed(2)}
@@ -132,6 +135,7 @@ export default function Dashboard() {
           color="purple"
           subtext={`${totalPaidUsers} paid users`}
         />
+        </div>
       </div>
 
       {/* Secondary Metrics */}
