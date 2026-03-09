@@ -548,4 +548,67 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// GET /webhook/debug-campaigns - debug qonversion_events campaigns
+router.get('/debug-campaigns', async (req, res) => {
+  try {
+    // Check campaign values in qonversion_events for ASA users
+    const campaigns = await db.query(`
+      SELECT
+        campaign,
+        COUNT(DISTINCT q_user_id) as users,
+        SUM(price_usd) as revenue,
+        MIN(install_date) as first_install,
+        MAX(install_date) as last_install
+      FROM qonversion_events
+      WHERE media_source = 'Apple AdServices'
+      GROUP BY campaign
+      ORDER BY users DESC
+      LIMIT 20
+    `);
+
+    // Check campaign name matching
+    const matching = await db.query(`
+      WITH qon AS (
+        SELECT DISTINCT campaign FROM qonversion_events
+        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+      ),
+      apple AS (
+        SELECT DISTINCT campaign_name FROM apple_ads_campaigns
+      )
+      SELECT
+        (SELECT COUNT(*) FROM qon) as qon_campaigns,
+        (SELECT COUNT(*) FROM apple) as apple_campaigns,
+        (SELECT COUNT(*) FROM qon q JOIN apple a ON q.campaign = a.campaign_name) as matched
+    `);
+
+    // Sample unmatched campaigns
+    const unmatched = await db.query(`
+      WITH qon AS (
+        SELECT campaign, COUNT(DISTINCT q_user_id) as users
+        FROM qonversion_events
+        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+        GROUP BY campaign
+      ),
+      apple AS (
+        SELECT DISTINCT campaign_name FROM apple_ads_campaigns
+      )
+      SELECT q.campaign, q.users
+      FROM qon q
+      LEFT JOIN apple a ON q.campaign = a.campaign_name
+      WHERE a.campaign_name IS NULL
+      ORDER BY q.users DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      campaigns: campaigns.rows,
+      matching: matching.rows[0],
+      unmatchedCampaigns: unmatched.rows,
+    });
+  } catch (error) {
+    console.error('Debug campaigns error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
