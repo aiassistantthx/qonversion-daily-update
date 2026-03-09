@@ -2745,4 +2745,440 @@ router.get('/yoy', async (req, res) => {
   }
 });
 
+// ============================================================================
+// SUBSCRIPTION BREAKDOWN - Weekly vs Yearly revenue split
+// ============================================================================
+router.get('/subscription-breakdown', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+
+    // Current month breakdown
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentQuery = `
+      SELECT
+        CASE
+          WHEN product_id LIKE '%yearly%' THEN 'yearly'
+          WHEN product_id LIKE '%monthly%' THEN 'monthly'
+          ELSE 'weekly'
+        END as sub_type,
+        SUM(price_usd) as revenue,
+        COUNT(DISTINCT user_id) as subscribers
+      FROM events_v2
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND DATE_TRUNC('month', created_at) = $1::date
+      GROUP BY 1
+    `;
+    const currentResult = await db.query(currentQuery, [currentMonth + '-01']);
+
+    const currentData = { weekly: { revenue: 0, subscribers: 0 }, yearly: { revenue: 0, subscribers: 0 }, monthly: { revenue: 0, subscribers: 0 } };
+    for (const row of currentResult.rows) {
+      currentData[row.sub_type] = {
+        revenue: parseFloat(row.revenue) || 0,
+        subscribers: parseInt(row.subscribers) || 0,
+      };
+    }
+    const totalRevenue = currentData.weekly.revenue + currentData.yearly.revenue + currentData.monthly.revenue;
+    const totalSubs = currentData.weekly.subscribers + currentData.yearly.subscribers + currentData.monthly.subscribers;
+
+    // Monthly trend
+    const trendQuery = `
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+        SUM(CASE WHEN product_id NOT LIKE '%yearly%' AND product_id NOT LIKE '%monthly%' THEN price_usd ELSE 0 END) as weekly_revenue,
+        SUM(CASE WHEN product_id LIKE '%yearly%' THEN price_usd ELSE 0 END) as yearly_revenue,
+        SUM(CASE WHEN product_id LIKE '%monthly%' THEN price_usd ELSE 0 END) as monthly_revenue
+      FROM events_v2
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND created_at >= NOW() - INTERVAL '${months} months'
+      GROUP BY 1
+      ORDER BY 1
+    `;
+    const trendResult = await db.query(trendQuery);
+
+    const trend = trendResult.rows.map(row => {
+      const weekly = parseFloat(row.weekly_revenue) || 0;
+      const yearly = parseFloat(row.yearly_revenue) || 0;
+      const monthly = parseFloat(row.monthly_revenue) || 0;
+      const total = weekly + yearly + monthly;
+      return {
+        month: row.month,
+        weeklyRevenue: weekly,
+        yearlyRevenue: yearly,
+        monthlyRevenue: monthly,
+        weeklyPercentage: total > 0 ? (weekly / total) * 100 : 0,
+        yearlyPercentage: total > 0 ? (yearly / total) * 100 : 0,
+      };
+    });
+
+    res.json({
+      current: {
+        weekly: {
+          revenue: currentData.weekly.revenue,
+          subscribers: currentData.weekly.subscribers,
+          percentage: totalRevenue > 0 ? (currentData.weekly.revenue / totalRevenue) * 100 : 0,
+        },
+        yearly: {
+          revenue: currentData.yearly.revenue,
+          subscribers: currentData.yearly.subscribers,
+          percentage: totalRevenue > 0 ? (currentData.yearly.revenue / totalRevenue) * 100 : 0,
+        },
+        total: {
+          revenue: totalRevenue,
+          subscribers: totalSubs,
+        },
+      },
+      trend,
+    });
+  } catch (error) {
+    console.error('Subscription breakdown error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// REVENUE BY DAY - Cumulative ARPU by cohort age
+// ============================================================================
+router.get('/revenue-by-day', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    const days = [0, 7, 14, 30, 60, 90, 120, 180];
+
+    // Get cohorts with revenue at each day milestone
+    const query = `
+      WITH cohorts AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', e.created_at), 'YYYY-MM') as cohort_month,
+          e.user_id,
+          MIN(e.created_at) as first_event
+        FROM events_v2 e
+        WHERE e.event_name = 'Trial Started'
+          AND e.created_at >= NOW() - INTERVAL '${months} months'
+        GROUP BY 1, 2
+      ),
+      revenue_events AS (
+        SELECT
+          c.cohort_month,
+          c.user_id,
+          EXTRACT(DAY FROM (e.created_at - c.first_event)) as days_since_start,
+          e.price_usd
+        FROM cohorts c
+        JOIN events_v2 e ON c.user_id = e.user_id
+        WHERE e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND e.created_at >= c.first_event
+      ),
+      cohort_sizes AS (
+        SELECT cohort_month, COUNT(DISTINCT user_id) as users
+        FROM cohorts
+        GROUP BY 1
+      )
+      SELECT
+        r.cohort_month,
+        cs.users,
+        ${days.map(d => `SUM(CASE WHEN r.days_since_start <= ${d} THEN r.price_usd ELSE 0 END) as revenue_d${d}`).join(',\n        ')}
+      FROM revenue_events r
+      JOIN cohort_sizes cs ON r.cohort_month = cs.cohort_month
+      GROUP BY r.cohort_month, cs.users
+      ORDER BY r.cohort_month
+    `;
+
+    const result = await db.query(query);
+
+    const cohorts = result.rows.map(row => {
+      const users = parseInt(row.users) || 1;
+      const cohortAge = Math.floor((Date.now() - new Date(row.cohort_month + '-01').getTime()) / (1000 * 60 * 60 * 24));
+      return {
+        month: row.cohort_month,
+        maxAge: cohortAge,
+        users,
+        revenue: {
+          d0: (parseFloat(row.revenue_d0) || 0) / users,
+          d7: (parseFloat(row.revenue_d7) || 0) / users,
+          d14: (parseFloat(row.revenue_d14) || 0) / users,
+          d30: (parseFloat(row.revenue_d30) || 0) / users,
+          d60: (parseFloat(row.revenue_d60) || 0) / users,
+          d90: (parseFloat(row.revenue_d90) || 0) / users,
+          d120: (parseFloat(row.revenue_d120) || 0) / users,
+          d180: (parseFloat(row.revenue_d180) || 0) / users,
+        },
+      };
+    });
+
+    // Build chart data
+    const chartData = days.map(day => {
+      const point = { day };
+      for (const cohort of cohorts) {
+        if (cohort.maxAge >= day) {
+          point[cohort.month] = cohort.revenue[`d${day}`];
+        }
+      }
+      return point;
+    });
+
+    res.json({ cohorts, chartData, days });
+  } catch (error) {
+    console.error('Revenue by day error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// tROAS - Cumulative ROAS by cohort age
+// ============================================================================
+router.get('/troas', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    const days = [7, 14, 30, 60, 90, 120, 180];
+
+    // Get cohorts with ROAS at each day milestone
+    const query = `
+      WITH cohort_spend AS (
+        SELECT
+          TO_CHAR(date, 'YYYY-MM') as cohort_month,
+          SUM(local_spend) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= NOW() - INTERVAL '${months} months'
+        GROUP BY 1
+      ),
+      cohort_users AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as cohort_month,
+          user_id,
+          MIN(created_at) as first_event
+        FROM events_v2
+        WHERE event_name = 'Trial Started'
+          AND campaign_id IS NOT NULL
+          AND created_at >= NOW() - INTERVAL '${months} months'
+        GROUP BY 1, 2
+      ),
+      revenue_events AS (
+        SELECT
+          cu.cohort_month,
+          EXTRACT(DAY FROM (e.created_at - cu.first_event)) as days_since_start,
+          e.price_usd
+        FROM cohort_users cu
+        JOIN events_v2 e ON cu.user_id = e.user_id
+        WHERE e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND e.created_at >= cu.first_event
+      )
+      SELECT
+        cs.cohort_month,
+        cs.spend,
+        ${days.map(d => `SUM(CASE WHEN r.days_since_start <= ${d} THEN r.price_usd ELSE 0 END) as revenue_d${d}`).join(',\n        ')},
+        SUM(r.price_usd) as revenue_current
+      FROM cohort_spend cs
+      LEFT JOIN revenue_events r ON cs.cohort_month = r.cohort_month
+      WHERE cs.spend > 0
+      GROUP BY cs.cohort_month, cs.spend
+      ORDER BY cs.cohort_month
+    `;
+
+    const result = await db.query(query);
+
+    const cohorts = result.rows.map(row => {
+      const spend = parseFloat(row.spend) || 1;
+      const cohortAge = Math.floor((Date.now() - new Date(row.cohort_month + '-01').getTime()) / (1000 * 60 * 60 * 24));
+
+      const roas = {};
+      let breakevenDay = null;
+      for (const d of days) {
+        const rev = parseFloat(row[`revenue_d${d}`]) || 0;
+        roas[`d${d}`] = cohortAge >= d ? rev / spend : null;
+        if (breakevenDay === null && roas[`d${d}`] >= 1.0) {
+          breakevenDay = d;
+        }
+      }
+      roas.current = (parseFloat(row.revenue_current) || 0) / spend;
+
+      return {
+        month: row.cohort_month,
+        spend,
+        breakevenDay,
+        roas,
+      };
+    });
+
+    // Build chart data
+    const chartData = days.map(day => {
+      const point = { day };
+      for (const cohort of cohorts) {
+        const cohortAge = Math.floor((Date.now() - new Date(cohort.month + '-01').getTime()) / (1000 * 60 * 60 * 24));
+        if (cohortAge >= day) {
+          point[cohort.month] = cohort.roas[`d${day}`];
+        }
+      }
+      return point;
+    });
+
+    // Average breakeven day
+    const breakevenCohorts = cohorts.filter(c => c.breakevenDay !== null);
+    const averageBreakevenDay = breakevenCohorts.length > 0
+      ? Math.round(breakevenCohorts.reduce((sum, c) => sum + c.breakevenDay, 0) / breakevenCohorts.length)
+      : null;
+
+    res.json({ cohorts, chartData, averageBreakevenDay });
+  } catch (error) {
+    console.error('tROAS error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// RENEWAL RATES - Yearly subscription renewal rates
+// ============================================================================
+router.get('/renewal-rates', async (req, res) => {
+  try {
+    // Get yearly subscription cohorts and their renewal status
+    const query = `
+      WITH yearly_subs AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as cohort_month,
+          user_id,
+          MIN(created_at) as first_purchase
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          AND product_id LIKE '%yearly%'
+          AND created_at >= NOW() - INTERVAL '24 months'
+        GROUP BY 1, 2
+      ),
+      renewals AS (
+        SELECT
+          ys.cohort_month,
+          ys.user_id,
+          COUNT(*) as renewal_count
+        FROM yearly_subs ys
+        JOIN events_v2 e ON ys.user_id = e.user_id
+        WHERE e.event_name = 'Subscription Renewed'
+          AND e.product_id LIKE '%yearly%'
+          AND e.created_at > ys.first_purchase + INTERVAL '330 days'
+        GROUP BY 1, 2
+      )
+      SELECT
+        ys.cohort_month,
+        COUNT(DISTINCT ys.user_id) as yearly_subscribers,
+        COUNT(DISTINCT r.user_id) as renewed,
+        EXTRACT(MONTH FROM AGE(NOW(), MIN(ys.first_purchase))) as cohort_age_months
+      FROM yearly_subs ys
+      LEFT JOIN renewals r ON ys.cohort_month = r.cohort_month AND ys.user_id = r.user_id
+      GROUP BY ys.cohort_month
+      ORDER BY ys.cohort_month DESC
+    `;
+
+    const result = await db.query(query);
+
+    const cohorts = result.rows.map(row => {
+      const yearlySubscribers = parseInt(row.yearly_subscribers) || 0;
+      const renewed = parseInt(row.renewed) || 0;
+      const cohortAge = parseInt(row.cohort_age_months) || 0;
+      const isMatured = cohortAge >= 12;
+
+      return {
+        month: row.cohort_month,
+        yearlySubscribers,
+        eligibleForRenewal: isMatured ? yearlySubscribers : 0,
+        renewed,
+        renewalRate: isMatured && yearlySubscribers > 0 ? renewed / yearlySubscribers : null,
+        cohortAge,
+        isMatured,
+      };
+    });
+
+    // Calculate average renewal rate from matured cohorts
+    const maturedCohorts = cohorts.filter(c => c.isMatured && c.yearlySubscribers > 0);
+    const averageRenewalRate = maturedCohorts.length > 0
+      ? maturedCohorts.reduce((sum, c) => sum + (c.renewalRate || 0), 0) / maturedCohorts.length
+      : null;
+
+    res.json({
+      cohorts,
+      averageRenewalRate,
+      projectedRenewalRate: averageRenewalRate || 0.35, // Default to 35% if no data
+    });
+  } catch (error) {
+    console.error('Renewal rates error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// COUNTRIES - Country ranking by metrics
+// ============================================================================
+router.get('/countries', async (req, res) => {
+  try {
+    const from = req.query.from || daysAgo(30);
+    const to = req.query.to || formatDate(new Date());
+    const limit = parseInt(req.query.limit) || 20;
+
+    const query = `
+      WITH country_metrics AS (
+        SELECT
+          COALESCE(e.country, 'Unknown') as country,
+          COALESCE(e.country_code, 'XX') as country_code,
+          CASE WHEN e.campaign_id IS NOT NULL THEN 'apple_ads' ELSE 'organic' END as source,
+          SUM(CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN e.price_usd ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Trial Converted', 'Subscription Started') AND e.product_id LIKE '%yearly%' THEN e.user_id END) +
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Converted' AND e.product_id NOT LIKE '%yearly%' THEN e.user_id END) as subscribers,
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.user_id END) as trials
+        FROM events_v2 e
+        WHERE e.created_at >= $1 AND e.created_at < $2::date + 1
+        GROUP BY 1, 2, 3
+      ),
+      country_spend AS (
+        SELECT
+          country,
+          country as country_code,
+          SUM(local_spend) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= $1 AND date <= $2
+        GROUP BY 1
+      )
+      SELECT
+        cm.country,
+        cm.country_code,
+        cm.source,
+        cm.revenue,
+        COALESCE(cs.spend, 0) as spend,
+        cm.subscribers,
+        cm.trials,
+        CASE WHEN cm.subscribers > 0 AND cm.trials > 0 THEN cm.subscribers::float / cm.trials ELSE NULL END as cr_to_paid,
+        CASE WHEN COALESCE(cs.spend, 0) > 0 THEN cm.revenue / cs.spend ELSE NULL END as roas,
+        CASE WHEN cm.subscribers > 0 AND COALESCE(cs.spend, 0) > 0 THEN cs.spend / cm.subscribers ELSE NULL END as cop
+      FROM country_metrics cm
+      LEFT JOIN country_spend cs ON cm.country_code = cs.country_code AND cm.source = 'apple_ads'
+      WHERE cm.revenue > 0 OR cm.subscribers > 0
+      ORDER BY cm.revenue DESC
+      LIMIT $3
+    `;
+
+    const result = await db.query(query, [from, to, limit * 2]); // Get more to have both sources
+
+    const countries = result.rows.map(row => ({
+      country: row.country,
+      countryCode: row.country_code,
+      source: row.source,
+      revenue: parseFloat(row.revenue) || 0,
+      spend: parseFloat(row.spend) || 0,
+      roas: row.roas ? parseFloat(row.roas) : null,
+      cop: row.cop ? parseFloat(row.cop) : null,
+      subscribers: parseInt(row.subscribers) || 0,
+      trials: parseInt(row.trials) || 0,
+      crToPaid: row.cr_to_paid ? parseFloat(row.cr_to_paid) : null,
+    }));
+
+    // Calculate totals
+    const totals = countries.reduce((acc, c) => ({
+      revenue: acc.revenue + c.revenue,
+      spend: acc.spend + c.spend,
+      subscribers: acc.subscribers + c.subscribers,
+    }), { revenue: 0, spend: 0, subscribers: 0 });
+
+    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
+    totals.cop = totals.subscribers > 0 && totals.spend > 0 ? totals.spend / totals.subscribers : null;
+
+    res.json({ countries, totals });
+  } catch (error) {
+    console.error('Countries error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
