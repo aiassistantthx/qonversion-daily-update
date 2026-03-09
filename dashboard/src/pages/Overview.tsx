@@ -26,6 +26,7 @@ import {
   PayerShareChart,
   ActiveSubscribersWidget,
   PaybackGauge,
+  MonthlyComparisonTable,
   useSortableData,
   SortIcon,
 } from '../components';
@@ -35,6 +36,8 @@ import type {
   RetentionData, WeeklyChurnData, RenewalRatesData,
   CountriesData, MRRBreakdownData, RevenueYoYData, PayerShareData, ActiveSubscribersData
 } from '../components';
+import { api } from '../api';
+import type { YoYData } from '../api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -498,6 +501,11 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/active-subscribers`).then(r => r.json()),
   });
 
+  const { data: yoyData } = useQuery<YoYData>({
+    queryKey: ['yoy'],
+    queryFn: api.getYoY,
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -698,6 +706,9 @@ export function Overview() {
 
       {/* Revenue YoY Comparison */}
       <RevenueYoYChart data={revenueYoYData} />
+
+      {/* Monthly Comparison Table */}
+      <MonthlyComparisonTable data={yoyData} />
 
       {/* Scenario Modeling */}
       <ScenarioModeling />

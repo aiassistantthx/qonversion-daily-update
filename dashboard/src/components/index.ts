@@ -65,3 +65,5 @@ export { useSortableData, SortIcon } from './SortableTable';
 
 export { AnomalyBadge, detectAnomaly } from './AnomalyBadge';
 export type { AnomalyInfo } from './AnomalyBadge';
+
+export { MonthlyComparisonTable } from './MonthlyComparisonTable';

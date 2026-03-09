@@ -142,6 +142,8 @@ export interface YoYData {
     lastYear: number;
     thisYearSubs: number;
     lastYearSubs: number;
+    thisYearSpend: number;
+    lastYearSpend: number;
   }>;
 }
 

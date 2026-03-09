@@ -2832,6 +2832,18 @@ router.get('/yoy', async (req, res) => {
       ORDER BY year, month
     `, [lastYear]);
 
+    // Get spend by month for current and last year
+    const spendResult = await db.query(`
+      SELECT
+        EXTRACT(YEAR FROM date) as year,
+        EXTRACT(MONTH FROM date) as month,
+        SUM(COALESCE(spend, 0)) as spend
+      FROM apple_ads_campaigns
+      WHERE EXTRACT(YEAR FROM date) >= $1
+      GROUP BY year, month
+      ORDER BY year, month
+    `, [lastYear]);
+
     // Build comparison data
     const monthlyMap = new Map();
     monthlyResult.rows.forEach(r => {
@@ -2840,14 +2852,23 @@ router.get('/yoy', async (req, res) => {
         revenue: parseFloat(r.revenue) || 0,
         subscribers: parseInt(r.subscribers) || 0,
         trials: parseInt(r.trials) || 0,
+        spend: 0,
       });
+    });
+
+    // Add spend data
+    spendResult.rows.forEach(r => {
+      const key = `${r.year}-${r.month}`;
+      const existing = monthlyMap.get(key) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
+      existing.spend = parseFloat(r.spend) || 0;
+      monthlyMap.set(key, existing);
     });
 
     // This month vs same month last year
     const thisMonthKey = `${currentYear}-${currentMonth}`;
     const lastYearSameMonthKey = `${lastYear}-${currentMonth}`;
-    const thisMonth = monthlyMap.get(thisMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
-    const lastYearSameMonth = monthlyMap.get(lastYearSameMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
+    const thisMonth = monthlyMap.get(thisMonthKey) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
+    const lastYearSameMonth = monthlyMap.get(lastYearSameMonthKey) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
 
     // Calculate % change
     const monthChange = lastYearSameMonth.revenue > 0
@@ -2862,16 +2883,20 @@ router.get('/yoy', async (req, res) => {
     let ytdLastYear = 0;
     let ytdSubsThisYear = 0;
     let ytdSubsLastYear = 0;
+    let ytdSpendThisYear = 0;
+    let ytdSpendLastYear = 0;
     for (let m = 1; m <= currentMonth; m++) {
       const thisYearData = monthlyMap.get(`${currentYear}-${m}`);
       const lastYearData = monthlyMap.get(`${lastYear}-${m}`);
       if (thisYearData) {
         ytdThisYear += thisYearData.revenue;
         ytdSubsThisYear += thisYearData.subscribers;
+        ytdSpendThisYear += thisYearData.spend;
       }
       if (lastYearData) {
         ytdLastYear += lastYearData.revenue;
         ytdSubsLastYear += lastYearData.subscribers;
+        ytdSpendLastYear += lastYearData.spend;
       }
     }
 
@@ -2905,6 +2930,8 @@ router.get('/yoy', async (req, res) => {
         lastYear: lastYearData?.revenue || 0,
         thisYearSubs: thisYearData?.subscribers || 0,
         lastYearSubs: lastYearData?.subscribers || 0,
+        thisYearSpend: thisYearData?.spend || 0,
+        lastYearSpend: lastYearData?.spend || 0,
       });
     }
 
