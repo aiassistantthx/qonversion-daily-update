@@ -23,12 +23,13 @@ import {
   RevenueYoYChart,
   ScenarioModeling,
   MetricSelector,
+  PayerShareChart,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
   RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData, RevenueYoYData
+  CountriesData, MRRBreakdownData, RevenueYoYData, PayerShareData
 } from './components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -381,6 +382,11 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/revenue-yoy`).then(r => r.json()),
   });
 
+  const { data: payerShareData } = useQuery<PayerShareData>({
+    queryKey: ['payer-share', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/payer-share?${buildParams({ months: 12 })}`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -560,6 +566,9 @@ function Dashboard() {
 
       {/* Retention Chart */}
       <RetentionChart data={retentionData} />
+
+      {/* Payer Share Chart */}
+      <PayerShareChart data={payerShareData} />
 
       {/* Weekly Churn Analysis */}
       <WeeklyChurnChart data={weeklyChurnData} />

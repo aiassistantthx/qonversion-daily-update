@@ -52,3 +52,6 @@ export { ScenarioModeling } from './ScenarioModeling';
 
 export { MetricSelector } from './MetricSelector';
 export type { MetricOption } from './MetricSelector';
+
+export { PayerShareChart } from './PayerShareChart';
+export type { PayerShareData } from './PayerShareChart';

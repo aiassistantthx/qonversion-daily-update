@@ -3444,4 +3444,133 @@ router.get('/revenue-yoy', async (req, res) => {
   }
 });
 
+// Payer Share by Day
+router.get('/payer-share', async (req, res) => {
+  try {
+    const monthsBack = parseInt(req.query.months) || 12;
+
+    // Get all cohorts by install month
+    // For each cohort, calculate % of users who became payers by day N
+    const query = `
+      WITH install_cohorts AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          install_date,
+          q_user_id,
+          COUNT(*) OVER (PARTITION BY TO_CHAR(install_date, 'YYYY-MM')) as total_users
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND install_date IS NOT NULL
+        GROUP BY install_date, q_user_id
+      ),
+      first_conversions AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_payment_date,
+          -- Distinguish trial conversions from direct yearly purchases
+          CASE
+            WHEN MIN(CASE WHEN event_name = 'Trial Converted' THEN event_date END) IS NOT NULL
+            THEN 'trial'
+            ELSE 'direct'
+          END as conversion_type
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          AND product_id LIKE '%yearly%'
+          AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        GROUP BY q_user_id
+      ),
+      cohort_conversions AS (
+        SELECT
+          ic.cohort_month,
+          ic.total_users,
+          fc.q_user_id,
+          fc.first_payment_date,
+          fc.conversion_type,
+          DATE_PART('day', fc.first_payment_date - ic.install_date)::int as days_to_conversion
+        FROM install_cohorts ic
+        LEFT JOIN first_conversions fc ON ic.q_user_id = fc.q_user_id
+      )
+      SELECT
+        cohort_month,
+        MAX(total_users) as total_users,
+        -- Overall payer share
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 1 THEN q_user_id END) as payers_d1,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 3 THEN q_user_id END) as payers_d3,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 7 THEN q_user_id END) as payers_d7,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 14 THEN q_user_id END) as payers_d14,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 30 THEN q_user_id END) as payers_d30,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 60 THEN q_user_id END) as payers_d60,
+        -- Trial conversions only
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 1 THEN q_user_id END) as trial_d1,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 3 THEN q_user_id END) as trial_d3,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 7 THEN q_user_id END) as trial_d7,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 14 THEN q_user_id END) as trial_d14,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 30 THEN q_user_id END) as trial_d30,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 60 THEN q_user_id END) as trial_d60,
+        -- Direct purchases only
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 1 THEN q_user_id END) as direct_d1,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 3 THEN q_user_id END) as direct_d3,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 7 THEN q_user_id END) as direct_d7,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 14 THEN q_user_id END) as direct_d14,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 30 THEN q_user_id END) as direct_d30,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 60 THEN q_user_id END) as direct_d60
+      FROM cohort_conversions
+      GROUP BY cohort_month
+      ORDER BY cohort_month
+    `;
+
+    const result = await db.query(query);
+
+    // Transform to cohort format
+    const cohorts = result.rows.map(row => {
+      const totalUsers = parseInt(row.total_users) || 1; // Avoid division by zero
+
+      return {
+        month: row.cohort_month,
+        totalUsers: totalUsers,
+        payerShare: {
+          d1: parseFloat((parseInt(row.payers_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.payers_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.payers_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.payers_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.payers_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.payers_d60) / totalUsers).toFixed(4)),
+        },
+        trialConversions: {
+          d1: parseFloat((parseInt(row.trial_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.trial_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.trial_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.trial_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.trial_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.trial_d60) / totalUsers).toFixed(4)),
+        },
+        directPurchases: {
+          d1: parseFloat((parseInt(row.direct_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.direct_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.direct_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.direct_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.direct_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.direct_d60) / totalUsers).toFixed(4)),
+        },
+      };
+    });
+
+    // Transform to chart data format
+    const days = [1, 3, 7, 14, 30, 60];
+    const chartData = days.map(day => {
+      const dataPoint = { day };
+      cohorts.slice(-6).forEach(cohort => {
+        const key = `d${day}`;
+        dataPoint[cohort.month] = cohort.payerShare[key];
+      });
+      return dataPoint;
+    });
+
+    res.json({ cohorts, chartData });
+  } catch (error) {
+    console.error('Payer share error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
