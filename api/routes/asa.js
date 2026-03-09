@@ -570,8 +570,6 @@ router.get('/keywords', async (req, res) => {
         k.adgroup_id,
         k.keyword_text,
         k.match_type,
-        k.keyword_status,
-        k.current_bid,
         k.bid_amount,
         COALESCE(p.spend, 0) as spend_7d,
         COALESCE(p.impressions, 0) as impressions_7d,
@@ -585,9 +583,10 @@ router.get('/keywords', async (req, res) => {
         CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d
       FROM (
         SELECT DISTINCT ON (keyword_id)
-          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, keyword_status, current_bid, bid_amount
+          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount
         FROM apple_ads_keywords
         WHERE campaign_id = $1
+        ORDER BY keyword_id, date DESC
       ) k
       LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id
       LEFT JOIN keyword_revenue r ON k.keyword_id::TEXT = r.keyword_id::TEXT
@@ -600,10 +599,8 @@ router.get('/keywords', async (req, res) => {
       params.push(adgroup_id);
     }
 
-    if (status) {
-      query += ` AND k.keyword_status = $${params.length + 1}`;
-      params.push(status.toUpperCase());
-    }
+    // Note: keyword_status column doesn't exist in apple_ads_keywords table
+    // Status filter is not supported for now
 
     query += ` ORDER BY spend_7d DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
