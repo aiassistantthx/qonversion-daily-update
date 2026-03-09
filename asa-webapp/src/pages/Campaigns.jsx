@@ -10,6 +10,7 @@ import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight'
 import { ColumnPicker } from '../components/ColumnPicker';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { Sparkline } from '../components/Sparkline';
+import { PresetViews } from '../components/PresetViews';
 import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -48,6 +49,86 @@ const COLUMN_DEFINITIONS = [
   { id: 'cpm', label: 'CPM' },
 ];
 
+const PRESET_VIEWS = [
+  {
+    name: 'performance',
+    label: 'Performance',
+    columns: {
+      status: true,
+      health: true,
+      trend: true,
+      spend: false,
+      revenue: true,
+      roas: true,
+      installs: true,
+      cpa: false,
+      ttr: false,
+      cvr: false,
+      cpt: false,
+      cpm: false,
+    }
+  },
+  {
+    name: 'budget',
+    label: 'Budget',
+    columns: {
+      status: true,
+      health: false,
+      trend: false,
+      spend: true,
+      revenue: false,
+      roas: false,
+      installs: false,
+      cpa: false,
+      ttr: false,
+      cvr: false,
+      cpt: false,
+      cpm: false,
+    }
+  },
+  {
+    name: 'conversion',
+    label: 'Conversion',
+    columns: {
+      status: true,
+      health: false,
+      trend: false,
+      spend: false,
+      revenue: false,
+      roas: false,
+      installs: false,
+      cpa: true,
+      ttr: true,
+      cvr: true,
+      cpt: true,
+      cpm: false,
+    }
+  },
+  {
+    name: 'full',
+    label: 'Full',
+    columns: {
+      status: true,
+      health: true,
+      trend: true,
+      spend: true,
+      revenue: true,
+      roas: true,
+      installs: true,
+      cpa: true,
+      ttr: true,
+      cvr: true,
+      cpt: true,
+      cpm: true,
+    }
+  },
+  {
+    name: 'custom',
+    label: 'Custom',
+    columns: DEFAULT_COLUMNS
+  }
+];
+
 export default function Campaigns() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -60,7 +141,7 @@ export default function Campaigns() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  const { visibleColumns, toggleColumn, resetToDefault } = useColumnSettings(
+  const { visibleColumns, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
     'campaigns-columns',
     DEFAULT_COLUMNS
   );
@@ -290,6 +371,13 @@ export default function Campaigns() {
           </Button>
         </div>
       </div>
+
+      {/* Preset Views */}
+      <PresetViews
+        activePreset={activePreset}
+        onPresetChange={applyPreset}
+        presets={PRESET_VIEWS}
+      />
 
       {/* Filters and Actions */}
       <div className="flex items-center justify-between gap-4">
