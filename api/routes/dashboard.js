@@ -2365,4 +2365,136 @@ router.get('/debug-attribution', async (req, res) => {
   }
 });
 
+// ============================================
+// WEEKLY CHURN ANALYSIS
+// ============================================
+router.get('/weekly-churn', async (req, res) => {
+  try {
+    // 1. Get weekly subscriber lifecycle: first sub to last renewal
+    const lifecycleResult = await db.query(`
+      WITH weekly_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date,
+          MAX(event_date) as last_event_date,
+          COUNT(*) FILTER (WHERE event_name = 'Subscription Renewed') as renewal_count,
+          COUNT(*) as total_events
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        renewal_count,
+        COUNT(*) as users,
+        ROUND(AVG(EXTRACT(DAYS FROM (last_event_date - first_sub_date)))::numeric, 1) as avg_days_active
+      FROM weekly_subs
+      GROUP BY renewal_count
+      ORDER BY renewal_count
+    `);
+
+    // 2. Cohort analysis: weekly subs by first subscription month
+    const cohortResult = await db.query(`
+      WITH first_weekly AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name IN ('Subscription Started', 'Trial Converted')
+          AND refund = false
+        GROUP BY q_user_id
+      ),
+      weekly_events AS (
+        SELECT
+          fw.q_user_id,
+          TO_CHAR(fw.first_sub_date, 'YYYY-MM') as cohort_month,
+          fw.first_sub_date,
+          COUNT(*) FILTER (WHERE e.event_name = 'Subscription Renewed') as renewals,
+          MAX(e.event_date) as last_activity
+        FROM first_weekly fw
+        JOIN events_v2 e ON fw.q_user_id = e.q_user_id
+        WHERE e.product_id LIKE '%weekly%'
+          AND e.event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        GROUP BY fw.q_user_id, TO_CHAR(fw.first_sub_date, 'YYYY-MM'), fw.first_sub_date
+      )
+      SELECT
+        cohort_month,
+        COUNT(*) as cohort_size,
+        ROUND(AVG(renewals)::numeric, 1) as avg_renewals,
+        ROUND(AVG(EXTRACT(DAYS FROM (last_activity - first_sub_date)))::numeric, 1) as avg_days_active,
+        ROUND(AVG(renewals + 1)::numeric, 1) as avg_weeks_subscribed
+      FROM weekly_events
+      GROUP BY cohort_month
+      ORDER BY cohort_month
+    `);
+
+    // 3. Currently active weekly subscribers (renewed in last 14 days)
+    const activeResult = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as active_weekly_subs
+      FROM events_v2
+      WHERE product_id LIKE '%weekly%'
+        AND event_name = 'Subscription Renewed'
+        AND event_date >= CURRENT_DATE - INTERVAL '14 days'
+    `);
+
+    // 4. Weekly retention curve: % still active after N weeks
+    const retentionResult = await db.query(`
+      WITH first_weekly AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name IN ('Subscription Started', 'Trial Converted')
+          AND refund = false
+          AND event_date <= CURRENT_DATE - INTERVAL '8 weeks'
+        GROUP BY q_user_id
+      ),
+      weekly_activity AS (
+        SELECT
+          fw.q_user_id,
+          fw.first_sub_date,
+          FLOOR(EXTRACT(DAYS FROM (e.event_date - fw.first_sub_date)) / 7) as week_number
+        FROM first_weekly fw
+        JOIN events_v2 e ON fw.q_user_id = e.q_user_id
+        WHERE e.product_id LIKE '%weekly%'
+          AND e.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+      )
+      SELECT
+        week_number,
+        COUNT(DISTINCT q_user_id) as users_active
+      FROM weekly_activity
+      WHERE week_number <= 12
+      GROUP BY week_number
+      ORDER BY week_number
+    `);
+
+    const totalWeeklyUsers = parseInt(retentionResult.rows[0]?.users_active) || 1;
+    const retentionCurve = retentionResult.rows.map(r => ({
+      week: parseInt(r.week_number),
+      users: parseInt(r.users_active),
+      retention: Math.round((parseInt(r.users_active) / totalWeeklyUsers) * 100),
+    }));
+
+    res.json({
+      renewalDistribution: lifecycleResult.rows,
+      cohortAnalysis: cohortResult.rows,
+      activeWeeklySubs: parseInt(activeResult.rows[0]?.active_weekly_subs) || 0,
+      retentionCurve,
+      summary: {
+        avgRenewalsPerUser: lifecycleResult.rows.length > 0
+          ? (lifecycleResult.rows.reduce((s, r) => s + parseInt(r.renewal_count) * parseInt(r.users), 0) /
+             lifecycleResult.rows.reduce((s, r) => s + parseInt(r.users), 0)).toFixed(1)
+          : 0,
+        totalWeeklyUsers: lifecycleResult.rows.reduce((s, r) => s + parseInt(r.users), 0),
+      },
+    });
+  } catch (error) {
+    console.error('Weekly churn error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
