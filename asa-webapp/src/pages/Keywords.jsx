@@ -272,7 +272,8 @@ export default function Keywords() {
       return {
         keywordId: kw.keyword_id,
         bidAmount: Math.round(newBidValue * 100) / 100,
-    }));
+      };
+    });
 
     bulkBidMutation.mutate({
       campaignId: firstKeyword.campaign_id,
