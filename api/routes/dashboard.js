@@ -1121,34 +1121,35 @@ router.get('/forecast', async (req, res) => {
       ORDER BY month
     `);
 
-    // Calculate expected renewals for current month + next 12 months
-    // Subscribers from X months ago should renew in (12 - X) months
+    // Calculate baseline revenue from last 3 full months
+    const last3Months = monthlyRevenueResult.rows.slice(-3);
+    const avgMonthlyRevenue = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseFloat(r.revenue || 0), 0) / last3Months.length
+      : 50000;
+    const avgMonthlyRenewals = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseInt(r.renewals || 0), 0) / last3Months.length
+      : 2000;
+    const avgMonthlyNewSubs = last3Months.length > 0
+      ? last3Months.reduce((s, r) => s + parseInt(r.new_subs || 0), 0) / last3Months.length
+      : 1000;
+
+    // Build forecast for current month + next 12 months
     const today = new Date();
     const renewalForecast = [];
 
-    // Start from current month (i=0) since historical excludes current month
     for (let i = 0; i <= 12; i++) {
       const forecastMonth = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastMonth.getFullYear()}-${String(forecastMonth.getMonth() + 1).padStart(2, '0')}`;
 
-      // Subscribers from 12 months before this forecast month should renew
-      const renewalSourceMonth = new Date(forecastMonth.getFullYear() - 1, forecastMonth.getMonth(), 1);
-      const renewalSourceStr = `${renewalSourceMonth.getFullYear()}-${String(renewalSourceMonth.getMonth() + 1).padStart(2, '0')}`;
-
-      const sourceData = activeSubsResult.rows.find(r => r.sub_month === renewalSourceStr);
-      const expectedRenewals = sourceData ? parseInt(sourceData.subscribers) : 0;
-      const avgPrice = sourceData ? parseFloat(sourceData.avg_price) : 50;
-
-      // Assume 70% renewal rate
-      const renewalRate = 0.70;
-      const expectedRevenue = expectedRenewals * renewalRate * avgPrice;
+      // Base revenue = average of last 3 months (includes both new subs and renewals)
+      // This naturally captures the ongoing renewal revenue from all existing subscribers
+      const baseRevenue = avgMonthlyRevenue;
 
       renewalForecast.push({
         month: forecastMonthStr,
-        expectedRenewals: Math.round(expectedRenewals * renewalRate),
-        expectedRevenue: Math.round(expectedRevenue),
-        sourceMonth: renewalSourceStr,
-        sourceSubs: expectedRenewals,
+        expectedRenewals: Math.round(avgMonthlyRenewals),
+        expectedRevenue: Math.round(baseRevenue),
+        avgNewSubs: Math.round(avgMonthlyNewSubs),
       });
     }
 
@@ -1205,35 +1206,11 @@ router.get('/forecast', async (req, res) => {
       ? Math.round(avgMonthlySpend / currentCOP)
       : 0;
 
-    // Add projected NEW subscribers revenue to forecast
-    // For each future month, add revenue from:
-    // 1. New subscribers acquired that month (initial purchase)
-    // 2. Renewals from subscribers acquired in previous months
-    const PROCEEDS_FACTOR = 0.82;
-    const RENEWAL_RATE = 0.70;
-
+    // Baseline already includes new subs + renewals at current marketing spend level
+    // totalForecastRevenue = baseline (no need to add extra since marketing spend stays same)
     for (let i = 0; i < renewalForecast.length; i++) {
-      // Revenue from new subscribers acquired this month
-      const newSubsRevenue = projectedNewSubsPerMonth * avgSubPrice * PROCEEDS_FACTOR;
       renewalForecast[i].projectedNewSubs = projectedNewSubsPerMonth;
-      renewalForecast[i].newSubsRevenue = Math.round(newSubsRevenue);
-
-      // Revenue from renewals of subscribers acquired in previous forecast months
-      // Subscribers acquired 12 months ago will renew this month
-      if (i >= 12) {
-        const renewingFromForecast = renewalForecast[i - 12].projectedNewSubs * RENEWAL_RATE;
-        renewalForecast[i].forecastRenewals = Math.round(renewingFromForecast);
-        renewalForecast[i].forecastRenewalRevenue = Math.round(renewingFromForecast * avgSubPrice * PROCEEDS_FACTOR);
-      } else {
-        renewalForecast[i].forecastRenewals = 0;
-        renewalForecast[i].forecastRenewalRevenue = 0;
-      }
-
-      // Total forecast revenue = renewals from historical + new subs + renewals from forecast
-      renewalForecast[i].totalForecastRevenue =
-        renewalForecast[i].expectedRevenue +
-        renewalForecast[i].newSubsRevenue +
-        renewalForecast[i].forecastRenewalRevenue;
+      renewalForecast[i].totalForecastRevenue = renewalForecast[i].expectedRevenue;
     }
 
     res.json({
