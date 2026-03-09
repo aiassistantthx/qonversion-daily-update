@@ -1121,35 +1121,62 @@ router.get('/forecast', async (req, res) => {
       ORDER BY month
     `);
 
-    // Calculate baseline revenue from last 3 full months
-    const last3Months = monthlyRevenueResult.rows.slice(-3);
-    const avgMonthlyRevenue = last3Months.length > 0
-      ? last3Months.reduce((s, r) => s + parseFloat(r.revenue || 0), 0) / last3Months.length
-      : 50000;
-    const avgMonthlyRenewals = last3Months.length > 0
-      ? last3Months.reduce((s, r) => s + parseInt(r.renewals || 0), 0) / last3Months.length
-      : 2000;
-    const avgMonthlyNewSubs = last3Months.length > 0
-      ? last3Months.reduce((s, r) => s + parseInt(r.new_subs || 0), 0) / last3Months.length
-      : 1000;
+    // Get current month partial revenue for extrapolation
+    const currentMonthRevenueResult = await db.query(`
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+        AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND refund = false
+    `);
+    const today = new Date();
+    const currentDay = today.getDate();
+    const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const currentMonthPartialRevenue = parseFloat(currentMonthRevenueResult.rows[0]?.revenue) || 0;
+    const extrapolatedCurrentMonthRevenue = currentDay > 0
+      ? (currentMonthPartialRevenue / currentDay) * daysInCurrentMonth
+      : 0;
+
+    // Get last full month as baseline for growth
+    const lastFullMonth = monthlyRevenueResult.rows[monthlyRevenueResult.rows.length - 1];
+    const baselineRevenue = lastFullMonth ? parseFloat(lastFullMonth.revenue) : 100000;
+    const baselineRenewals = lastFullMonth ? parseInt(lastFullMonth.renewals) : 2500;
+    const baselineNewSubs = lastFullMonth ? parseInt(lastFullMonth.new_subs) : 1500;
+
+    // Calculate average monthly growth rate from last 6 months
+    const last6Months = monthlyRevenueResult.rows.slice(-6);
+    let avgGrowthRate = 0.02; // default 2% monthly growth
+    if (last6Months.length >= 2) {
+      const firstRev = parseFloat(last6Months[0].revenue) || 1;
+      const lastRev = parseFloat(last6Months[last6Months.length - 1].revenue) || 1;
+      const months = last6Months.length - 1;
+      avgGrowthRate = Math.pow(lastRev / firstRev, 1 / months) - 1;
+      // Cap growth rate to reasonable bounds
+      avgGrowthRate = Math.max(-0.05, Math.min(0.10, avgGrowthRate));
+    }
 
     // Build forecast for current month + next 12 months
-    const today = new Date();
     const renewalForecast = [];
 
     for (let i = 0; i <= 12; i++) {
       const forecastMonth = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastMonth.getFullYear()}-${String(forecastMonth.getMonth() + 1).padStart(2, '0')}`;
 
-      // Base revenue = average of last 3 months (includes both new subs and renewals)
-      // This naturally captures the ongoing renewal revenue from all existing subscribers
-      const baseRevenue = avgMonthlyRevenue;
+      let expectedRevenue;
+      if (i === 0) {
+        // Current month: use extrapolated revenue
+        expectedRevenue = extrapolatedCurrentMonthRevenue;
+      } else {
+        // Future months: apply growth rate from baseline
+        expectedRevenue = baselineRevenue * Math.pow(1 + avgGrowthRate, i);
+      }
 
       renewalForecast.push({
         month: forecastMonthStr,
-        expectedRenewals: Math.round(avgMonthlyRenewals),
-        expectedRevenue: Math.round(baseRevenue),
-        avgNewSubs: Math.round(avgMonthlyNewSubs),
+        expectedRenewals: Math.round(baselineRenewals * Math.pow(1 + avgGrowthRate * 0.5, i)),
+        expectedRevenue: Math.round(expectedRevenue),
+        avgNewSubs: Math.round(baselineNewSubs),
+        growthRate: avgGrowthRate,
       });
     }
 
