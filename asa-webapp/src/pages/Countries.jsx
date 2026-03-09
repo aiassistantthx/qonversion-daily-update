@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { GeoHeatmap } from '../components/GeoHeatmap';
 import { getCountries } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { ChevronUp, ChevronDown, Search, Download, ArrowRight } from 'lucide-react';
@@ -131,6 +132,8 @@ export default function Countries() {
           <Download size={16} /> Export CSV
         </Button>
       </div>
+
+      <GeoHeatmap data={data?.data || []} />
 
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
