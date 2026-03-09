@@ -7,6 +7,7 @@ import Keywords from './pages/Keywords';
 import Rules from './pages/Rules';
 import Templates from './pages/Templates';
 import History from './pages/History';
+import Countries from './pages/Countries';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="/rules" element={<Rules />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/history" element={<History />} />
+        <Route path="/countries" element={<Countries />} />
       </Routes>
     </Layout>
   );

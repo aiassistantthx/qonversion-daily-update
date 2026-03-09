@@ -7,6 +7,7 @@ import {
   Cog,
   FileText,
   History,
+  Globe,
 } from 'lucide-react';
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
 import { SyncStatus } from './SyncStatus';
@@ -16,6 +17,7 @@ const navItems = [
   { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { path: '/adgroups', label: 'Ad Groups', icon: Layers },
   { path: '/keywords', label: 'Keywords', icon: KeyRound },
+  { path: '/countries', label: 'Countries', icon: Globe },
   { path: '/rules', label: 'Rules', icon: Cog },
   { path: '/templates', label: 'Templates', icon: FileText },
   { path: '/history', label: 'History', icon: History },

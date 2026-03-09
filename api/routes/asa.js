@@ -1613,6 +1613,108 @@ router.post('/sync/incremental', async (req, res) => {
 });
 
 // ================================================
+// COUNTRIES
+// ================================================
+
+/**
+ * GET /asa/countries
+ * Get metrics breakdown by country
+ *
+ * Query params:
+ * - days: number of days (default 7)
+ * - from: start date (YYYY-MM-DD)
+ * - to: end date (YYYY-MM-DD)
+ */
+router.get('/countries', async (req, res) => {
+  try {
+    let { days = 7, from, to } = req.query;
+    let dateFilter;
+
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
+    }
+
+    const dateCondition = dateFilter.days
+      ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+
+    const revenueCondition = dateFilter.days
+      ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
+
+    const query = `
+      WITH country_spend AS (
+        SELECT
+          UNNEST(c.countries_or_regions) as country,
+          SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
+        FROM apple_ads_campaigns c
+        WHERE countries_or_regions IS NOT NULL
+        GROUP BY 1
+      ),
+      country_revenue AS (
+        SELECT
+          country,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND country IS NOT NULL
+          AND campaign_id IS NOT NULL
+        GROUP BY country
+      )
+      SELECT
+        COALESCE(s.country, r.country) as country,
+        COALESCE(s.spend, 0) as spend,
+        COALESCE(s.installs, 0) as installs,
+        COALESCE(r.revenue, 0) as revenue,
+        COALESCE(r.paid_users, 0) as paid_users,
+        CASE WHEN COALESCE(s.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / s.spend ELSE 0 END as roas,
+        CASE WHEN COALESCE(s.installs, 0) > 0 THEN COALESCE(s.spend, 0) / s.installs ELSE NULL END as cpa,
+        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(s.spend, 0) / r.paid_users ELSE NULL END as cop
+      FROM country_spend s
+      FULL OUTER JOIN country_revenue r ON s.country = r.country
+      WHERE COALESCE(s.country, r.country) IS NOT NULL
+      ORDER BY spend DESC
+    `;
+
+    const result = await db.query(query);
+
+    const totals = result.rows.reduce((acc, row) => ({
+      spend: acc.spend + parseFloat(row.spend || 0),
+      revenue: acc.revenue + parseFloat(row.revenue || 0),
+      installs: acc.installs + parseInt(row.installs || 0),
+      paid_users: acc.paid_users + parseInt(row.paid_users || 0),
+    }), { spend: 0, revenue: 0, installs: 0, paid_users: 0 });
+
+    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
+    totals.cpa = totals.installs > 0 ? totals.spend / totals.installs : null;
+    totals.cop = totals.paid_users > 0 ? totals.spend / totals.paid_users : null;
+
+    res.json({
+      dateRange: dateFilter,
+      total: result.rows.length,
+      totals,
+      data: result.rows.map(row => ({
+        country: row.country,
+        spend: parseFloat(row.spend || 0),
+        revenue: parseFloat(row.revenue || 0),
+        roas: parseFloat(row.roas || 0),
+        cpa: row.cpa ? parseFloat(row.cpa) : null,
+        installs: parseInt(row.installs || 0),
+        paidUsers: parseInt(row.paid_users || 0),
+        cop: row.cop ? parseFloat(row.cop) : null,
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ================================================
 // TRENDS / ANALYTICS
 // ================================================
 

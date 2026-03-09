@@ -64,4 +64,7 @@ export const triggerIncrementalSync = () => api.post('/sync/incremental').then(r
 // Trends
 export const getTrends = (params = {}) => api.get('/trends', { params }).then(res => res.data);
 
+// Countries
+export const getCountries = (params = {}) => api.get('/countries', { params }).then(res => res.data);
+
 export default api;
