@@ -49,3 +49,6 @@ export { RevenueYoYChart } from './RevenueYoYChart';
 export type { RevenueYoYData } from './RevenueYoYChart';
 
 export { ScenarioModeling } from './ScenarioModeling';
+
+export { MetricSelector } from './MetricSelector';
+export type { MetricOption } from './MetricSelector';

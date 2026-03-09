@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
   LineChart, Line, Bar, Area, ComposedChart,
@@ -22,6 +22,7 @@ import {
   MRRBreakdown,
   RevenueYoYChart,
   ScenarioModeling,
+  MetricSelector,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
@@ -240,6 +241,21 @@ function Dashboard() {
   const [countryFilter, setCountryFilter] = useState<CountrySelection>(() => parseCountryFilterFromURL());
   const [campaignFilter, setCampaignFilter] = useState<CampaignSelection>(() => parseCampaignFilterFromURL());
   const [keywordDays, setKeywordDays] = useState(90);
+  const [dailyChartMetrics, setDailyChartMetrics] = useState<string[]>([]);
+  const [roasEvolutionCohorts, setRoasEvolutionCohorts] = useState<string[]>([]);
+  const [monthlyChartMetrics, setMonthlyChartMetrics] = useState<string[]>([]);
+
+  const handleDailyChartMetricsChange = useCallback((selected: string[]) => {
+    setDailyChartMetrics(selected);
+  }, []);
+
+  const handleRoasEvolutionCohortsChange = useCallback((selected: string[]) => {
+    setRoasEvolutionCohorts(selected);
+  }, []);
+
+  const handleMonthlyChartMetricsChange = useCallback((selected: string[]) => {
+    setMonthlyChartMetrics(selected);
+  }, []);
 
   // Sync filters to URL
   useEffect(() => {
@@ -472,10 +488,23 @@ function Dashboard() {
 
       {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>
-        <h3 style={styles.chartTitle}>ROAS Evolution by Cohort Age</h3>
-        <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-          How ROAS grows as cohorts mature. Each line = one monthly cohort.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ ...styles.chartTitle, marginBottom: 4 }}>ROAS Evolution by Cohort Age</h3>
+            <p style={{ fontSize: 12, color: '#6b7280' }}>
+              How ROAS grows as cohorts mature. Each line = one monthly cohort.
+            </p>
+          </div>
+          <MetricSelector
+            options={cohortMonths.slice(-8).map((month, i) => ({
+              key: month,
+              label: month,
+              color: COHORT_COLORS[i % COHORT_COLORS.length],
+            }))}
+            onChange={handleRoasEvolutionCohortsChange}
+            storageKey="roasEvolution-selectedCohorts"
+          />
+        </div>
         <div style={{ ...styles.chartContainer, height: 350 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={roasChartData}>
@@ -489,18 +518,20 @@ function Dashboard() {
                 labelFormatter={(age) => `Day ${age}`}
               />
               <Legend />
-              {cohortMonths.slice(-8).map((month, i) => (
-                <Line
-                  key={month}
-                  type="monotone"
-                  dataKey={month}
-                  stroke={COHORT_COLORS[i % COHORT_COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  connectNulls
-                  name={month}
-                />
-              ))}
+              {cohortMonths.slice(-8)
+                .filter(month => roasEvolutionCohorts.length === 0 || roasEvolutionCohorts.includes(month))
+                .map((month) => (
+                  <Line
+                    key={month}
+                    type="monotone"
+                    dataKey={month}
+                    stroke={COHORT_COLORS[cohortMonths.slice(-8).indexOf(month) % COHORT_COLORS.length]}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    connectNulls
+                    name={month}
+                  />
+                ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -541,9 +572,21 @@ function Dashboard() {
 
       {/* Daily Chart */}
       <div style={styles.chartCard}>
-        <h3 style={styles.chartTitle}>
-          {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <h3 style={{ ...styles.chartTitle, marginBottom: 0 }}>
+            {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
+          </h3>
+          <MetricSelector
+            options={[
+              { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
+              { key: 'spend', label: 'Spend', color: '#ef4444' },
+              { key: 'cop', label: 'COP', color: '#10b981' },
+              { key: 'copPredicted', label: 'COP Predicted', color: '#10b981' },
+            ]}
+            onChange={handleDailyChartMetricsChange}
+            storageKey="dailyChart-selectedMetrics"
+          />
+        </div>
         <div style={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={dailyChartData}>
@@ -553,10 +596,18 @@ function Dashboard() {
               <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
               <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
               <Legend />
-              <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
-              <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
-              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
-              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
+              {dailyChartMetrics.includes('revenue') && (
+                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
+              )}
+              {dailyChartMetrics.includes('spend') && (
+                <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
+              )}
+              {dailyChartMetrics.includes('cop') && (
+                <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
+              )}
+              {dailyChartMetrics.includes('copPredicted') && (
+                <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -628,7 +679,18 @@ function Dashboard() {
 
       {/* Monthly Spend & COP */}
       <div style={styles.chartCard}>
-        <h3 style={styles.chartTitle}>Monthly Spend & COP</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ ...styles.chartTitle, marginBottom: 0 }}>Monthly Spend & COP</h3>
+          <MetricSelector
+            options={[
+              { key: 'spend', label: 'Spend', color: '#3b82f6' },
+              { key: 'cop', label: 'COP', color: '#10b981' },
+              { key: 'copPredicted', label: 'COP Predicted', color: '#10b981' },
+            ]}
+            onChange={handleMonthlyChartMetricsChange}
+            storageKey="monthlyChart-selectedMetrics"
+          />
+        </div>
         <div style={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={monthlyChartData}>
@@ -638,9 +700,15 @@ function Dashboard() {
               <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
               <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
               <Legend />
-              <Bar yAxisId="left" dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Spend ($K)" />
-              <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="COP" connectNulls />
-              <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} name="COP Predicted" connectNulls />
+              {monthlyChartMetrics.includes('spend') && (
+                <Bar yAxisId="left" dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Spend ($K)" />
+              )}
+              {monthlyChartMetrics.includes('cop') && (
+                <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="COP" connectNulls />
+              )}
+              {monthlyChartMetrics.includes('copPredicted') && (
+                <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} name="COP Predicted" connectNulls />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
