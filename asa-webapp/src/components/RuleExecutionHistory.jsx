@@ -1,4 +1,4 @@
-import { useQuery } from '@tantml:react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from './Table';
 import { StatusBadge, Badge } from './Badge';
 import { getRule } from '../lib/api';
