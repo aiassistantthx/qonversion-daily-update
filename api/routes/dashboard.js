@@ -2302,6 +2302,52 @@ router.get('/debug-attribution', async (req, res) => {
         AND ua.campaign_id IS NOT NULL
     `);
 
+    // 7. Check qonversion_events campaign text values for ASA users
+    const qonversionCampaignsResult = await db.query(`
+      SELECT
+        campaign,
+        COUNT(DISTINCT q_user_id) as users
+      FROM qonversion_events
+      WHERE media_source = 'Apple AdServices'
+      GROUP BY campaign
+      ORDER BY users DESC
+      LIMIT 20
+    `);
+
+    // 8. Check which qonversion_events campaign names match apple_ads_campaigns
+    const campaignMatchResult = await db.query(`
+      WITH qon_campaigns AS (
+        SELECT DISTINCT campaign FROM qonversion_events
+        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+      ),
+      apple_campaigns AS (
+        SELECT DISTINCT campaign_name FROM apple_ads_campaigns
+      )
+      SELECT
+        (SELECT COUNT(*) FROM qon_campaigns) as qon_unique_campaigns,
+        (SELECT COUNT(*) FROM apple_campaigns) as apple_unique_campaigns,
+        (SELECT COUNT(*) FROM qon_campaigns qc JOIN apple_campaigns ac ON qc.campaign = ac.campaign_name) as matching_campaigns
+    `);
+
+    // 9. Sample of qonversion_events campaign values that don't match apple_ads
+    const unmatchedCampaignsResult = await db.query(`
+      WITH qon_campaigns AS (
+        SELECT campaign, COUNT(DISTINCT q_user_id) as users
+        FROM qonversion_events
+        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+        GROUP BY campaign
+      ),
+      apple_campaigns AS (
+        SELECT DISTINCT campaign_name FROM apple_ads_campaigns
+      )
+      SELECT qc.campaign, qc.users
+      FROM qon_campaigns qc
+      LEFT JOIN apple_campaigns ac ON qc.campaign = ac.campaign_name
+      WHERE ac.campaign_name IS NULL
+      ORDER BY qc.users DESC
+      LIMIT 10
+    `);
+
     res.json({
       timeline: timelineResult.rows,
       userAttributions: userAttributionsResult.rows[0],
@@ -2309,6 +2355,9 @@ router.get('/debug-attribution', async (req, res) => {
       missingCampaignSample: missingCampaignSample.rows,
       firstCampaignId: firstCampaignIdResult.rows[0],
       backfillPotential: backfillPotentialResult.rows[0],
+      qonversionCampaigns: qonversionCampaignsResult.rows,
+      campaignMatch: campaignMatchResult.rows[0],
+      unmatchedCampaigns: unmatchedCampaignsResult.rows,
     });
   } catch (error) {
     console.error('Debug attribution error:', error);
