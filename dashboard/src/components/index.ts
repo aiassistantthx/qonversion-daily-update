@@ -62,3 +62,6 @@ export type { ActiveSubscribersData } from './ActiveSubscribersWidget';
 export { PaybackGauge } from './PaybackGauge';
 
 export { useSortableData, SortIcon } from './SortableTable';
+
+export { AnomalyBadge, detectAnomaly } from './AnomalyBadge';
+export type { AnomalyInfo } from './AnomalyBadge';
