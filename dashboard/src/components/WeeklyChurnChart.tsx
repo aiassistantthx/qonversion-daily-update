@@ -1,6 +1,8 @@
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine, Area, ComposedChart
+  Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine, ComposedChart
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -53,14 +55,54 @@ export function WeeklyChurnChart({ data }: WeeklyChurnChartProps) {
   const chartData = data.chartData || [];
   const cohortMonths = data.cohorts?.map(c => c.month).slice(-6) || [];
 
+  const handleExport = () => {
+    const headers = ['Cohort', 'Initial', 'W1', 'W2', 'W3', 'W4', 'W8', 'W12', 'Steady State'];
+    const rows = (data.cohorts || []).map(c => [
+      c.month,
+      c.initialSubs,
+      formatPct(c.retentionByWeek.w1),
+      formatPct(c.retentionByWeek.w2),
+      formatPct(c.retentionByWeek.w3),
+      formatPct(c.retentionByWeek.w4),
+      formatPct(c.retentionByWeek.w8),
+      formatPct(c.retentionByWeek.w12),
+      formatPct(c.steadyStateChurn),
+    ]);
+    exportToCSV('weekly-churn', headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Weekly Subscription Churn Analysis
-      </h3>
-      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-        Weekly churn curve showing % of subscribers retained by week. Critical for weekly revenue forecasting.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+            Weekly Subscription Churn Analysis
+          </h3>
+          <p style={{ fontSize: 12, color: '#6b7280' }}>
+            Weekly churn curve showing % of subscribers retained by week. Critical for weekly revenue forecasting.
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
 
       {/* Key metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>

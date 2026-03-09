@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Globe } from 'lucide-react';
+import { ChevronDown, ChevronUp, Globe, Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 export interface CountriesData {
   countries: Array<{
@@ -79,6 +80,24 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
     return sortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
   }).slice(0, topN);
 
+  const handleExport = () => {
+    const headers = ['#', 'Country', 'Country Code', 'Source', 'Revenue', 'Spend', 'ROAS', 'COP', 'Subscribers', 'Trials', 'CR %'];
+    const rows = sortedCountries.map((c, i) => [
+      i + 1,
+      c.country,
+      c.countryCode,
+      c.source,
+      c.revenue,
+      c.spend,
+      c.roas != null ? (c.roas * 100).toFixed(1) + '%' : '',
+      c.cop != null ? c.cop.toFixed(2) : '',
+      c.subscribers,
+      c.trials,
+      c.crToPaid != null ? (c.crToPaid * 100).toFixed(1) + '%' : '',
+    ]);
+    exportToCSV('countries-ranking', headers, rows);
+  };
+
   const SortIcon = ({ column }: { column: SortKey }) => {
     if (sortKey !== column) return null;
     return sortAsc ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
@@ -96,7 +115,7 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
             Performance by country. Top {topN} by {sortKey}.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {(['all', 'apple_ads', 'organic'] as const).map(source => (
             <button
               key={source}
@@ -115,6 +134,26 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
               {source === 'all' ? 'All' : source === 'apple_ads' ? 'Apple Ads' : 'Organic'}
             </button>
           ))}
+          <button
+            onClick={handleExport}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '6px 12px',
+              background: '#f3f4f6',
+              color: '#374151',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+            title="Export to CSV"
+          >
+            <Download size={14} />
+            Export
+          </button>
         </div>
       </div>
 

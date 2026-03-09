@@ -1,5 +1,6 @@
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Download } from 'lucide-react';
 import type { CampaignCop } from '../api';
+import { exportToCSV } from '../utils/export';
 
 interface CampaignTableProps {
   campaigns: CampaignCop[];
@@ -11,10 +12,36 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
   const formatCurrency = (val: number) =>
     `$${val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+  const handleExport = () => {
+    const headers = ['Campaign', 'Campaign ID', 'COP', 'Spend', 'Share %', 'ROAS', 'Payers', 'Installs'];
+    const rows = campaigns.map(c => {
+      const sharePercent = totalSpend > 0 ? (c.spend / totalSpend) * 100 : 0;
+      return [
+        c.campaignName || `Campaign ${c.campaignId}`,
+        c.campaignId,
+        c.cop != null ? c.cop.toFixed(2) : '',
+        c.spend.toFixed(2),
+        sharePercent.toFixed(1) + '%',
+        c.roas != null ? c.roas.toFixed(2) : '',
+        c.payers,
+        c.installs,
+      ];
+    });
+    exportToCSV('campaign-cop', headers, rows);
+  };
+
   return (
     <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-terminal-border">
+      <div className="px-4 py-3 border-b border-terminal-border flex justify-between items-center">
         <div className="text-sm text-terminal-muted">COP by Campaign</div>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1 px-2 py-1 text-xs text-terminal-muted hover:text-terminal-text"
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
       </div>
 
       <div className="overflow-x-auto">

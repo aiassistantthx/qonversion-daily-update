@@ -1,3 +1,6 @@
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
+
 export interface RenewalRatesData {
   cohorts: Array<{
     month: string;
@@ -32,14 +35,52 @@ export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
   const maturedCohorts = sortedCohorts.filter(c => c.isMatured);
   const pendingCohorts = sortedCohorts.filter(c => !c.isMatured);
 
+  const handleExport = () => {
+    const headers = ['Cohort', 'Yearly Subs', 'Eligible', 'Renewed', 'Renewal Rate', 'Age (months)', 'Status'];
+    const rows = sortedCohorts.map(c => [
+      c.month,
+      c.yearlySubscribers,
+      c.isMatured ? c.eligibleForRenewal : '',
+      c.isMatured ? c.renewed : '',
+      c.renewalRate != null ? (c.renewalRate * 100).toFixed(1) + '%' : '',
+      c.cohortAge,
+      c.isMatured ? 'Mature' : 'Pending',
+    ]);
+    exportToCSV('yearly-renewal-rates', headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Yearly Subscription Renewal Rates
-      </h3>
-      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-        Renewal rates by yearly subscription cohort. Shows what % of subscribers renew after 12 months.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+            Yearly Subscription Renewal Rates
+          </h3>
+          <p style={{ fontSize: 12, color: '#6b7280' }}>
+            Renewal rates by yearly subscription cohort. Shows what % of subscribers renew after 12 months.
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
 
       {/* Key metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>

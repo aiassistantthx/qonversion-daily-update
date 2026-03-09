@@ -1,6 +1,8 @@
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell, PieChart, Pie
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 export interface SubscriptionBreakdownData {
   current: {
@@ -49,14 +51,50 @@ export function SubscriptionBreakdown({ data }: SubscriptionBreakdownProps) {
   const fmt = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const fmtK = (n: number) => `$${(n / 1000).toFixed(1)}K`;
 
+  const handleExport = () => {
+    const headers = ['Month', 'Weekly Revenue', 'Yearly Revenue', 'Weekly %', 'Yearly %'];
+    const rows = (data.trend || []).map(t => [
+      t.month,
+      t.weeklyRevenue.toFixed(2),
+      t.yearlyRevenue.toFixed(2),
+      t.weeklyPercentage.toFixed(1) + '%',
+      t.yearlyPercentage.toFixed(1) + '%',
+    ]);
+    exportToCSV('subscription-breakdown', headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        Revenue by Subscription Type
-      </h3>
-      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-        Weekly vs Yearly subscription revenue breakdown. Current month and trend over time.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+            Revenue by Subscription Type
+          </h3>
+          <p style={{ fontSize: 12, color: '#6b7280' }}>
+            Weekly vs Yearly subscription revenue breakdown. Current month and trend over time.
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export trend to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         {/* Weekly KPI */}
@@ -116,7 +154,7 @@ export function SubscriptionBreakdown({ data }: SubscriptionBreakdownProps) {
                   outerRadius={80}
                   paddingAngle={2}
                   dataKey="value"
-                  label={({ name, percentage }) => `${name} ${percentage.toFixed(0)}%`}
+                  label={(props) => `${props.name || ''} ${((props.percent || 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   <Cell fill={COLORS.weekly} />
