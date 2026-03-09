@@ -1705,7 +1705,7 @@ router.get('/compare', async (req, res) => {
 
     // Total stats
     const v1Stats = await db.query(`
-      SELECT COUNT(*) as total, COUNT(campaign_id) as with_campaign, COUNT(keyword_id) as with_keyword
+      SELECT COUNT(*) as total, COUNT(campaign_id) as with_campaign, 0 as with_keyword
       FROM subscription_events
     `);
 
