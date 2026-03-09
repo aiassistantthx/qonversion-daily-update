@@ -3276,4 +3276,99 @@ router.get('/renewal-rates', async (req, res) => {
   }
 });
 
+// ============================================================================
+// MRR BREAKDOWN - New, Expansion, Churn, Reactivation, Net MRR
+// ============================================================================
+router.get('/mrr', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+
+    // Get monthly MRR components
+    const query = `
+      WITH monthly_subs AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+          q_user_id,
+          product_id,
+          SUM(CASE WHEN event_name IN ('Trial Converted', 'Subscription Started') THEN price_usd ELSE 0 END) as new_revenue,
+          SUM(CASE WHEN event_name = 'Subscription Renewed' THEN price_usd ELSE 0 END) as renewal_revenue
+        FROM events_v2
+        WHERE created_at >= NOW() - INTERVAL '${months + 1} months'
+          AND event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed', 'Subscription Expired', 'Subscription Cancelled')
+        GROUP BY 1, 2, 3
+      ),
+      monthly_mrr AS (
+        SELECT
+          month,
+          SUM(CASE
+            WHEN product_id LIKE '%yearly%' THEN (new_revenue + renewal_revenue) / 12
+            WHEN product_id LIKE '%monthly%' THEN new_revenue + renewal_revenue
+            ELSE (new_revenue + renewal_revenue) * 4.33
+          END) as mrr,
+          SUM(CASE
+            WHEN new_revenue > 0 AND product_id LIKE '%yearly%' THEN new_revenue / 12
+            WHEN new_revenue > 0 AND product_id LIKE '%monthly%' THEN new_revenue
+            WHEN new_revenue > 0 ELSE new_revenue * 4.33
+          END) as new_mrr
+        FROM monthly_subs
+        GROUP BY 1
+      )
+      SELECT
+        month,
+        mrr,
+        new_mrr,
+        LAG(mrr, 1) OVER (ORDER BY month) as prev_mrr
+      FROM monthly_mrr
+      ORDER BY month DESC
+      LIMIT $1
+    `;
+
+    const result = await db.query(query, [months]);
+
+    const breakdown = result.rows.reverse().map((row, i, arr) => {
+      const currentMrr = parseFloat(row.mrr) || 0;
+      const prevMrr = parseFloat(row.prev_mrr) || 0;
+      const newMrr = parseFloat(row.new_mrr) || 0;
+
+      // Calculate components
+      const netMrr = currentMrr - prevMrr;
+      const churnMrr = prevMrr > 0 ? Math.max(0, prevMrr - currentMrr + newMrr) : 0;
+      const expansionMrr = Math.max(0, netMrr - newMrr + churnMrr);
+      const reactivationMrr = 0; // Simplified for now
+
+      const mrrGrowthRate = prevMrr > 0 ? (netMrr / prevMrr) * 100 : 0;
+
+      return {
+        month: row.month,
+        newMrr,
+        expansionMrr,
+        churnMrr,
+        reactivationMrr,
+        netMrr,
+        totalMrr: currentMrr,
+        mrrGrowthRate,
+      };
+    });
+
+    // Current month metrics
+    const current = breakdown[breakdown.length - 1] || {
+      newMrr: 0,
+      expansionMrr: 0,
+      churnMrr: 0,
+      reactivationMrr: 0,
+      netMrr: 0,
+      totalMrr: 0,
+      mrrGrowthRate: 0,
+    };
+
+    res.json({
+      current,
+      breakdown,
+    });
+  } catch (error) {
+    console.error('MRR breakdown error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
