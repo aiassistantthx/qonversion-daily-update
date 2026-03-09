@@ -477,48 +477,34 @@ router.get('/stats', async (req, res) => {
       FROM events_v2
     `);
 
-    // Check attribution by date ranges
-    const attributionByPeriod = await db.query(`
+    // Check media_source distribution
+    const mediaSourceStats = await db.query(`
       SELECT
-        CASE
-          WHEN install_date >= '2026-03-07' THEN 'after_mar_7'
-          WHEN install_date >= '2026-02-01' THEN 'feb_2026'
-          WHEN install_date >= '2026-01-01' THEN 'jan_2026'
-          WHEN install_date >= '2025-01-01' THEN 'year_2025'
-          ELSE 'before_2025'
-        END as period,
-        COUNT(DISTINCT q_user_id) as total_users,
-        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as with_campaign_id,
-        COUNT(DISTINCT CASE WHEN media_source = 'Apple AdServices' THEN q_user_id END) as from_asa,
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
-      FROM events_v2
-      WHERE media_source = 'Apple AdServices' OR campaign_id IS NOT NULL
-      GROUP BY 1
-      ORDER BY 1
-    `);
-
-    // Revenue comparison
-    const revenueComparison = await db.query(`
-      SELECT
-        'with_campaign_id' as filter,
+        media_source,
         COUNT(DISTINCT q_user_id) as users,
         SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
       FROM events_v2
-      WHERE campaign_id IS NOT NULL
-      UNION ALL
+      GROUP BY media_source
+      ORDER BY users DESC
+      LIMIT 10
+    `);
+
+    // Campaign ID coverage
+    const campaignIdCoverage = await db.query(`
       SELECT
-        'media_source_asa' as filter,
+        CASE WHEN campaign_id IS NOT NULL THEN 'has_campaign_id' ELSE 'no_campaign_id' END as status,
         COUNT(DISTINCT q_user_id) as users,
         SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
       FROM events_v2
       WHERE media_source = 'Apple AdServices'
+      GROUP BY 1
     `);
 
     res.json({
       events: stats.rows,
       attributions: attributions.rows[0],
-      attributionByPeriod: attributionByPeriod.rows,
-      revenueComparison: revenueComparison.rows,
+      mediaSourceStats: mediaSourceStats.rows,
+      campaignIdCoverage: campaignIdCoverage.rows,
     });
 
   } catch (error) {
