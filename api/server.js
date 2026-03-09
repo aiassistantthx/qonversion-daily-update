@@ -244,6 +244,19 @@ app.post('/migrate/fix-event-names', async (req, res) => {
   }
 });
 
+// Drop legacy qonversion_events table
+app.post('/migrate/drop-qonversion-events', async (req, res) => {
+  try {
+    await db.query('DROP TABLE IF EXISTS qonversion_events CASCADE');
+    res.json({
+      success: true,
+      message: 'Table qonversion_events dropped'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Database migration endpoint for ASA management tables
 app.post('/migrate/asa', async (req, res) => {
   const migrationSQL = `
