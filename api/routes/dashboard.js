@@ -3371,4 +3371,58 @@ router.get('/mrr', async (req, res) => {
   }
 });
 
+// ============================================================================
+// REVENUE YOY - Year-over-year revenue comparison by month
+// ============================================================================
+router.get('/revenue-yoy', async (req, res) => {
+  try {
+    // Get monthly revenue grouped by year
+    const query = `
+      WITH monthly_revenue AS (
+        SELECT
+          EXTRACT(YEAR FROM created_at) as year,
+          EXTRACT(MONTH FROM created_at) as month,
+          SUM(price_usd) as revenue
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND created_at >= NOW() - INTERVAL '36 months'
+        GROUP BY 1, 2
+      )
+      SELECT
+        year,
+        month,
+        revenue
+      FROM monthly_revenue
+      ORDER BY year, month
+    `;
+
+    const result = await db.query(query);
+
+    // Transform data for chart: { month: 'Jan', 2024: 1000, 2025: 1200, 2026: 1500 }
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const chartData = monthNames.map((name, idx) => ({ month: name, monthNum: idx + 1 }));
+    const years = new Set();
+
+    result.rows.forEach(row => {
+      const year = parseInt(row.year);
+      const month = parseInt(row.month);
+      const revenue = parseFloat(row.revenue) || 0;
+
+      years.add(year);
+      const dataPoint = chartData.find(d => d.monthNum === month);
+      if (dataPoint) {
+        dataPoint[year] = revenue;
+      }
+    });
+
+    res.json({
+      chartData,
+      years: Array.from(years).sort(),
+    });
+  } catch (error) {
+    console.error('Revenue YoY error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

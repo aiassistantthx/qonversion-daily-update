@@ -41,3 +41,6 @@ export { YoYComparisonCards } from './YoYComparisonCards';
 
 export { MRRBreakdown } from './MRRBreakdown';
 export type { MRRBreakdownData } from './MRRBreakdown';
+
+export { RevenueYoYChart } from './RevenueYoYChart';
+export type { RevenueYoYData } from './RevenueYoYChart';

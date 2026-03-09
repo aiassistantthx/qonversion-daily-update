@@ -19,12 +19,13 @@ import {
   RenewalRatesTable,
   CountriesTable,
   MRRBreakdown,
+  RevenueYoYChart,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection,
   RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData
+  CountriesData, MRRBreakdownData, RevenueYoYData
 } from './components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -344,6 +345,11 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/mrr?months=12`).then(r => r.json()),
   });
 
+  const { data: revenueYoYData } = useQuery<RevenueYoYData>({
+    queryKey: ['revenue-yoy'],
+    queryFn: () => fetch(`${API_URL}/dashboard/revenue-yoy`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -483,6 +489,9 @@ function Dashboard() {
 
       {/* MRR Breakdown */}
       <MRRBreakdown data={mrrBreakdownData} />
+
+      {/* Revenue YoY Comparison */}
+      <RevenueYoYChart data={revenueYoYData} />
 
       {/* Revenue by Day Chart */}
       <RevenueByDayChart data={revenueByDayData} />
