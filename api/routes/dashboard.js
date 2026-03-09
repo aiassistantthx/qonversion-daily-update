@@ -1162,6 +1162,78 @@ router.get('/forecast', async (req, res) => {
       ? monthlyRevenueResult.rows.reduce((s, r) => s + parseInt(r.new_subs || 0), 0) / monthlyRevenueResult.rows.length
       : 0;
 
+    // Get last 30 days spend and metrics for projection
+    const last30DaysMetrics = await db.query(`
+      SELECT
+        SUM(spend) as total_spend,
+        SUM(spend) / 30.0 as avg_daily_spend
+      FROM apple_ads_campaigns
+      WHERE date >= CURRENT_DATE - INTERVAL '30 days'
+    `);
+
+    // Get average COP (cost per paid user) from last 30 days
+    const last30DaysCOP = await db.query(`
+      SELECT
+        COUNT(DISTINCT q_user_id) as paid_users
+      FROM events_v2
+      WHERE install_date >= CURRENT_DATE - INTERVAL '30 days'
+        AND media_source = 'Apple AdServices'
+        AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+    `);
+
+    const avgDailySpend = parseFloat(last30DaysMetrics.rows[0]?.avg_daily_spend) || 0;
+    const avgMonthlySpend = avgDailySpend * 30;
+    const paidUsersLast30 = parseInt(last30DaysCOP.rows[0]?.paid_users) || 1;
+    const totalSpendLast30 = parseFloat(last30DaysMetrics.rows[0]?.total_spend) || 1;
+    const currentCOP = totalSpendLast30 / paidUsersLast30;
+
+    // Get average yearly subscription price
+    const avgYearlyPrice = await db.query(`
+      SELECT AVG(price_usd) as avg_price
+      FROM events_v2
+      WHERE event_date >= CURRENT_DATE - INTERVAL '90 days'
+        AND event_name IN ('Subscription Started', 'Trial Converted')
+        AND product_id LIKE '%yearly%'
+        AND price_usd > 0
+    `);
+    const avgSubPrice = parseFloat(avgYearlyPrice.rows[0]?.avg_price) || 50;
+
+    // Calculate projected new subscribers per month (assuming same spend as last 30 days)
+    const projectedNewSubsPerMonth = avgMonthlySpend > 0 && currentCOP > 0
+      ? Math.round(avgMonthlySpend / currentCOP)
+      : 0;
+
+    // Add projected NEW subscribers revenue to forecast
+    // For each future month, add revenue from:
+    // 1. New subscribers acquired that month (initial purchase)
+    // 2. Renewals from subscribers acquired in previous months
+    const PROCEEDS_FACTOR = 0.82;
+    const RENEWAL_RATE = 0.70;
+
+    for (let i = 0; i < renewalForecast.length; i++) {
+      // Revenue from new subscribers acquired this month
+      const newSubsRevenue = projectedNewSubsPerMonth * avgSubPrice * PROCEEDS_FACTOR;
+      renewalForecast[i].projectedNewSubs = projectedNewSubsPerMonth;
+      renewalForecast[i].newSubsRevenue = Math.round(newSubsRevenue);
+
+      // Revenue from renewals of subscribers acquired in previous forecast months
+      // Subscribers acquired 12 months ago will renew this month
+      if (i >= 12) {
+        const renewingFromForecast = renewalForecast[i - 12].projectedNewSubs * RENEWAL_RATE;
+        renewalForecast[i].forecastRenewals = Math.round(renewingFromForecast);
+        renewalForecast[i].forecastRenewalRevenue = Math.round(renewingFromForecast * avgSubPrice * PROCEEDS_FACTOR);
+      } else {
+        renewalForecast[i].forecastRenewals = 0;
+        renewalForecast[i].forecastRenewalRevenue = 0;
+      }
+
+      // Total forecast revenue = renewals from historical + new subs + renewals from forecast
+      renewalForecast[i].totalForecastRevenue =
+        renewalForecast[i].expectedRevenue +
+        renewalForecast[i].newSubsRevenue +
+        renewalForecast[i].forecastRenewalRevenue;
+    }
+
     res.json({
       historical: monthlyRevenueResult.rows.map(r => ({
         month: r.month,
@@ -1172,6 +1244,16 @@ router.get('/forecast', async (req, res) => {
       renewalForecast,
       avgNewSubsPerMonth: Math.round(avgNewSubsPerMonth),
       currentMonthSubs: parseInt(currentMonthSubs.rows[0]?.subs) || 0,
+      projectedNewSubsPerMonth,
+      projectionAssumptions: {
+        avgDailySpend: Math.round(avgDailySpend),
+        avgMonthlySpend: Math.round(avgMonthlySpend),
+        currentCOP: Math.round(currentCOP),
+        projectedNewSubsPerMonth,
+        avgSubPrice: Math.round(avgSubPrice),
+        renewalRate: RENEWAL_RATE,
+        proceedsFactor: PROCEEDS_FACTOR,
+      },
     });
   } catch (error) {
     console.error('Forecast error:', error);

@@ -531,14 +531,14 @@ router.get('/keywords', async (req, res) => {
       dateFilter = { days };
     }
 
-    // Build date conditions
+    // Build date conditions (without table alias - will be used in different contexts)
     const dateCondition = dateFilter.days
-      ? `k.date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `k.date >= '${dateFilter.from}' AND k.date <= '${dateFilter.to}'`;
+      ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
 
     const revenueCondition = dateFilter.days
-      ? `e.event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `e.event_date >= '${dateFilter.from}' AND e.event_date <= '${dateFilter.to}'`;
+      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
 
     // Get keywords with dynamic performance data
     let query = `
@@ -558,7 +558,7 @@ router.get('/keywords', async (req, res) => {
           keyword_id,
           SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
-        FROM events_v2 e
+        FROM events_v2
         WHERE ${revenueCondition}
           AND keyword_id IS NOT NULL
           AND campaign_id = $1

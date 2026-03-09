@@ -222,8 +222,8 @@ function Dashboard() {
 
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
-  const monthly = data?.monthly || [];
-  const marketing = marketingData?.data || [];
+  const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
+  const marketing = [...(marketingData?.data || [])].sort((a, b) => b.month.localeCompare(a.month));
   const keywords = keywordsData?.keywords || [];
   const keywordTotals = keywordsData?.totals;
 
@@ -257,8 +257,9 @@ function Dashboard() {
     })),
     ...(forecastData?.renewalForecast || []).map(f => ({
       month: f.month,
-      revenue: f.expectedRevenue,
+      revenue: f.totalForecastRevenue || f.expectedRevenue,
       renewals: f.expectedRenewals,
+      newSubsRevenue: f.newSubsRevenue,
       type: 'forecast',
     })),
   ];
@@ -397,11 +398,11 @@ function Dashboard() {
         <div style={styles.chartCard}>
           <h3 style={styles.chartTitle}>Revenue Forecast (12 months)</h3>
           <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-            Historical revenue + expected renewals. Assumes 70% renewal rate.
+            Renewals from existing subscribers + new acquisitions. Assumes 70% renewal rate, marketing spend = avg last 30 days ({forecastData.projectedNewSubsPerMonth || 0} new subs/mo).
           </p>
           <div style={{ ...styles.chartContainer, height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={forecastChartData}>
+              <ComposedChart data={forecastChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
@@ -415,7 +416,7 @@ function Dashboard() {
                   strokeWidth={2}
                   name="Revenue"
                 />
-              </AreaChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
