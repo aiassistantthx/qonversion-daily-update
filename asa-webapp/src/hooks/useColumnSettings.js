@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export function useColumnSettings(storageKey, defaultColumns) {
+export function useColumnSettings(storageKey, defaultColumns, defaultColumnOrder = null) {
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
@@ -13,6 +13,18 @@ export function useColumnSettings(storageKey, defaultColumns) {
     return defaultColumns;
   });
 
+  const [columnOrder, setColumnOrder] = useState(() => {
+    const stored = localStorage.getItem(`${storageKey}-order`);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return defaultColumnOrder || Object.keys(defaultColumns);
+      }
+    }
+    return defaultColumnOrder || Object.keys(defaultColumns);
+  });
+
   const [activePreset, setActivePreset] = useState(() => {
     return localStorage.getItem(`${storageKey}-preset`) || 'custom';
   });
@@ -20,6 +32,10 @@ export function useColumnSettings(storageKey, defaultColumns) {
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(visibleColumns));
   }, [visibleColumns, storageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(`${storageKey}-order`, JSON.stringify(columnOrder));
+  }, [columnOrder, storageKey]);
 
   useEffect(() => {
     localStorage.setItem(`${storageKey}-preset`, activePreset);
@@ -35,6 +51,7 @@ export function useColumnSettings(storageKey, defaultColumns) {
 
   const resetToDefault = () => {
     setVisibleColumns(defaultColumns);
+    setColumnOrder(defaultColumnOrder || Object.keys(defaultColumns));
     setActivePreset('custom');
   };
 
@@ -43,5 +60,13 @@ export function useColumnSettings(storageKey, defaultColumns) {
     setActivePreset(presetName);
   };
 
-  return { visibleColumns, toggleColumn, resetToDefault, applyPreset, activePreset };
+  const reorderColumns = (fromIndex, toIndex) => {
+    const newOrder = [...columnOrder];
+    const [removed] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, removed);
+    setColumnOrder(newOrder);
+    setActivePreset('custom');
+  };
+
+  return { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset, reorderColumns };
 }

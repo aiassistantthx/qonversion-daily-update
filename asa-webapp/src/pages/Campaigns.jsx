@@ -129,6 +129,27 @@ const PRESET_VIEWS = [
   }
 ];
 
+function SortHeader({ field, children, className = '', onClick, sortField, sortDirection, draggable, onDragStart, onDragOver, onDrop, onDragEnd, draggedColumn }) {
+  return (
+    <TableHeader
+      className={`cursor-pointer select-none hover:bg-gray-100 ${className} ${draggedColumn === field ? 'opacity-50' : ''}`}
+      onClick={onClick}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
+      <div className="flex items-center gap-1">
+        {children}
+        {sortField === field && (
+          sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+        )}
+      </div>
+    </TableHeader>
+  );
+}
+
 export default function Campaigns() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -141,9 +162,10 @@ export default function Campaigns() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  const { visibleColumns, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
+  const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset, reorderColumns } = useColumnSettings(
     'campaigns-columns',
-    DEFAULT_COLUMNS
+    DEFAULT_COLUMNS,
+    Object.keys(DEFAULT_COLUMNS)
   );
 
   const { data, isLoading, error } = useQuery({
@@ -333,10 +355,41 @@ export default function Campaigns() {
     a.click();
   };
 
+  const [draggedColumn, setDraggedColumn] = useState(null);
+
+  const handleDragStart = (e, columnId) => {
+    setDraggedColumn(columnId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, targetColumnId) => {
+    e.preventDefault();
+    if (draggedColumn && draggedColumn !== targetColumnId) {
+      const fromIndex = columnOrder.indexOf(draggedColumn);
+      const toIndex = columnOrder.indexOf(targetColumnId);
+      reorderColumns(fromIndex, toIndex);
+    }
+    setDraggedColumn(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedColumn(null);
+  };
+
   const SortHeader = ({ field, children, className = '' }) => (
     <TableHeader
-      className={`cursor-pointer select-none hover:bg-gray-100 ${className}`}
+      className={`cursor-pointer select-none hover:bg-gray-100 ${className} ${draggedColumn === field ? 'opacity-50' : ''}`}
       onClick={() => handleSort(field)}
+      draggable
+      onDragStart={(e) => handleDragStart(e, field)}
+      onDragOver={handleDragOver}
+      onDrop={(e) => handleDrop(e, field)}
+      onDragEnd={handleDragEnd}
     >
       <div className="flex items-center gap-1">
         {children}
@@ -443,18 +496,39 @@ export default function Campaigns() {
                 />
               </TableHeader>
               <SortHeader field="name">Campaign</SortHeader>
-              {visibleColumns.status && <SortHeader field="status">Status</SortHeader>}
-              {visibleColumns.health && <TableHeader>Health</TableHeader>}
-              {visibleColumns.trend && <TableHeader>Trend</TableHeader>}
-              {visibleColumns.spend && <SortHeader field="spend" className="text-right">Spend</SortHeader>}
-              {visibleColumns.revenue && <SortHeader field="revenue" className="text-right">Revenue</SortHeader>}
-              {visibleColumns.roas && <SortHeader field="roas" className="text-right">ROAS</SortHeader>}
-              {visibleColumns.installs && <SortHeader field="installs" className="text-right">Installs</SortHeader>}
-              {visibleColumns.cpa && <SortHeader field="cpa" className="text-right">CPA</SortHeader>}
-              {visibleColumns.ttr && <SortHeader field="ttr" className="text-right">TTR</SortHeader>}
-              {visibleColumns.cvr && <SortHeader field="cvr" className="text-right">CVR</SortHeader>}
-              {visibleColumns.cpt && <SortHeader field="cpt" className="text-right">CPT</SortHeader>}
-              {visibleColumns.cpm && <SortHeader field="cpm" className="text-right">CPM</SortHeader>}
+              {columnOrder.map((columnId) => {
+                if (!visibleColumns[columnId]) return null;
+                const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
+                if (!column) return null;
+
+                const isRightAligned = !['status', 'health', 'trend'].includes(columnId);
+
+                if (columnId === 'health' || columnId === 'trend') {
+                  return (
+                    <TableHeader
+                      key={columnId}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, columnId)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, columnId)}
+                      onDragEnd={handleDragEnd}
+                      className={draggedColumn === columnId ? 'opacity-50' : ''}
+                    >
+                      {column.label}
+                    </TableHeader>
+                  );
+                }
+
+                return (
+                  <SortHeader
+                    key={columnId}
+                    field={columnId}
+                    className={isRightAligned ? 'text-right' : ''}
+                  >
+                    {column.label}
+                  </SortHeader>
+                );
+              })}
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
@@ -474,6 +548,38 @@ export default function Campaigns() {
             ) : (
               campaigns.map((campaign) => {
                 const predictedRoas = campaign.performance?.predicted_roas_365;
+
+                const renderCell = (columnId) => {
+                  switch (columnId) {
+                    case 'status':
+                      return <TableCell key={columnId}><StatusBadge status={campaign.status} /></TableCell>;
+                    case 'health':
+                      return <TableCell key={columnId}><TrafficLight predictedRoas={predictedRoas} size="sm" /></TableCell>;
+                    case 'trend':
+                      return <TableCell key={columnId}><Sparkline data={campaign.performance?.trend_7d || []} /></TableCell>;
+                    case 'spend':
+                      return <TableCell key={columnId} className="text-right">${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                    case 'revenue':
+                      return <TableCell key={columnId} className="text-right font-medium text-green-600">${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                    case 'roas':
+                      return <TableCell key={columnId} className="text-right"><span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas').toFixed(2)}x</span></TableCell>;
+                    case 'installs':
+                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'installs').toLocaleString()}</TableCell>;
+                    case 'cpa':
+                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}</TableCell>;
+                    case 'ttr':
+                      return <TableCell key={columnId} className="text-right">{(getPerf(campaign, 'ttr') * 100).toFixed(2)}%</TableCell>;
+                    case 'cvr':
+                      return <TableCell key={columnId} className="text-right">{(getPerf(campaign, 'cvr') * 100).toFixed(2)}%</TableCell>;
+                    case 'cpt':
+                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpt') ? `$${getPerf(campaign, 'cpt').toFixed(2)}` : '-'}</TableCell>;
+                    case 'cpm':
+                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpm') ? `$${getPerf(campaign, 'cpm').toFixed(2)}` : '-'}</TableCell>;
+                    default:
+                      return null;
+                  }
+                };
+
                 return (
                   <TableRow key={campaign.id} className="hover:bg-gray-50">
                     <TableCell>
@@ -496,68 +602,10 @@ export default function Campaigns() {
                         <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
                       )}
                     </TableCell>
-                    {visibleColumns.status && (
-                      <TableCell>
-                        <StatusBadge status={campaign.status} />
-                      </TableCell>
-                    )}
-                    {visibleColumns.health && (
-                      <TableCell>
-                        <TrafficLight predictedRoas={predictedRoas} size="sm" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.trend && (
-                      <TableCell>
-                        <Sparkline data={campaign.performance?.trend_7d || []} />
-                      </TableCell>
-                    )}
-                    {visibleColumns.spend && (
-                      <TableCell className="text-right">
-                        ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </TableCell>
-                    )}
-                    {visibleColumns.revenue && (
-                      <TableCell className="text-right font-medium text-green-600">
-                        ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </TableCell>
-                    )}
-                    {visibleColumns.roas && (
-                      <TableCell className="text-right">
-                        <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                          {getPerf(campaign, 'roas').toFixed(2)}x
-                        </span>
-                      </TableCell>
-                    )}
-                    {visibleColumns.installs && (
-                      <TableCell className="text-right">
-                        {getPerf(campaign, 'installs').toLocaleString()}
-                      </TableCell>
-                    )}
-                    {visibleColumns.cpa && (
-                      <TableCell className="text-right">
-                        {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
-                      </TableCell>
-                    )}
-                    {visibleColumns.ttr && (
-                      <TableCell className="text-right">
-                        {(getPerf(campaign, 'ttr') * 100).toFixed(2)}%
-                      </TableCell>
-                    )}
-                    {visibleColumns.cvr && (
-                      <TableCell className="text-right">
-                        {(getPerf(campaign, 'cvr') * 100).toFixed(2)}%
-                      </TableCell>
-                    )}
-                    {visibleColumns.cpt && (
-                      <TableCell className="text-right">
-                        {getPerf(campaign, 'cpt') ? `$${getPerf(campaign, 'cpt').toFixed(2)}` : '-'}
-                      </TableCell>
-                    )}
-                    {visibleColumns.cpm && (
-                      <TableCell className="text-right">
-                        {getPerf(campaign, 'cpm') ? `$${getPerf(campaign, 'cpm').toFixed(2)}` : '-'}
-                      </TableCell>
-                    )}
+                    {columnOrder.map((columnId) => {
+                      if (!visibleColumns[columnId]) return null;
+                      return renderCell(columnId);
+                    })}
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button
