@@ -6,11 +6,12 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus } from '../lib/api';
+import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { Modal } from '../components/Modal';
+import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
 
 export default function Keywords() {
@@ -35,6 +36,7 @@ export default function Keywords() {
   const [bulkBidAmount, setBulkBidAmount] = useState('');
   const [bulkBidMode, setBulkBidMode] = useState('absolute'); // 'absolute' or 'percent'
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, message: '' });
+  const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 
@@ -87,6 +89,13 @@ export default function Keywords() {
       queryClient.invalidateQueries(['keywords']);
       setSelectedIds(new Set());
       setConfirmModal({ open: false, action: null, message: '' });
+    },
+  });
+
+  const createKeywordsMutation = useMutation({
+    mutationFn: (data) => createKeywords(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['keywords']);
     },
   });
 
@@ -169,6 +178,34 @@ export default function Keywords() {
         case 'cop':
           aVal = parseFloat(a.cop_7d || 999999);
           bVal = parseFloat(b.cop_7d || 999999);
+          break;
+        case 'sov':
+          aVal = parseFloat(a.sov || 0);
+          bVal = parseFloat(b.sov || 0);
+          break;
+        case 'ttr':
+          aVal = parseFloat(a.ttr_7d || 0);
+          bVal = parseFloat(b.ttr_7d || 0);
+          break;
+        case 'cvr':
+          aVal = parseFloat(a.cvr_7d || 0);
+          bVal = parseFloat(b.cvr_7d || 0);
+          break;
+        case 'cpt':
+          aVal = parseFloat(a.cpt_7d || 999999);
+          bVal = parseFloat(b.cpt_7d || 999999);
+          break;
+        case 'cpm':
+          aVal = parseFloat(a.cpm_7d || 999999);
+          bVal = parseFloat(b.cpm_7d || 999999);
+          break;
+        case 'bidVsCpa':
+          const aBid = parseFloat(a.bid_amount || 0);
+          const aCpa = parseFloat(a.cpa_7d || 0);
+          aVal = aCpa > 0 ? aBid / aCpa : 0;
+          const bBid = parseFloat(b.bid_amount || 0);
+          const bCpa = parseFloat(b.cpa_7d || 0);
+          bVal = bCpa > 0 ? bBid / bCpa : 0;
           break;
         default:
           aVal = a.keyword_text || '';
@@ -318,22 +355,50 @@ export default function Keywords() {
     });
   };
 
+  const handleBulkCreate = async (keywords) => {
+    if (!campaignIds.length || !adGroupIds.length) {
+      throw new Error('Please select a campaign and ad group first');
+    }
+
+    const campaignId = campaignIds[0];
+    const adGroupId = adGroupIds[0];
+
+    await createKeywordsMutation.mutateAsync({
+      campaignId,
+      adGroupId,
+      keywords,
+    });
+  };
+
   const exportCSV = () => {
-    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Bid vs CPA Ratio', 'Recommended Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
       const spend = parseFloat(k.spend_7d || 0);
       const revenue = parseFloat(k.revenue_7d || 0);
       const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
+      const ttr = parseFloat(k.ttr_7d || 0);
+      const cvr = parseFloat(k.cvr_7d || 0);
+      const bid = parseFloat(k.bid_amount || 0);
+      const cpa = parseFloat(k.cpa_7d || 0);
+      const bidVsCpaRatio = cpa > 0 ? (bid / cpa).toFixed(2) : '';
+      const recommendedBid = cpa > 0 ? Math.max(0.5, cpa * 1.2).toFixed(2) : '';
       return [
         `"${k.keyword_text}"`,
         k.match_type,
         k.keyword_status,
         k.current_bid || k.bid_amount || '',
+        bidVsCpaRatio,
+        recommendedBid,
         spend.toFixed(2),
         k.impressions_7d || 0,
+        parseFloat(k.sov || 0).toFixed(2),
         k.taps_7d || 0,
+        (ttr * 100).toFixed(2) + '%',
         k.installs_7d || 0,
+        (cvr * 100).toFixed(2) + '%',
         k.cpa_7d || '',
+        k.cpt_7d || '',
+        k.cpm_7d || '',
         revenue.toFixed(2),
         roas,
         k.cop_7d || '',
@@ -372,7 +437,8 @@ export default function Keywords() {
       installs: acc.installs + parseInt(k.installs_7d || 0),
       revenue: acc.revenue + parseFloat(k.revenue_7d || 0),
       paidUsers: acc.paidUsers + parseInt(k.paid_users_7d || 0),
-    }), { spend: 0, impressions: 0, taps: 0, installs: 0, revenue: 0, paidUsers: 0 });
+      sov: acc.sov + parseFloat(k.sov || 0),
+    }), { spend: 0, impressions: 0, taps: 0, installs: 0, revenue: 0, paidUsers: 0, sov: 0 });
   }, [keywords]);
 
   const avgCpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
@@ -392,9 +458,18 @@ export default function Keywords() {
           <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
 
-        <Button variant="secondary" onClick={exportCSV}>
-          <Download size={16} /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => setBulkAddModalOpen(true)}
+            disabled={!campaignIds.length || !adGroupIds.length}
+          >
+            <Plus size={16} /> Add Keywords
+          </Button>
+          <Button variant="secondary" onClick={exportCSV}>
+            <Download size={16} /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Active Filters */}
@@ -434,11 +509,17 @@ export default function Keywords() {
 
       {/* Totals */}
       {keywords.length > 0 && (
-        <div className="grid grid-cols-6 gap-4">
+        <div className="grid grid-cols-7 gap-4">
           <Card>
             <div className="p-4">
               <p className="text-sm text-gray-500">Spend</p>
               <p className="text-xl font-bold">${totals.spend.toFixed(2)}</p>
+            </div>
+          </Card>
+          <Card>
+            <div className="p-4">
+              <p className="text-sm text-gray-500">SOV</p>
+              <p className="text-xl font-bold text-blue-600">{totals.sov.toFixed(2)}%</p>
             </div>
           </Card>
           <Card>
@@ -539,6 +620,15 @@ export default function Keywords() {
         </Card>
       )}
 
+      {/* Bulk Add Modal */}
+      <BulkKeywordAdd
+        isOpen={bulkAddModalOpen}
+        onClose={() => setBulkAddModalOpen(false)}
+        campaignId={campaignIds[0]}
+        adGroupId={adGroupIds[0]}
+        onSuccess={handleBulkCreate}
+      />
+
       {/* Confirmation Modal */}
       {confirmModal.open && (
         <Modal
@@ -611,10 +701,17 @@ export default function Keywords() {
                 <SortHeader field="keyword">Keyword</SortHeader>
                 <SortHeader field="matchType">Match</SortHeader>
                 <SortHeader field="bid" className="text-right">Bid</SortHeader>
+                <SortHeader field="bidVsCpa" className="text-right">Bid vs CPA</SortHeader>
                 <SortHeader field="spend" className="text-right">Spend</SortHeader>
+                <SortHeader field="impressions" className="text-right">Impressions</SortHeader>
+                <SortHeader field="sov" className="text-right">SOV %</SortHeader>
                 <SortHeader field="taps" className="text-right">Taps</SortHeader>
+                <SortHeader field="ttr" className="text-right">TTR</SortHeader>
                 <SortHeader field="installs" className="text-right">Installs</SortHeader>
+                <SortHeader field="cvr" className="text-right">CVR</SortHeader>
                 <SortHeader field="cpa" className="text-right">CPA</SortHeader>
+                <SortHeader field="cpt" className="text-right">CPT</SortHeader>
+                <SortHeader field="cpm" className="text-right">CPM</SortHeader>
                 <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
                 <SortHeader field="roas" className="text-right">ROAS</SortHeader>
                 <SortHeader field="cop" className="text-right">COP</SortHeader>
@@ -623,11 +720,11 @@ export default function Keywords() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={18} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={18} className="text-center py-8 text-gray-500">
                     No keywords found. Select a campaign from the Campaigns page.
                   </TableCell>
                 </TableRow>
@@ -636,7 +733,11 @@ export default function Keywords() {
                   const spend = parseFloat(kw.spend_7d || 0);
                   const revenue = parseFloat(kw.revenue_7d || 0);
                   const roas = spend > 0 ? revenue / spend : 0;
-                  const bid = kw.bid_amount || 0;
+                  const bid = parseFloat(kw.bid_amount || 0);
+                  const cpa = parseFloat(kw.cpa_7d || 0);
+                  const bidVsCpaRatio = cpa > 0 ? bid / cpa : 0;
+                  const isOverpaying = bidVsCpaRatio > 1.5 && cpa > 0;
+                  const recommendedBid = cpa > 0 ? Math.max(0.5, cpa * 1.2) : bid;
 
                   return (
                     <TableRow key={kw.keyword_id} className="hover:bg-gray-50">
@@ -704,16 +805,53 @@ export default function Keywords() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
+                        {cpa > 0 ? (
+                          <div className="flex items-center justify-end gap-2">
+                            {isOverpaying && (
+                              <AlertTriangle size={14} className="text-orange-500" title="Bid significantly higher than CPA" />
+                            )}
+                            <span className={isOverpaying ? 'text-orange-600 font-medium' : ''}>
+                              ${bid.toFixed(2)} / ${cpa.toFixed(2)}
+                            </span>
+                            {isOverpaying && (
+                              <span className="text-xs text-orange-600" title={`Recommended bid: $${recommendedBid.toFixed(2)}`}>
+                                ({(bidVsCpaRatio * 100).toFixed(0)}%)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
                         ${spend.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseInt(kw.impressions_7d || 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-blue-600">
+                        {parseFloat(kw.sov || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
                         {parseInt(kw.taps_7d || 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
+                        {(parseFloat(kw.ttr_7d || 0) * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
                         {parseInt(kw.installs_7d || 0)}
                       </TableCell>
                       <TableCell className="text-right">
+                        {(parseFloat(kw.cvr_7d || 0) * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
                         {kw.cpa_7d ? `$${parseFloat(kw.cpa_7d).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {kw.cpt_7d ? `$${parseFloat(kw.cpt_7d).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {kw.cpm_7d ? `$${parseFloat(kw.cpm_7d).toFixed(2)}` : '-'}
                       </TableCell>
                       <TableCell className="text-right text-green-600">
                         ${revenue.toFixed(2)}

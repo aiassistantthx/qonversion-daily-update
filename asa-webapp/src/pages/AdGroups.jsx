@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getCampaigns, getAdGroups } from '../lib/api';
+import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
@@ -14,6 +15,7 @@ import {
 
 export default function AdGroups() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { queryParams, label: dateLabel } = useDateRange();
 
@@ -123,6 +125,22 @@ export default function AdGroups() {
           aVal = getPerf(a, 'cpa') || 999999;
           bVal = getPerf(b, 'cpa') || 999999;
           break;
+        case 'ttr':
+          aVal = getPerf(a, 'ttr');
+          bVal = getPerf(b, 'ttr');
+          break;
+        case 'cvr':
+          aVal = getPerf(a, 'cvr');
+          bVal = getPerf(b, 'cvr');
+          break;
+        case 'cpt':
+          aVal = getPerf(a, 'cpt') || 999999;
+          bVal = getPerf(b, 'cpt') || 999999;
+          break;
+        case 'cpm':
+          aVal = getPerf(a, 'cpm') || 999999;
+          bVal = getPerf(b, 'cpm') || 999999;
+          break;
         default:
           aVal = (a.name || '').toLowerCase();
           bVal = (b.name || '').toLowerCase();
@@ -163,6 +181,49 @@ export default function AdGroups() {
       setSelectedIds(new Set(adGroups.map(ag => `${ag.campaignId}-${ag.id}`)));
     }
   };
+
+  const handleBulkPause = async () => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'PAUSED');
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkEnable = async () => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'ENABLED');
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkAdjustBid = async ({ type, value }) => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      const adGroup = adGroups.find(ag => ag.campaignId === parseInt(campaignId) && ag.id === parseInt(adGroupId));
+      if (!adGroup || !adGroup.defaultBidAmount) continue;
+
+      let newBid;
+      if (type === 'percent') {
+        newBid = adGroup.defaultBidAmount.amount * (1 + value / 100);
+      } else {
+        newBid = adGroup.defaultBidAmount.amount + value;
+      }
+
+      newBid = Math.max(0.01, newBid);
+      await updateAdGroupBid(parseInt(campaignId), parseInt(adGroupId), {
+        amount: newBid,
+        currency: adGroup.defaultBidAmount.currency,
+      });
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const selectedAdGroups = adGroups.filter(ag => selectedIds.has(`${ag.campaignId}-${ag.id}`));
 
   const navigateToKeywords = (campaignId, adGroupId) => {
     if (adGroupId) {
@@ -323,6 +384,10 @@ export default function AdGroups() {
               <SortHeader field="roas" className="text-right">ROAS</SortHeader>
               <SortHeader field="installs" className="text-right">Installs</SortHeader>
               <SortHeader field="cpa" className="text-right">CPA</SortHeader>
+              <SortHeader field="ttr" className="text-right">TTR</SortHeader>
+              <SortHeader field="cvr" className="text-right">CVR</SortHeader>
+              <SortHeader field="cpt" className="text-right">CPT</SortHeader>
+              <SortHeader field="cpm" className="text-right">CPM</SortHeader>
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
@@ -378,6 +443,18 @@ export default function AdGroups() {
                   <TableCell className="text-right">
                     {getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}
                   </TableCell>
+                  <TableCell className="text-right">
+                    {(getPerf(ag, 'ttr') * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(getPerf(ag, 'cvr') * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}
+                  </TableCell>
                   <TableCell>
                     <Button
                       size="sm"
@@ -399,6 +476,18 @@ export default function AdGroups() {
           Showing {adGroups.length} ad groups
         </div>
       )}
+
+      <BulkActionsToolbar
+        selectedCount={selectedIds.size}
+        selectedItems={selectedAdGroups}
+        onSelectAll={toggleSelectAll}
+        onDeselectAll={() => setSelectedIds(new Set())}
+        onPause={handleBulkPause}
+        onEnable={handleBulkEnable}
+        onAdjustBid={handleBulkAdjustBid}
+        entityType="ad groups"
+        canAdjustBid={true}
+      />
     </div>
   );
 }

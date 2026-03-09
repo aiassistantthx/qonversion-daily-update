@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, Globe, Download } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Globe, Download } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
+import { MetricSelector, type MetricOption } from './MetricSelector';
+import { useSortableData, SortIcon } from './SortableTable';
 
 export interface CountriesData {
   countries: Array<{
@@ -29,8 +31,6 @@ interface CountriesTableProps {
   topN?: number;
 }
 
-type SortKey = 'country' | 'revenue' | 'spend' | 'roas' | 'cop' | 'subscribers';
-
 // Country flag emoji from country code
 function getFlag(countryCode: string): string {
   if (!countryCode || countryCode.length !== 2) return '🌍';
@@ -41,71 +41,104 @@ function getFlag(countryCode: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
+const METRIC_OPTIONS: MetricOption[] = [
+  { key: 'revenue', label: 'Revenue', color: '#10b981' },
+  { key: 'roas', label: 'ROAS', color: '#3b82f6' },
+  { key: 'cop', label: 'COP', color: '#8b5cf6' },
+  { key: 'subscribers', label: 'Subs', color: '#f59e0b' },
+  { key: 'spend', label: 'Spend', color: '#6b7280' },
+  { key: 'trials', label: 'Trials', color: '#ec4899' },
+  { key: 'crToPaid', label: 'CR %', color: '#14b8a6' },
+];
+
+const DEFAULT_METRICS = ['revenue', 'roas', 'cop', 'subscribers'];
+
+type CountryRow = NonNullable<CountriesData['countries']>[0];
+
 export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('revenue');
-  const [sortAsc, setSortAsc] = useState(false);
   const [showSource, setShowSource] = useState<'all' | 'apple_ads' | 'organic'>('all');
+  const [visibleMetrics, setVisibleMetrics] = useState<string[]>(() => {
+    const stored = localStorage.getItem('countries-visible-metrics');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return DEFAULT_METRICS;
+      }
+    }
+    return DEFAULT_METRICS;
+  });
+
+  const handleMetricsChange = useCallback((metrics: string[]) => {
+    setVisibleMetrics(metrics);
+  }, []);
+
+  // Filter countries - must be before hooks to maintain consistent hook order
+  const countries = data?.countries || [];
+  const filteredCountries = showSource === 'all'
+    ? countries
+    : countries.filter(c => c.source === showSource);
+
+  const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<CountryRow>(
+    filteredCountries,
+    'revenue' as keyof CountryRow,
+    false
+  );
 
   if (!data) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-        Loading countries data...
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Countries Ranking</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(false);
-    }
-  };
-
-  // Filter and sort countries
-  let filteredCountries = data.countries || [];
-  if (showSource !== 'all') {
-    filteredCountries = filteredCountries.filter(c => c.source === showSource);
-  }
-
-  const sortedCountries = [...filteredCountries].sort((a, b) => {
-    let aVal = a[sortKey];
-    let bVal = b[sortKey];
-    if (aVal == null) aVal = -Infinity;
-    if (bVal == null) bVal = -Infinity;
-    if (typeof aVal === 'string') {
-      return sortAsc ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
-    }
-    return sortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-  }).slice(0, topN);
+  const sortedCountries = sortedData.slice(0, topN);
 
   const handleExport = () => {
-    const headers = ['#', 'Country', 'Country Code', 'Source', 'Revenue', 'Spend', 'ROAS', 'COP', 'Subscribers', 'Trials', 'CR %'];
-    const rows = sortedCountries.map((c, i) => [
-      i + 1,
-      c.country,
-      c.countryCode,
-      c.source,
-      c.revenue,
-      c.spend,
-      c.roas != null ? (c.roas * 100).toFixed(1) + '%' : '',
-      c.cop != null ? c.cop.toFixed(2) : '',
-      c.subscribers,
-      c.trials,
-      c.crToPaid != null ? (c.crToPaid * 100).toFixed(1) + '%' : '',
-    ]);
-    exportToCSV('countries-ranking', headers, rows);
-  };
+    const headers = ['#', 'Country', 'Country Code'];
+    if (showSource === 'all') headers.push('Source');
 
-  const SortIcon = ({ column }: { column: SortKey }) => {
-    if (sortKey !== column) return null;
-    return sortAsc ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+    const metricHeaders: Record<string, string> = {
+      revenue: 'Revenue',
+      spend: 'Spend',
+      roas: 'ROAS',
+      cop: 'COP',
+      subscribers: 'Subscribers',
+      trials: 'Trials',
+      crToPaid: 'CR %',
+    };
+
+    visibleMetrics.forEach(metric => {
+      if (metricHeaders[metric]) {
+        headers.push(metricHeaders[metric]);
+      }
+    });
+
+    const rows = sortedCountries.map((c, i) => {
+      const row: (string | number)[] = [i + 1, c.country, c.countryCode];
+      if (showSource === 'all') row.push(c.source);
+
+      visibleMetrics.forEach(metric => {
+        if (metric === 'revenue') row.push(c.revenue);
+        else if (metric === 'spend') row.push(c.spend);
+        else if (metric === 'roas') row.push(c.roas != null ? (c.roas * 100).toFixed(1) + '%' : '');
+        else if (metric === 'cop') row.push(c.cop != null ? c.cop.toFixed(2) : '');
+        else if (metric === 'subscribers') row.push(c.subscribers);
+        else if (metric === 'trials') row.push(c.trials);
+        else if (metric === 'crToPaid') row.push(c.crToPaid != null ? (c.crToPaid * 100).toFixed(1) + '%' : '');
+      });
+
+      return row;
+    });
+
+    exportToCSV('countries-ranking', headers, rows);
   };
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 4 }}>
             <Globe size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
@@ -157,6 +190,14 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
         </div>
       </div>
 
+      <div style={{ marginBottom: 16 }}>
+        <MetricSelector
+          options={METRIC_OPTIONS}
+          onChange={handleMetricsChange}
+          storageKey="countries-visible-metrics"
+        />
+      </div>
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -164,42 +205,62 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
               <th style={thStyle}>#</th>
               <th
                 style={{ ...thStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('country')}
+                onClick={() => handleSort('country' as keyof CountryRow)}
               >
-                Country <SortIcon column="country" />
+                Country <SortIcon column="country" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
               {showSource === 'all' && <th style={thStyle}>Source</th>}
-              <th
-                style={{ ...thRightStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('revenue')}
-              >
-                Revenue <SortIcon column="revenue" />
-              </th>
-              <th
-                style={{ ...thRightStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('spend')}
-              >
-                Spend <SortIcon column="spend" />
-              </th>
-              <th
-                style={{ ...thRightStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('roas')}
-              >
-                ROAS <SortIcon column="roas" />
-              </th>
-              <th
-                style={{ ...thRightStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('cop')}
-              >
-                COP <SortIcon column="cop" />
-              </th>
-              <th
-                style={{ ...thRightStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('subscribers')}
-              >
-                Subs <SortIcon column="subscribers" />
-              </th>
-              <th style={thRightStyle}>CR %</th>
+              {visibleMetrics.includes('revenue') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('revenue' as keyof CountryRow)}
+                >
+                  Revenue <SortIcon column="revenue" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('spend') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('spend' as keyof CountryRow)}
+                >
+                  Spend <SortIcon column="spend" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('roas') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('roas' as keyof CountryRow)}
+                >
+                  ROAS <SortIcon column="roas" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('cop') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('cop' as keyof CountryRow)}
+                >
+                  COP <SortIcon column="cop" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('subscribers') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('subscribers' as keyof CountryRow)}
+                >
+                  Subs <SortIcon column="subscribers" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('trials') && (
+                <th
+                  style={{ ...thRightStyle, cursor: 'pointer' }}
+                  onClick={() => handleSort('trials' as keyof CountryRow)}
+                >
+                  Trials <SortIcon column="trials" currentColumn={sortKey as string} ascending={sortAsc} />
+                </th>
+              )}
+              {visibleMetrics.includes('crToPaid') && (
+                <th style={thRightStyle}>CR %</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -226,27 +287,42 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
                       </span>
                     </td>
                   )}
-                  <td style={tdRightStyle}>${country.revenue.toLocaleString()}</td>
-                  <td style={tdRightStyle}>
-                    {country.spend > 0 ? `$${country.spend.toLocaleString()}` : '—'}
-                  </td>
-                  <td style={{
-                    ...tdRightStyle,
-                    color: country.roas == null ? '#9ca3af' : roasOk ? '#10b981' : '#ef4444',
-                    fontWeight: roasOk ? 600 : 400,
-                  }}>
-                    {country.roas != null ? `${(country.roas * 100).toFixed(0)}%` : '—'}
-                  </td>
-                  <td style={{
-                    ...tdRightStyle,
-                    color: country.cop == null ? '#9ca3af' : copOk ? '#10b981' : '#ef4444',
-                  }}>
-                    {country.cop != null ? `$${country.cop.toFixed(0)}` : '—'}
-                  </td>
-                  <td style={tdRightStyle}>{country.subscribers}</td>
-                  <td style={tdRightStyle}>
-                    {country.crToPaid != null ? `${(country.crToPaid * 100).toFixed(1)}%` : '—'}
-                  </td>
+                  {visibleMetrics.includes('revenue') && (
+                    <td style={tdRightStyle}>${country.revenue.toLocaleString()}</td>
+                  )}
+                  {visibleMetrics.includes('spend') && (
+                    <td style={tdRightStyle}>
+                      {country.spend > 0 ? `$${country.spend.toLocaleString()}` : '—'}
+                    </td>
+                  )}
+                  {visibleMetrics.includes('roas') && (
+                    <td style={{
+                      ...tdRightStyle,
+                      color: country.roas == null ? '#9ca3af' : roasOk ? '#10b981' : '#ef4444',
+                      fontWeight: roasOk ? 600 : 400,
+                    }}>
+                      {country.roas != null ? `${(country.roas * 100).toFixed(0)}%` : '—'}
+                    </td>
+                  )}
+                  {visibleMetrics.includes('cop') && (
+                    <td style={{
+                      ...tdRightStyle,
+                      color: country.cop == null ? '#9ca3af' : copOk ? '#10b981' : '#ef4444',
+                    }}>
+                      {country.cop != null ? `$${country.cop.toFixed(0)}` : '—'}
+                    </td>
+                  )}
+                  {visibleMetrics.includes('subscribers') && (
+                    <td style={tdRightStyle}>{country.subscribers}</td>
+                  )}
+                  {visibleMetrics.includes('trials') && (
+                    <td style={tdRightStyle}>{country.trials}</td>
+                  )}
+                  {visibleMetrics.includes('crToPaid') && (
+                    <td style={tdRightStyle}>
+                      {country.crToPaid != null ? `${(country.crToPaid * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -257,19 +333,34 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
                 <td style={tdStyle}></td>
                 <td style={tdStyle}>Total</td>
                 {showSource === 'all' && <td style={tdStyle}></td>}
-                <td style={tdRightStyle}>${data.totals.revenue.toLocaleString()}</td>
-                <td style={tdRightStyle}>${data.totals.spend.toLocaleString()}</td>
-                <td style={{
-                  ...tdRightStyle,
-                  color: data.totals.roas && data.totals.roas >= 1 ? '#10b981' : '#ef4444',
-                }}>
-                  {data.totals.roas != null ? `${(data.totals.roas * 100).toFixed(0)}%` : '—'}
-                </td>
-                <td style={tdRightStyle}>
-                  {data.totals.cop != null ? `$${data.totals.cop.toFixed(0)}` : '—'}
-                </td>
-                <td style={tdRightStyle}>{data.totals.subscribers}</td>
-                <td style={tdRightStyle}></td>
+                {visibleMetrics.includes('revenue') && (
+                  <td style={tdRightStyle}>${data.totals.revenue.toLocaleString()}</td>
+                )}
+                {visibleMetrics.includes('spend') && (
+                  <td style={tdRightStyle}>${data.totals.spend.toLocaleString()}</td>
+                )}
+                {visibleMetrics.includes('roas') && (
+                  <td style={{
+                    ...tdRightStyle,
+                    color: data.totals.roas && data.totals.roas >= 1 ? '#10b981' : '#ef4444',
+                  }}>
+                    {data.totals.roas != null ? `${(data.totals.roas * 100).toFixed(0)}%` : '—'}
+                  </td>
+                )}
+                {visibleMetrics.includes('cop') && (
+                  <td style={tdRightStyle}>
+                    {data.totals.cop != null ? `$${data.totals.cop.toFixed(0)}` : '—'}
+                  </td>
+                )}
+                {visibleMetrics.includes('subscribers') && (
+                  <td style={tdRightStyle}>{data.totals.subscribers}</td>
+                )}
+                {visibleMetrics.includes('trials') && (
+                  <td style={tdRightStyle}></td>
+                )}
+                {visibleMetrics.includes('crToPaid') && (
+                  <td style={tdRightStyle}></td>
+                )}
               </tr>
             </tfoot>
           )}

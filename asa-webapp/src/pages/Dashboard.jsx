@@ -3,8 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { StatusBadge } from '../components/Badge';
 import { HealthScoreWidget } from '../components/HealthScoreWidget';
-import { getCampaigns, getRules, getHistory } from '../lib/api';
+import ConversionFunnelChart from '../components/ConversionFunnelChart';
+import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
+import { getCampaigns, getRules, getHistory, getTrends } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useState } from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -13,13 +16,17 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
+function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
   const colors = {
     blue: 'bg-blue-100 text-blue-600',
     green: 'bg-green-100 text-green-600',
     red: 'bg-red-100 text-red-600',
     purple: 'bg-purple-100 text-purple-600',
   };
+
+  const percentChange = prevValue && prevValue !== 0
+    ? ((value - prevValue) / prevValue) * 100
+    : null;
 
   return (
     <Card>
@@ -32,6 +39,11 @@ function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color 
           <p className="text-2xl font-bold">
             {prefix}{typeof value === 'number' ? value.toLocaleString() : value}{suffix}
           </p>
+          {percentChange !== null && (
+            <p className={`text-xs font-medium ${percentChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {percentChange >= 0 ? '↑' : '↓'} {Math.abs(percentChange).toFixed(1)}% vs previous
+            </p>
+          )}
           {subtext && <p className="text-xs text-gray-400">{subtext}</p>}
         </div>
       </CardContent>
@@ -41,6 +53,7 @@ function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color 
 
 export default function Dashboard() {
   const { queryParams, label: dateLabel } = useDateRange();
+  const [showConversionChart, setShowConversionChart] = useState(false);
 
   const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -57,6 +70,12 @@ export default function Dashboard() {
     queryFn: () => getHistory({ limit: 10 }),
   });
 
+  const { data: trendsData } = useQuery({
+    queryKey: ['trends', queryParams],
+    queryFn: () => getTrends(queryParams),
+    enabled: showConversionChart,
+  });
+
   // Helper to get performance value
   const getPerf = (campaign, field) => {
     const p = campaign.performance;
@@ -67,6 +86,7 @@ export default function Dashboard() {
   // Use totals from API (includes all campaigns from DB, not just active ones)
   const campaigns = campaignsData?.data || [];
   const totals = campaignsData?.totals || {};
+  const prevTotals = campaignsData?.prevTotals || {};
   const totalSpend = totals.spend || 0;
   const totalImpressions = totals.impressions || 0;
   const totalTaps = totals.taps || 0;
@@ -78,10 +98,25 @@ export default function Dashboard() {
   const roas = totals.roas || 0;
   const cop = totals.cop || 0;
 
+  const prevSpend = prevTotals.spend || 0;
+  const prevRevenue = prevTotals.revenue || 0;
+  const prevRoas = prevTotals.roas || 0;
+  const prevInstalls = prevTotals.installs || 0;
+  const prevCpa = prevTotals.cpa || 0;
+  const prevCop = prevTotals.cop || 0;
+
   // Sort campaigns by revenue for top performers
   const topCampaigns = [...campaigns]
     .sort((a, b) => getPerf(b, 'revenue') - getPerf(a, 'revenue'))
     .slice(0, 5);
+
+  // Calculate traffic light status counts
+  const trafficLightCounts = campaigns.reduce((acc, campaign) => {
+    const predictedRoas = campaign.performance?.predicted_roas_365;
+    const status = getTrafficLightStatus(predictedRoas);
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-6">
@@ -93,10 +128,11 @@ export default function Dashboard() {
       {/* Health Score and Main Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <HealthScoreWidget campaigns={campaigns} />
-        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <MetricCard
           title="Spend"
           value={totalSpend.toFixed(2)}
+          prevValue={prevSpend > 0 ? prevSpend.toFixed(2) : null}
           prefix="$"
           icon={DollarSign}
           color="blue"
@@ -104,6 +140,7 @@ export default function Dashboard() {
         <MetricCard
           title="Revenue"
           value={totalRevenue.toFixed(2)}
+          prevValue={prevRevenue > 0 ? prevRevenue.toFixed(2) : null}
           prefix="$"
           icon={TrendingUp}
           color="green"
@@ -111,6 +148,7 @@ export default function Dashboard() {
         <MetricCard
           title="ROAS"
           value={roas.toFixed(2)}
+          prevValue={prevRoas > 0 ? prevRoas.toFixed(2) : null}
           suffix="x"
           icon={BarChart3}
           color={roas >= 1 ? 'green' : 'red'}
@@ -118,12 +156,14 @@ export default function Dashboard() {
         <MetricCard
           title="Installs"
           value={totalInstalls}
+          prevValue={prevInstalls > 0 ? prevInstalls : null}
           icon={Download}
           color="purple"
         />
         <MetricCard
           title="CPA"
           value={avgCpa.toFixed(2)}
+          prevValue={prevCpa > 0 ? prevCpa.toFixed(2) : null}
           prefix="$"
           icon={MousePointer}
           color="blue"
@@ -131,6 +171,7 @@ export default function Dashboard() {
         <MetricCard
           title="COP"
           value={cop.toFixed(2)}
+          prevValue={prevCop > 0 ? prevCop.toFixed(2) : null}
           prefix="$"
           icon={DollarSign}
           color="purple"
@@ -140,7 +181,7 @@ export default function Dashboard() {
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent>
             <p className="text-sm text-gray-500">Impressions</p>
@@ -166,6 +207,77 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Campaign Health Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Campaign Health Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            {['ok', 'risk', 'bad', 'loss', 'unknown'].map(status => {
+              const count = trafficLightCounts[status] || 0;
+              const color = getTrafficLightColor(status);
+              const label = getTrafficLightLabel(status);
+              const total = campaigns.length || 1;
+              const percentage = ((count / total) * 100).toFixed(0);
+
+              return (
+                <div key={status} className="text-center p-4 border rounded-lg">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <div
+                      className="rounded-full"
+                      style={{
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: color,
+                      }}
+                    />
+                    <span className="text-sm font-medium" style={{ color }}>
+                      {label}
+                    </span>
+                  </div>
+                  <p className="text-2xl font-bold">{count}</p>
+                  <p className="text-xs text-gray-400">{percentage}%</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-xs text-gray-500">
+            <p><strong>OK:</strong> Predicted ROAS ≥ 1.5x | <strong>Risk:</strong> 1.0-1.5x | <strong>Bad:</strong> 0.5-1.0x | <strong>Loss:</strong> &lt; 0.5x</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Conversion Funnel Chart */}
+      <Card>
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <CardTitle>Analytics</CardTitle>
+            <button
+              onClick={() => setShowConversionChart(!showConversionChart)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb',
+                background: showConversionChart ? '#3b82f6' : '#fff',
+                color: showConversionChart ? '#fff' : '#374151',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {showConversionChart ? 'Hide' : 'Show'} Conversion Funnel
+            </button>
+          </div>
+        </CardHeader>
+        {showConversionChart && (
+          <CardContent>
+            <ConversionFunnelChart data={trendsData} />
+          </CardContent>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Campaigns by Revenue */}

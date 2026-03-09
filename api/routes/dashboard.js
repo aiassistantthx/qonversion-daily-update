@@ -160,6 +160,12 @@ const findPaybackDaysWithinCurve = (currentRoas, currentDays, predictedFinalRoas
 
 router.get('/main', async (req, res) => {
   try {
+    // Get date range from query params (defaults to last 30 days)
+    const from = req.query.from || daysAgo(30);
+    const to = req.query.to || formatDate(new Date());
+    const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
+    const { campaigns } = req.query;
+
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -170,6 +176,16 @@ router.get('/main', async (req, res) => {
     const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
     const prevMonthDays = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
 
+    // Campaign filter
+    let campaignCondition = '1=1';
+    if (campaigns && campaigns.trim()) {
+      const campaignList = campaigns.split(',').map(c => c.trim()).filter(Boolean);
+      if (campaignList.length > 0) {
+        const quotedCampaigns = campaignList.map(c => `'${c}'`).join(',');
+        campaignCondition = `campaign_id IN (${quotedCampaigns})`;
+      }
+    }
+
     // ---- CURRENT MONTH METRICS ----
 
     // Spend this month (from apple_ads_campaigns)
@@ -177,6 +193,7 @@ router.get('/main', async (req, res) => {
       SELECT COALESCE(SUM(spend), 0) as spend
       FROM apple_ads_campaigns
       WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND ${campaignCondition}
     `;
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
@@ -199,6 +216,7 @@ router.get('/main', async (req, res) => {
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND media_source = 'Apple AdServices'
+        AND ${campaignCondition}
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
@@ -228,6 +246,7 @@ router.get('/main', async (req, res) => {
         FROM events_v2
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
+          AND ${campaignCondition}
           AND (
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
@@ -239,6 +258,7 @@ router.get('/main', async (req, res) => {
         FROM apple_ads_campaigns
         WHERE TO_CHAR(date, 'YYYY-MM') = $1
           AND date <= CURRENT_DATE - INTERVAL '4 days'
+          AND ${campaignCondition}
         GROUP BY date
       )
       SELECT
@@ -263,12 +283,14 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
+          AND ${campaignCondition}
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
         FROM apple_ads_campaigns, period
         WHERE date BETWEEN start_date AND end_date
+          AND ${campaignCondition}
       )
       SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
     `;
@@ -288,12 +310,14 @@ router.get('/main', async (req, res) => {
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
+          AND ${campaignCondition}
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
       spend AS (
         SELECT COALESCE(SUM(spend), 0) as total
         FROM apple_ads_campaigns, period
         WHERE date BETWEEN start_date AND end_date
+          AND ${campaignCondition}
       )
       SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
     `;
@@ -441,37 +465,50 @@ router.get('/main', async (req, res) => {
     // Also calculate forecast subscribers (current + expected additional conversions)
     const forecastSubscribers = Math.round(predictedMonthSubs);
 
-    // ---- DAILY DATA (last 30 days) ----
+    // ---- DAILY DATA (using date range from query params) ----
     // Revenue by event_date, but cohort conversions by install_date
+    // Aggregate by scale: day, week, or month
+    let dateGroupBy, dateSelect;
+    if (scale === 'week') {
+      dateGroupBy = "DATE_TRUNC('week', date)";
+      dateSelect = "DATE_TRUNC('week', date)";
+    } else if (scale === 'month') {
+      dateGroupBy = "DATE_TRUNC('month', date)";
+      dateSelect = "DATE_TRUNC('month', date)";
+    } else {
+      dateGroupBy = "date";
+      dateSelect = "date";
+    }
+
     const dailyQuery = `
       WITH daily_revenue AS (
         SELECT
-          DATE(event_date) as day,
+          ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"} as day,
           SUM(price_usd) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
-        WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
-        GROUP BY DATE(event_date)
+        WHERE event_date >= $1::date AND event_date <= $2::date
+        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"}
       ),
       cohort_conversions AS (
         SELECT
-          DATE(install_date) as cohort_day,
+          ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"} as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '34 days'
+        WHERE install_date >= $1::date AND install_date <= $2::date
           AND (
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           )
-        GROUP BY DATE(install_date)
+        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"}
       ),
       daily_spend AS (
-        SELECT date as day, SUM(spend) as spend
+        SELECT ${dateSelect} as day, SUM(spend) as spend
         FROM apple_ads_campaigns
-        WHERE date >= CURRENT_DATE - INTERVAL '34 days'
-        GROUP BY date
+        WHERE date >= $1::date AND date <= $2::date
+        GROUP BY ${dateGroupBy}
       )
       SELECT
         ds.day,
@@ -482,9 +519,8 @@ router.get('/main', async (req, res) => {
       LEFT JOIN daily_revenue dr ON ds.day = dr.day
       LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day
       ORDER BY ds.day DESC
-      LIMIT 34
     `;
-    const dailyResult = await db.query(dailyQuery);
+    const dailyResult = await db.query(dailyQuery, [from, to]);
 
     // Calculate COHORT COP for each day with predicted final COP
     const todayForCohort = new Date();
@@ -531,7 +567,7 @@ router.get('/main', async (req, res) => {
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE install_date >= $1::date AND install_date <= $2::date
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       cohort_metrics AS (
@@ -544,14 +580,14 @@ router.get('/main', async (req, res) => {
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
         FROM events_v2
-        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE install_date >= $1::date AND install_date <= $2::date
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
         FROM apple_ads_campaigns
-        WHERE date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        WHERE date >= $1::date AND date <= $2::date
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       )
       SELECT
@@ -567,7 +603,7 @@ router.get('/main', async (req, res) => {
       ORDER BY ms.month DESC
       LIMIT ${monthsBack}
     `;
-    const monthlyResult = await db.query(monthlyQuery);
+    const monthlyResult = await db.query(monthlyQuery, [from, to]);
 
     const monthlyData = monthlyResult.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
@@ -1086,11 +1122,20 @@ router.get('/forecast', async (req, res) => {
     // MODEL PARAMETERS (from research 2026-03-09)
     // ============================================
     const YEARLY_RENEWAL_RATE = 0.35;  // 35% renewal rate for yearly
+    const YEARLY_RENEWAL_RATE_OPTIMISTIC = 0.42;  // +20%
+    const YEARLY_RENEWAL_RATE_PESSIMISTIC = 0.30;  // -15%
+
     const WEEKLY_PRICE = 9.19;
     const WEEKLY_TRIAL_PRICE = 9.50;
     const YEARLY_PRICE = 62;
     const WEEKLY_W1_RETENTION = 0.48;  // 48% survive week 1
     const WEEKLY_WEEKLY_RETENTION = 0.92;  // 92% weekly retention after W1
+    const WEEKLY_WEEKLY_RETENTION_OPTIMISTIC = 0.94;  // +2pp
+    const WEEKLY_WEEKLY_RETENTION_PESSIMISTIC = 0.89;  // -3pp
+
+    const WEEKLY_CHURN_RATE = 1 - WEEKLY_WEEKLY_RETENTION;
+    const WEEKLY_CHURN_RATE_OPTIMISTIC = 1 - WEEKLY_WEEKLY_RETENTION_OPTIMISTIC;
+    const WEEKLY_CHURN_RATE_PESSIMISTIC = 1 - WEEKLY_WEEKLY_RETENTION_PESSIMISTIC;
 
     // ============================================
     // 1. GET HISTORICAL DATA
@@ -1147,6 +1192,27 @@ router.get('/forecast', async (req, res) => {
       ORDER BY cohort_month
     `);
 
+    // Weekly cohorts for churn modeling (last 6 months)
+    const weeklyCohortsResult = await db.query(`
+      WITH first_weekly_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE event_name = 'Trial Converted'
+          AND product_id LIKE '%weekly%'
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        TO_CHAR(first_sub_date, 'YYYY-MM') as cohort_month,
+        COUNT(*) as subscribers
+      FROM first_weekly_subs
+      WHERE first_sub_date >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY TO_CHAR(first_sub_date, 'YYYY-MM')
+      ORDER BY cohort_month
+    `);
+
     // Current active weekly subscribers (renewed in last 14 days)
     const activeWeeklyResult = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as active_weekly
@@ -1166,6 +1232,14 @@ router.get('/forecast', async (req, res) => {
       yearlyCohorts[row.cohort_month] = {
         subscribers: parseInt(row.subscribers),
         avgPrice: parseFloat(row.avg_price) || YEARLY_PRICE,
+      };
+    }
+
+    // Build weekly cohort map
+    const weeklyCohorts = {};
+    for (const row of weeklyCohortsResult.rows) {
+      weeklyCohorts[row.cohort_month] = {
+        subscribers: parseInt(row.subscribers),
       };
     }
 
@@ -1216,7 +1290,10 @@ router.get('/forecast', async (req, res) => {
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%weekly%' AND refund = false), 0) as weekly_revenue,
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%yearly%' AND refund = false), 0) as yearly_revenue,
         COALESCE(SUM(price_usd) FILTER (WHERE product_id LIKE '%monthly%' AND refund = false), 0) as monthly_revenue,
-        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as total_revenue
+        COALESCE(SUM(price_usd) FILTER (WHERE refund = false), 0) as total_revenue,
+        COUNT(DISTINCT q_user_id) FILTER (
+          WHERE event_name = 'Trial Converted' AND product_id LIKE '%weekly%'
+        ) as weekly_new_trials
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
@@ -1226,57 +1303,117 @@ router.get('/forecast', async (req, res) => {
     const currentMonthWeekly = parseFloat(currentMonthData.rows[0]?.weekly_revenue) || 0;
     const currentMonthYearly = parseFloat(currentMonthData.rows[0]?.yearly_revenue) || 0;
     const currentMonthMonthly = parseFloat(currentMonthData.rows[0]?.monthly_revenue) || 0;
-    const currentMonthTotal = parseFloat(currentMonthData.rows[0]?.total_revenue) || 0;
+    const currentMonthNewTrials = parseInt(currentMonthData.rows[0]?.weekly_new_trials) || 0;
 
     // ============================================
-    // 4. BUILD FORECAST (12 months)
+    // 4. BUILD COHORT-BASED FORECAST (12 months)
     // ============================================
+
+    // Track weekly subscriber base with cohort churn
+    let weeklyBaseRemaining = activeWeeklyBase;
+    let weeklyBaseOptimistic = activeWeeklyBase;
+    let weeklyBasePessimistic = activeWeeklyBase;
+
     const renewalForecast = [];
 
     for (let i = 0; i <= 12; i++) {
       const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastDate.getFullYear()}-${String(forecastDate.getMonth() + 1).padStart(2, '0')}`;
 
-      let weeklyRevenue, yearlyRevenue, monthlyRevenue;
+      let weeklyRevenue, weeklyRevenueOptimistic, weeklyRevenuePessimistic;
+      let yearlyRevenue, yearlyRevenueOptimistic, yearlyRevenuePessimistic;
+      let monthlyRevenue;
 
       if (i === 0) {
         // Current month: extrapolate from partial data
         weeklyRevenue = Math.round(currentMonthWeekly * extrapolationFactor);
+        weeklyRevenueOptimistic = Math.round(weeklyRevenue * 1.2);
+        weeklyRevenuePessimistic = Math.round(weeklyRevenue * 0.85);
+
         yearlyRevenue = Math.round(currentMonthYearly * extrapolationFactor);
+        yearlyRevenueOptimistic = Math.round(yearlyRevenue * 1.2);
+        yearlyRevenuePessimistic = Math.round(yearlyRevenue * 0.85);
+
         monthlyRevenue = Math.round(currentMonthMonthly * extrapolationFactor);
       } else {
         // Future months: use cohort model
 
-        // === WEEKLY REVENUE ===
-        // Model: stable base with churn-adjusted renewals
-        // Assuming performance stays same, weekly revenue = average of last 3 months
-        weeklyRevenue = Math.round(avgWeeklyRevenue);
+        // === WEEKLY REVENUE (cohort-based with churn) ===
+        // Apply monthly churn: ~4 weeks × weekly churn rate
+        const monthlyChurnFactor = Math.pow(WEEKLY_WEEKLY_RETENTION, 4);
+        const monthlyChurnFactorOptimistic = Math.pow(WEEKLY_WEEKLY_RETENTION_OPTIMISTIC, 4);
+        const monthlyChurnFactorPessimistic = Math.pow(WEEKLY_WEEKLY_RETENTION_PESSIMISTIC, 4);
+
+        // Decay existing base
+        weeklyBaseRemaining *= monthlyChurnFactor;
+        weeklyBaseOptimistic *= monthlyChurnFactorOptimistic;
+        weeklyBasePessimistic *= monthlyChurnFactorPessimistic;
+
+        // Add new trials (who survive W1 and contribute for the month)
+        const newTrials = avgWeeklyNewTrials;
+        const newTrialsOptimistic = Math.round(avgWeeklyNewTrials * 1.2);
+        const newTrialsPessimistic = Math.round(avgWeeklyNewTrials * 0.85);
+
+        const newTrialsContributing = newTrials * WEEKLY_W1_RETENTION;
+        const newTrialsContributingOptimistic = newTrialsOptimistic * WEEKLY_W1_RETENTION;
+        const newTrialsContributingPessimistic = newTrialsPessimistic * WEEKLY_W1_RETENTION;
+
+        weeklyBaseRemaining += newTrialsContributing;
+        weeklyBaseOptimistic += newTrialsContributingOptimistic;
+        weeklyBasePessimistic += newTrialsContributingPessimistic;
+
+        // Revenue from active base (4 renewals per month)
+        weeklyRevenue = Math.round(weeklyBaseRemaining * WEEKLY_PRICE * 4);
+        weeklyRevenueOptimistic = Math.round(weeklyBaseOptimistic * WEEKLY_PRICE * 4);
+        weeklyRevenuePessimistic = Math.round(weeklyBasePessimistic * WEEKLY_PRICE * 4);
 
         // === YEARLY REVENUE ===
-        // New subs: avgYearlyNewSubs × YEARLY_PRICE
+        // New subs
         const yearlyNewSubsRevenue = avgYearlyNewSubs * YEARLY_PRICE;
+        const yearlyNewSubsRevenueOptimistic = Math.round(avgYearlyNewSubs * 1.2) * YEARLY_PRICE;
+        const yearlyNewSubsRevenuePessimistic = Math.round(avgYearlyNewSubs * 0.85) * YEARLY_PRICE;
 
         // Renewals from cohort 12 months ago
         const renewalSourceMonth = addMonths(forecastMonthStr, -12);
         const sourceCohort = yearlyCohorts[renewalSourceMonth];
+
         const yearlyRenewalsRevenue = sourceCohort
           ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE * YEARLY_PRICE)
           : 0;
+        const yearlyRenewalsRevenueOptimistic = sourceCohort
+          ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE_OPTIMISTIC * YEARLY_PRICE)
+          : 0;
+        const yearlyRenewalsRevenuePessimistic = sourceCohort
+          ? Math.round(sourceCohort.subscribers * YEARLY_RENEWAL_RATE_PESSIMISTIC * YEARLY_PRICE)
+          : 0;
 
         yearlyRevenue = Math.round(yearlyNewSubsRevenue + yearlyRenewalsRevenue);
+        yearlyRevenueOptimistic = Math.round(yearlyNewSubsRevenueOptimistic + yearlyRenewalsRevenueOptimistic);
+        yearlyRevenuePessimistic = Math.round(yearlyNewSubsRevenuePessimistic + yearlyRenewalsRevenuePessimistic);
 
         // === MONTHLY REVENUE ===
         monthlyRevenue = Math.round(avgMonthlyRevenue);
       }
 
       const totalRevenue = weeklyRevenue + yearlyRevenue + monthlyRevenue;
+      const totalRevenueOptimistic = weeklyRevenueOptimistic + yearlyRevenueOptimistic + monthlyRevenue;
+      const totalRevenuePessimistic = weeklyRevenuePessimistic + yearlyRevenuePessimistic + monthlyRevenue;
 
       renewalForecast.push({
         month: forecastMonthStr,
         weeklyRevenue,
+        weeklyRevenueOptimistic,
+        weeklyRevenuePessimistic,
         yearlyRevenue,
+        yearlyRevenueOptimistic,
+        yearlyRevenuePessimistic,
         monthlyRevenue,
         totalRevenue,
+        totalRevenueOptimistic,
+        totalRevenuePessimistic,
+        weeklyBase: Math.round(weeklyBaseRemaining),
+        weeklyBaseOptimistic: Math.round(weeklyBaseOptimistic),
+        weeklyBasePessimistic: Math.round(weeklyBasePessimistic),
         // For backward compatibility
         totalForecastRevenue: totalRevenue,
         expectedRevenue: totalRevenue,
@@ -1284,7 +1421,31 @@ router.get('/forecast', async (req, res) => {
     }
 
     // ============================================
-    // 5. ADDITIONAL STATS
+    // 5. VALIDATION AGAINST HISTORICAL DATA
+    // ============================================
+
+    // Calculate forecast accuracy for last 3 months
+    const validationResults = [];
+    for (let i = 1; i <= 3; i++) {
+      const testMonth = addMonths(currentMonthStr, -i);
+      const historicalData = monthlyByTypeResult.rows.find(r => r.month === testMonth);
+
+      if (historicalData) {
+        const actualRevenue = parseFloat(historicalData.total_revenue) || 0;
+        const forecastedRevenue = avgWeeklyRevenue + avgYearlyRevenue + avgMonthlyRevenue;
+        const error = ((forecastedRevenue - actualRevenue) / actualRevenue) * 100;
+
+        validationResults.push({
+          month: testMonth,
+          actual: Math.round(actualRevenue),
+          forecasted: Math.round(forecastedRevenue),
+          errorPercent: error.toFixed(1),
+        });
+      }
+    }
+
+    // ============================================
+    // 6. ADDITIONAL STATS
     // ============================================
 
     // Get current month new subscribers for stats
@@ -1308,7 +1469,7 @@ router.get('/forecast', async (req, res) => {
     const avgMonthlySpend = avgDailySpend * 30;
 
     // ============================================
-    // 6. RESPONSE
+    // 7. RESPONSE
     // ============================================
     res.json({
       historical: monthlyByTypeResult.rows.map(r => ({
@@ -1323,13 +1484,23 @@ router.get('/forecast', async (req, res) => {
         yearlyRenewals: parseInt(r.yearly_renewals) || 0,
       })),
       renewalForecast,
+      validation: {
+        results: validationResults,
+        avgError: validationResults.length > 0
+          ? (validationResults.reduce((sum, v) => sum + Math.abs(parseFloat(v.errorPercent)), 0) / validationResults.length).toFixed(1)
+          : null,
+      },
       modelParameters: {
         weeklyPrice: WEEKLY_PRICE,
         weeklyTrialPrice: WEEKLY_TRIAL_PRICE,
         yearlyPrice: YEARLY_PRICE,
         yearlyRenewalRate: YEARLY_RENEWAL_RATE,
+        yearlyRenewalRateOptimistic: YEARLY_RENEWAL_RATE_OPTIMISTIC,
+        yearlyRenewalRatePessimistic: YEARLY_RENEWAL_RATE_PESSIMISTIC,
         weeklyW1Retention: WEEKLY_W1_RETENTION,
         weeklyWeeklyRetention: WEEKLY_WEEKLY_RETENTION,
+        weeklyWeeklyRetentionOptimistic: WEEKLY_WEEKLY_RETENTION_OPTIMISTIC,
+        weeklyWeeklyRetentionPessimistic: WEEKLY_WEEKLY_RETENTION_PESSIMISTIC,
       },
       currentMetrics: {
         activeWeeklyBase,
@@ -1346,7 +1517,7 @@ router.get('/forecast', async (req, res) => {
       projectionAssumptions: {
         avgDailySpend: Math.round(avgDailySpend),
         avgMonthlySpend: Math.round(avgMonthlySpend),
-        assumption: 'Apple Ads performance stays at current level with current budgets; organic volume stays the same',
+        assumption: 'Cohort-based model with weekly churn decay and yearly renewal rates. Optimistic: +20% acquisition, +2pp retention, +20% renewal. Pessimistic: -15% acquisition, -3pp retention, -14% renewal.',
       },
     });
   } catch (error) {
@@ -2520,7 +2691,7 @@ router.get('/weekly-churn', async (req, res) => {
 // ============================================
 router.get('/countries', async (req, res) => {
   try {
-    const { from, to, source, limit = 20 } = req.query;
+    const { from, to, source, countries, limit = 20, sortBy = 'revenue' } = req.query;
 
     // Date filter
     let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
@@ -2536,6 +2707,29 @@ router.get('/countries', async (req, res) => {
       sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
     }
 
+    // Country filter
+    let countryCondition = '1=1';
+    if (countries && countries.trim()) {
+      const countryList = countries.split(',').map(c => c.trim()).filter(Boolean);
+      if (countryList.length > 0) {
+        const quotedCountries = countryList.map(c => `'${c}'`).join(',');
+        countryCondition = `country IN (${quotedCountries})`;
+      }
+    }
+
+    // Sort validation and mapping
+    const allowedSorts = {
+      country: 'cm.country',
+      source: 'cm.source',
+      revenue: 'revenue',
+      spend: 'spend',
+      roas: 'roas',
+      cop: 'cop',
+      subscribers: 'cm.subscribers',
+      trials: 'cm.trials'
+    };
+    const sortColumn = allowedSorts[sortBy] || 'revenue';
+
     const result = await db.query(`
       WITH user_countries AS (
         SELECT
@@ -2545,6 +2739,7 @@ router.get('/countries', async (req, res) => {
           install_date
         FROM events_v2
         WHERE ${dateCondition}
+          AND ${countryCondition}
         GROUP BY q_user_id, country, media_source, install_date
       ),
       country_metrics AS (
@@ -2571,6 +2766,7 @@ router.get('/countries', async (req, res) => {
           SUM(local_spend) as spend
         FROM apple_ads_keywords
         WHERE ${dateCondition.replace('install_date', 'date')}
+          AND ${countryCondition}
         GROUP BY country
       )
       SELECT
@@ -2593,13 +2789,13 @@ router.get('/countries', async (req, res) => {
         END as roas
       FROM country_metrics cm
       LEFT JOIN country_spend cs ON cm.country = cs.country AND cm.source = 'Apple Ads'
-      ORDER BY cm.revenue DESC
+      ORDER BY ${sortColumn} DESC NULLS LAST
       LIMIT ${parseInt(limit)}
     `);
 
     res.json({
       countries: result.rows,
-      filters: { from, to, source, limit: parseInt(limit) }
+      filters: { from, to, source, countries, limit: parseInt(limit), sortBy }
     });
   } catch (error) {
     console.error('Countries error:', error);
@@ -2636,6 +2832,18 @@ router.get('/yoy', async (req, res) => {
       ORDER BY year, month
     `, [lastYear]);
 
+    // Get spend by month for current and last year
+    const spendResult = await db.query(`
+      SELECT
+        EXTRACT(YEAR FROM date) as year,
+        EXTRACT(MONTH FROM date) as month,
+        SUM(COALESCE(spend, 0)) as spend
+      FROM apple_ads_campaigns
+      WHERE EXTRACT(YEAR FROM date) >= $1
+      GROUP BY year, month
+      ORDER BY year, month
+    `, [lastYear]);
+
     // Build comparison data
     const monthlyMap = new Map();
     monthlyResult.rows.forEach(r => {
@@ -2644,14 +2852,23 @@ router.get('/yoy', async (req, res) => {
         revenue: parseFloat(r.revenue) || 0,
         subscribers: parseInt(r.subscribers) || 0,
         trials: parseInt(r.trials) || 0,
+        spend: 0,
       });
+    });
+
+    // Add spend data
+    spendResult.rows.forEach(r => {
+      const key = `${r.year}-${r.month}`;
+      const existing = monthlyMap.get(key) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
+      existing.spend = parseFloat(r.spend) || 0;
+      monthlyMap.set(key, existing);
     });
 
     // This month vs same month last year
     const thisMonthKey = `${currentYear}-${currentMonth}`;
     const lastYearSameMonthKey = `${lastYear}-${currentMonth}`;
-    const thisMonth = monthlyMap.get(thisMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
-    const lastYearSameMonth = monthlyMap.get(lastYearSameMonthKey) || { revenue: 0, subscribers: 0, trials: 0 };
+    const thisMonth = monthlyMap.get(thisMonthKey) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
+    const lastYearSameMonth = monthlyMap.get(lastYearSameMonthKey) || { revenue: 0, subscribers: 0, trials: 0, spend: 0 };
 
     // Calculate % change
     const monthChange = lastYearSameMonth.revenue > 0
@@ -2666,16 +2883,20 @@ router.get('/yoy', async (req, res) => {
     let ytdLastYear = 0;
     let ytdSubsThisYear = 0;
     let ytdSubsLastYear = 0;
+    let ytdSpendThisYear = 0;
+    let ytdSpendLastYear = 0;
     for (let m = 1; m <= currentMonth; m++) {
       const thisYearData = monthlyMap.get(`${currentYear}-${m}`);
       const lastYearData = monthlyMap.get(`${lastYear}-${m}`);
       if (thisYearData) {
         ytdThisYear += thisYearData.revenue;
         ytdSubsThisYear += thisYearData.subscribers;
+        ytdSpendThisYear += thisYearData.spend;
       }
       if (lastYearData) {
         ytdLastYear += lastYearData.revenue;
         ytdSubsLastYear += lastYearData.subscribers;
+        ytdSpendLastYear += lastYearData.spend;
       }
     }
 
@@ -2709,6 +2930,8 @@ router.get('/yoy', async (req, res) => {
         lastYear: lastYearData?.revenue || 0,
         thisYearSubs: thisYearData?.subscribers || 0,
         lastYearSubs: lastYearData?.subscribers || 0,
+        thisYearSpend: thisYearData?.spend || 0,
+        lastYearSpend: lastYearData?.spend || 0,
       });
     }
 
@@ -3100,62 +3323,409 @@ router.get('/renewal-rates', async (req, res) => {
 });
 
 // ============================================================================
-// COUNTRIES - Country ranking by metrics
+// MRR BREAKDOWN - New, Expansion, Churn, Reactivation, Net MRR
 // ============================================================================
-router.get('/countries', async (req, res) => {
+router.get('/mrr', async (req, res) => {
   try {
-    const from = req.query.from || daysAgo(30);
-    const to = req.query.to || formatDate(new Date());
-    const limit = parseInt(req.query.limit) || 20;
+    const months = parseInt(req.query.months) || 12;
 
+    // Get monthly MRR components
     const query = `
+      WITH monthly_subs AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+          q_user_id,
+          product_id,
+          SUM(CASE WHEN event_name IN ('Trial Converted', 'Subscription Started') THEN price_usd ELSE 0 END) as new_revenue,
+          SUM(CASE WHEN event_name = 'Subscription Renewed' THEN price_usd ELSE 0 END) as renewal_revenue
+        FROM events_v2
+        WHERE created_at >= NOW() - INTERVAL '${months + 1} months'
+          AND event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed', 'Subscription Expired', 'Subscription Cancelled')
+        GROUP BY 1, 2, 3
+      ),
+      monthly_mrr AS (
+        SELECT
+          month,
+          SUM(CASE
+            WHEN product_id LIKE '%yearly%' THEN (new_revenue + renewal_revenue) / 12
+            WHEN product_id LIKE '%monthly%' THEN new_revenue + renewal_revenue
+            ELSE (new_revenue + renewal_revenue) * 4.33
+          END) as mrr,
+          SUM(CASE
+            WHEN new_revenue > 0 AND product_id LIKE '%yearly%' THEN new_revenue / 12
+            WHEN new_revenue > 0 AND product_id LIKE '%monthly%' THEN new_revenue
+            WHEN new_revenue > 0 ELSE new_revenue * 4.33
+          END) as new_mrr,
+          SUM(CASE
+            WHEN product_id LIKE '%yearly%' THEN (new_revenue + renewal_revenue) / 12
+            ELSE 0
+          END) as yearly_mrr,
+          SUM(CASE
+            WHEN product_id LIKE '%monthly%' OR product_id LIKE '%weekly%' THEN new_revenue + renewal_revenue
+            WHEN NOT (product_id LIKE '%yearly%') THEN (new_revenue + renewal_revenue) * 4.33
+            ELSE 0
+          END) as weekly_mrr
+        FROM monthly_subs
+        GROUP BY 1
+      )
       SELECT
-        COALESCE(storefront_country_code, 'XX') as country,
-        COALESCE(storefront_country_code, 'XX') as country_code,
-        CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END as source,
-        COALESCE(SUM(CASE WHEN event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed') THEN price_usd ELSE 0 END), 0) as revenue,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Trial Converted', 'Subscription Started') AND product_id LIKE '%yearly%' THEN q_user_id END) +
-        COUNT(DISTINCT CASE WHEN event_name = 'Trial Converted' AND product_id NOT LIKE '%yearly%' THEN q_user_id END) as subscribers,
-        COUNT(DISTINCT CASE WHEN event_name = 'Trial Started' THEN q_user_id END) as trials
-      FROM events_v2
-      WHERE created_at >= $1 AND created_at < $2::date + 1
-      GROUP BY storefront_country_code, CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
-      ORDER BY revenue DESC
-      LIMIT $3
+        month,
+        mrr,
+        new_mrr,
+        yearly_mrr,
+        weekly_mrr,
+        LAG(mrr, 1) OVER (ORDER BY month) as prev_mrr
+      FROM monthly_mrr
+      ORDER BY month DESC
+      LIMIT $1
     `;
 
-    const result = await db.query(query, [from, to, limit * 2]); // Get more to have both sources
+    const result = await db.query(query, [months]);
 
-    const countries = result.rows.map(row => {
-      const subscribers = parseInt(row.subscribers) || 0;
-      const trials = parseInt(row.trials) || 0;
+    const breakdown = result.rows.reverse().map((row, i, arr) => {
+      const currentMrr = parseFloat(row.mrr) || 0;
+      const prevMrr = parseFloat(row.prev_mrr) || 0;
+      const newMrr = parseFloat(row.new_mrr) || 0;
+      const yearlyMrr = parseFloat(row.yearly_mrr) || 0;
+      const weeklyMrr = parseFloat(row.weekly_mrr) || 0;
+
+      // Calculate components
+      const netMrr = currentMrr - prevMrr;
+      const churnMrr = prevMrr > 0 ? Math.max(0, prevMrr - currentMrr + newMrr) : 0;
+      const expansionMrr = Math.max(0, netMrr - newMrr + churnMrr);
+      const reactivationMrr = 0; // Simplified for now
+
+      const mrrGrowthRate = prevMrr > 0 ? (netMrr / prevMrr) * 100 : 0;
+
       return {
-        country: row.country,
-        countryCode: row.country_code,
-        source: row.source,
-        revenue: parseFloat(row.revenue) || 0,
-        spend: 0,
-        roas: null,
-        cop: null,
-        subscribers,
-        trials,
-        crToPaid: trials > 0 ? subscribers / trials : null,
+        month: row.month,
+        newMrr,
+        expansionMrr,
+        churnMrr,
+        reactivationMrr,
+        netMrr,
+        totalMrr: currentMrr,
+        mrrGrowthRate,
+        yearlyMrr,
+        weeklyMrr,
       };
     });
 
-    // Calculate totals
-    const totals = countries.reduce((acc, c) => ({
-      revenue: acc.revenue + c.revenue,
-      spend: acc.spend + c.spend,
-      subscribers: acc.subscribers + c.subscribers,
-    }), { revenue: 0, spend: 0, subscribers: 0 });
+    // Current month metrics
+    const current = breakdown[breakdown.length - 1] || {
+      newMrr: 0,
+      expansionMrr: 0,
+      churnMrr: 0,
+      reactivationMrr: 0,
+      netMrr: 0,
+      totalMrr: 0,
+      mrrGrowthRate: 0,
+      yearlyMrr: 0,
+      weeklyMrr: 0,
+    };
 
-    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
-    totals.cop = totals.subscribers > 0 && totals.spend > 0 ? totals.spend / totals.subscribers : null;
-
-    res.json({ countries, totals });
+    res.json({
+      current,
+      breakdown,
+      byType: {
+        yearly: current.yearlyMrr,
+        weekly: current.weeklyMrr,
+        yearlyPercentage: current.totalMrr > 0 ? (current.yearlyMrr / current.totalMrr) * 100 : 0,
+        weeklyPercentage: current.totalMrr > 0 ? (current.weeklyMrr / current.totalMrr) * 100 : 0,
+      },
+    });
   } catch (error) {
-    console.error('Countries error:', error);
+    console.error('MRR breakdown error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// REVENUE YOY - Year-over-year revenue comparison by month
+// ============================================================================
+router.get('/revenue-yoy', async (req, res) => {
+  try {
+    // Get monthly revenue grouped by year
+    const query = `
+      WITH monthly_revenue AS (
+        SELECT
+          EXTRACT(YEAR FROM created_at) as year,
+          EXTRACT(MONTH FROM created_at) as month,
+          SUM(price_usd) as revenue
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND created_at >= NOW() - INTERVAL '36 months'
+        GROUP BY 1, 2
+      )
+      SELECT
+        year,
+        month,
+        revenue
+      FROM monthly_revenue
+      ORDER BY year, month
+    `;
+
+    const result = await db.query(query);
+
+    // Transform data for chart: { month: 'Jan', 2024: 1000, 2025: 1200, 2026: 1500 }
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const chartData = monthNames.map((name, idx) => ({ month: name, monthNum: idx + 1 }));
+    const years = new Set();
+
+    result.rows.forEach(row => {
+      const year = parseInt(row.year);
+      const month = parseInt(row.month);
+      const revenue = parseFloat(row.revenue) || 0;
+
+      years.add(year);
+      const dataPoint = chartData.find(d => d.monthNum === month);
+      if (dataPoint) {
+        dataPoint[year] = revenue;
+      }
+    });
+
+    res.json({
+      chartData,
+      years: Array.from(years).sort(),
+    });
+  } catch (error) {
+    console.error('Revenue YoY error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Payer Share by Day
+router.get('/payer-share', async (req, res) => {
+  try {
+    const monthsBack = parseInt(req.query.months) || 12;
+
+    // Get all cohorts by install month
+    // For each cohort, calculate % of users who became payers by day N
+    const query = `
+      WITH install_cohorts AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          install_date,
+          q_user_id,
+          COUNT(*) OVER (PARTITION BY TO_CHAR(install_date, 'YYYY-MM')) as total_users
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND install_date IS NOT NULL
+        GROUP BY install_date, q_user_id
+      ),
+      first_conversions AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_payment_date,
+          -- Distinguish trial conversions from direct yearly purchases
+          CASE
+            WHEN MIN(CASE WHEN event_name = 'Trial Converted' THEN event_date END) IS NOT NULL
+            THEN 'trial'
+            ELSE 'direct'
+          END as conversion_type
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          AND product_id LIKE '%yearly%'
+          AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+        GROUP BY q_user_id
+      ),
+      cohort_conversions AS (
+        SELECT
+          ic.cohort_month,
+          ic.total_users,
+          fc.q_user_id,
+          fc.first_payment_date,
+          fc.conversion_type,
+          DATE_PART('day', fc.first_payment_date - ic.install_date)::int as days_to_conversion
+        FROM install_cohorts ic
+        LEFT JOIN first_conversions fc ON ic.q_user_id = fc.q_user_id
+      )
+      SELECT
+        cohort_month,
+        MAX(total_users) as total_users,
+        -- Overall payer share
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 1 THEN q_user_id END) as payers_d1,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 3 THEN q_user_id END) as payers_d3,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 7 THEN q_user_id END) as payers_d7,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 14 THEN q_user_id END) as payers_d14,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 30 THEN q_user_id END) as payers_d30,
+        COUNT(DISTINCT CASE WHEN days_to_conversion <= 60 THEN q_user_id END) as payers_d60,
+        -- Trial conversions only
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 1 THEN q_user_id END) as trial_d1,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 3 THEN q_user_id END) as trial_d3,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 7 THEN q_user_id END) as trial_d7,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 14 THEN q_user_id END) as trial_d14,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 30 THEN q_user_id END) as trial_d30,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'trial' AND days_to_conversion <= 60 THEN q_user_id END) as trial_d60,
+        -- Direct purchases only
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 1 THEN q_user_id END) as direct_d1,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 3 THEN q_user_id END) as direct_d3,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 7 THEN q_user_id END) as direct_d7,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 14 THEN q_user_id END) as direct_d14,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 30 THEN q_user_id END) as direct_d30,
+        COUNT(DISTINCT CASE WHEN conversion_type = 'direct' AND days_to_conversion <= 60 THEN q_user_id END) as direct_d60
+      FROM cohort_conversions
+      GROUP BY cohort_month
+      ORDER BY cohort_month
+    `;
+
+    const result = await db.query(query);
+
+    // Transform to cohort format
+    const cohorts = result.rows.map(row => {
+      const totalUsers = parseInt(row.total_users) || 1; // Avoid division by zero
+
+      return {
+        month: row.cohort_month,
+        totalUsers: totalUsers,
+        payerShare: {
+          d1: parseFloat((parseInt(row.payers_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.payers_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.payers_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.payers_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.payers_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.payers_d60) / totalUsers).toFixed(4)),
+        },
+        trialConversions: {
+          d1: parseFloat((parseInt(row.trial_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.trial_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.trial_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.trial_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.trial_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.trial_d60) / totalUsers).toFixed(4)),
+        },
+        directPurchases: {
+          d1: parseFloat((parseInt(row.direct_d1) / totalUsers).toFixed(4)),
+          d3: parseFloat((parseInt(row.direct_d3) / totalUsers).toFixed(4)),
+          d7: parseFloat((parseInt(row.direct_d7) / totalUsers).toFixed(4)),
+          d14: parseFloat((parseInt(row.direct_d14) / totalUsers).toFixed(4)),
+          d30: parseFloat((parseInt(row.direct_d30) / totalUsers).toFixed(4)),
+          d60: parseFloat((parseInt(row.direct_d60) / totalUsers).toFixed(4)),
+        },
+      };
+    });
+
+    // Transform to chart data format
+    const days = [1, 3, 7, 14, 30, 60];
+    const chartData = days.map(day => {
+      const dataPoint = { day };
+      cohorts.slice(-6).forEach(cohort => {
+        const key = `d${day}`;
+        dataPoint[cohort.month] = cohort.payerShare[key];
+      });
+      return dataPoint;
+    });
+
+    res.json({ cohorts, chartData });
+  } catch (error) {
+    console.error('Payer share error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Active Subscribers Gauge
+router.get('/active-subscribers', async (req, res) => {
+  try {
+    // Current active subscribers by type
+    const currentQuery = `
+      WITH recent_renewals AS (
+        SELECT DISTINCT
+          q_user_id,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            ELSE 'weekly'
+          END as sub_type
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+      )
+      SELECT
+        sub_type,
+        COUNT(*) as active_count
+      FROM recent_renewals
+      GROUP BY sub_type
+    `;
+    const currentResult = await db.query(currentQuery);
+
+    const current = { weekly: 0, yearly: 0, total: 0 };
+    for (const row of currentResult.rows) {
+      current[row.sub_type] = parseInt(row.active_count) || 0;
+    }
+    current.total = current.weekly + current.yearly;
+
+    // Previous period (30 days before)
+    const previousQuery = `
+      WITH recent_renewals AS (
+        SELECT DISTINCT
+          q_user_id,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            ELSE 'weekly'
+          END as sub_type
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '60 days'
+          AND event_date < CURRENT_DATE - INTERVAL '30 days'
+      )
+      SELECT
+        sub_type,
+        COUNT(*) as active_count
+      FROM recent_renewals
+      GROUP BY sub_type
+    `;
+    const previousResult = await db.query(previousQuery);
+
+    const previous = { weekly: 0, yearly: 0, total: 0 };
+    for (const row of previousResult.rows) {
+      previous[row.sub_type] = parseInt(row.active_count) || 0;
+    }
+    previous.total = previous.weekly + previous.yearly;
+
+    // Calculate trends
+    const weeklyTrend = previous.weekly > 0
+      ? ((current.weekly - previous.weekly) / previous.weekly) * 100
+      : 0;
+    const yearlyTrend = previous.yearly > 0
+      ? ((current.yearly - previous.yearly) / previous.yearly) * 100
+      : 0;
+    const totalTrend = previous.total > 0
+      ? ((current.total - previous.total) / previous.total) * 100
+      : 0;
+
+    // Sparkline data - last 30 days
+    const sparklineQuery = `
+      WITH daily_active AS (
+        SELECT
+          DATE_TRUNC('day', event_date)::date as day,
+          COUNT(DISTINCT q_user_id) as active_count
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY 1
+        ORDER BY 1
+      )
+      SELECT * FROM daily_active
+    `;
+    const sparklineResult = await db.query(sparklineQuery);
+    const sparkline = sparklineResult.rows.map(r => parseInt(r.active_count) || 0);
+
+    res.json({
+      current: {
+        weekly: current.weekly,
+        yearly: current.yearly,
+        total: current.total,
+        weeklyPercentage: current.total > 0 ? (current.weekly / current.total) * 100 : 0,
+        yearlyPercentage: current.total > 0 ? (current.yearly / current.total) * 100 : 0,
+      },
+      trend: {
+        weekly: weeklyTrend,
+        yearly: yearlyTrend,
+        total: totalTrend,
+      },
+      sparkline,
+    });
+  } catch (error) {
+    console.error('Active subscribers error:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -11,6 +15,11 @@ body {
   background: #f9fafb;
   color: #111827;
   -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background: #0d1117;
+  color: #e6edf3;
 }
 
 .font-mono {
@@ -28,6 +37,46 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #161b22;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #30363d;
+}
+
+/* Card styles */
+.card-hover {
+  transition: all 0.2s;
+}
+
+.card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.dark .card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 255, 136, 0.1);
+}
+
+/* Sparkline styles */
+.sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 32px;
+}
+
+.sparkline-bar {
+  flex: 1;
+  background: #3b82f6;
+  border-radius: 2px;
+  min-height: 2px;
+}
+
+.dark .sparkline-bar {
+  background: #00ff88;
 }
 
 /* Recharts tooltip fix */

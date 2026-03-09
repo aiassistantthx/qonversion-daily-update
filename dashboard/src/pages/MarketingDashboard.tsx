@@ -4,7 +4,7 @@ import { api } from '../api';
 import { CopWaterfall } from '../components/CopWaterfall';
 import { RevenueSourceBar } from '../components/RevenueSourceBar';
 import { CampaignTable } from '../components/CampaignTable';
-import { MetricCard } from '../components/MetricCard';
+import { MetricCard, detectAnomaly } from '../components/MetricCard';
 
 export function MarketingDashboard() {
   const { data: copData } = useQuery({
@@ -36,6 +36,18 @@ export function MarketingDashboard() {
   const weekAvgCpa = (dailyData?.metrics?.slice(0, 7).reduce((sum, m) => sum + (m.cpa || 0), 0) || 0) / 7;
   const cpaChange = todayCpa && weekAvgCpa ? ((todayCpa - weekAvgCpa) / weekAvgCpa) * 100 : undefined;
 
+  // Extract historical data for anomaly detection
+  const historicalCpa = dailyData?.metrics?.slice(0, 7).map(m => m.cpa || 0).filter(v => v > 0) || [];
+  const historicalSpend = dailyData?.metrics?.slice(0, 30).map(m => m.spend || 0).filter(v => v > 0) || [];
+  const historicalRevenue = dailyData?.metrics?.slice(0, 30).map(m => m.revenue || 0).filter(v => v > 0) || [];
+
+  // Detect anomalies
+  const cpaAnomaly = todayCpa ? detectAnomaly(todayCpa, historicalCpa, 'CPA', true) : undefined;
+  const totalSpend = campaignsData?.campaigns.reduce((sum, c) => sum + c.spend, 0) || 0;
+  const totalRevenue = revenueSource?.summary.total || 0;
+  const spendAnomaly = totalSpend > 0 ? detectAnomaly(totalSpend, historicalSpend, 'Spend') : undefined;
+  const revenueAnomaly = totalRevenue > 0 ? detectAnomaly(totalRevenue, historicalRevenue, 'Revenue') : undefined;
+
   return (
     <div className="p-6 space-y-6">
       {/* Top metrics */}
@@ -45,6 +57,7 @@ export function MarketingDashboard() {
           value={todayCpa ? `$${todayCpa.toFixed(2)}` : '—'}
           change={cpaChange ? -cpaChange : undefined} // Inverted: lower is better
           changeLabel="Cost per acquisition"
+          anomaly={cpaAnomaly}
         />
         <MetricCard
           title="CPA 7d Avg"
@@ -53,13 +66,15 @@ export function MarketingDashboard() {
         />
         <MetricCard
           title="Total Spend (30d)"
-          value={campaignsData?.campaigns.reduce((sum, c) => sum + c.spend, 0) || 0}
+          value={totalSpend}
           format="currency"
+          anomaly={spendAnomaly}
         />
         <MetricCard
           title="Total Revenue (30d)"
-          value={revenueSource?.summary.total || 0}
+          value={totalRevenue}
           format="currency"
+          anomaly={revenueAnomaly}
         />
       </div>
 

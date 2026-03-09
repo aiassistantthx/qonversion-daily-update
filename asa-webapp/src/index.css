@@ -3,3 +3,50 @@
 @theme {
   --font-family-sans: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
+
+/* Mobile-friendly table with sticky first columns */
+@media (max-width: 1023px) {
+  .mobile-sticky-table .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: white;
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .mobile-sticky-table thead .sticky-col {
+    background-color: rgb(249, 250, 251);
+    z-index: 11;
+  }
+
+  .mobile-sticky-table tbody tr:hover .sticky-col {
+    background-color: rgb(249, 250, 251);
+  }
+
+  /* Dark mode support */
+  .dark .mobile-sticky-table .sticky-col {
+    background-color: rgb(3, 7, 18);
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .dark .mobile-sticky-table thead .sticky-col {
+    background-color: rgb(17, 24, 39);
+  }
+
+  .dark .mobile-sticky-table tbody tr:hover .sticky-col {
+    background-color: rgb(17, 24, 39);
+  }
+}
+
+/* Touch-friendly buttons and inputs on mobile */
+@media (max-width: 640px) {
+  button, input[type="checkbox"], select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+}

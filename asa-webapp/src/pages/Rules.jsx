@@ -1,12 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { Input, Select, Textarea } from '../components/Input';
 import { StatusBadge, Badge } from '../components/Badge';
+import RuleTemplates from '../components/RuleTemplates';
+import RuleExecutionHistory from '../components/RuleExecutionHistory';
 import { getRules, getRule, createRule, updateRule, deleteRule, executeRule, previewRule } from '../lib/api';
-import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2 } from 'lucide-react';
 
 const ACTION_TYPES = [
   { value: 'adjust_bid', label: 'Adjust Bid (%)' },
@@ -267,8 +270,10 @@ function RuleForm({ rule, onSave, onCancel }) {
 }
 
 export default function Rules() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [expandedRule, setExpandedRule] = useState(null);
   const [previewData, setPreviewData] = useState(null);
@@ -321,6 +326,12 @@ export default function Rules() {
 
   const rules = data?.data || [];
 
+  const handleSelectTemplate = (templateData) => {
+    setShowTemplates(false);
+    setShowForm(true);
+    setEditingRule({ ...templateData });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -329,10 +340,26 @@ export default function Rules() {
           <p className="text-gray-500">Create and manage bid automation rules</p>
         </div>
 
-        <Button onClick={() => setShowForm(true)}>
-          <Plus size={16} /> New Rule
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setShowTemplates(!showTemplates)}>
+            <Sparkles size={16} /> Templates
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/rules/new')}>
+            <Wand2 size={16} /> Visual Builder
+          </Button>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus size={16} /> Quick Add
+          </Button>
+        </div>
       </div>
+
+      {/* Templates Section */}
+      {showTemplates && (
+        <RuleTemplates
+          onSelectTemplate={handleSelectTemplate}
+          onClose={() => setShowTemplates(false)}
+        />
+      )}
 
       {/* Create/Edit Form */}
       {(showForm || editingRule) && (
@@ -438,8 +465,8 @@ export default function Rules() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => setEditingRule(rule)}
-                          title="Edit"
+                          onClick={() => navigate(`/rules/${rule.id}/edit`)}
+                          title="Edit (Visual Builder)"
                         >
                           <Edit2 size={14} />
                         </Button>
@@ -520,6 +547,9 @@ export default function Rules() {
                             </div>
                           </div>
                         )}
+
+                        {/* Execution History */}
+                        <RuleExecutionHistory ruleId={rule.id} />
                       </TableCell>
                     </TableRow>
                   )}

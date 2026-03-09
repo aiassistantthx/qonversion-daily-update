@@ -340,6 +340,12 @@ class RulesEngine {
           newValue = setBidResult.newBid;
           break;
 
+        case 'schedule_bid':
+          const scheduleBidResult = await this.executeScheduledBid(entity, actionParams, rule.scope, dryRun);
+          previousValue = scheduleBidResult.previousBid;
+          newValue = scheduleBidResult.newBid;
+          break;
+
         case 'pause':
           await this.executePause(entity, rule.scope, dryRun);
           previousValue = 'ACTIVE';
@@ -477,6 +483,58 @@ class RulesEngine {
           entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
           change_type, field_name, old_value, new_value, source
         ) VALUES ('keyword', $1, $2, $3, $1, 'bid_update', 'bidAmount', $4, $5, 'rule')
+      `, [entity.entity_id, entity.campaign_id, entity.adgroup_id, String(currentBid), String(newBid)]);
+    }
+
+    return { previousBid: currentBid, newBid };
+  }
+
+  /**
+   * Execute scheduled bid (dayparting)
+   */
+  async executeScheduledBid(entity, params, scope, dryRun) {
+    const { schedule } = params;
+    const currentBid = parseFloat(entity.current_bid || 0);
+
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const hour = now.getHours();
+
+    const multiplier = schedule?.[dayOfWeek]?.[hour] ?? 1.0;
+    const newBid = Math.round(currentBid * multiplier * 100) / 100;
+
+    if (multiplier === 0) {
+      if (!dryRun && scope === 'keyword') {
+        await appleAds.updateKeywordStatus(
+          entity.campaign_id,
+          entity.adgroup_id,
+          entity.entity_id,
+          'PAUSED'
+        );
+
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('keyword', $1, $2, $3, $1, 'status_update', 'status', 'ACTIVE', 'PAUSED', 'schedule')
+        `, [entity.entity_id, entity.campaign_id, entity.adgroup_id]);
+      }
+      return { previousBid: currentBid, newBid: 0 };
+    }
+
+    if (!dryRun && scope === 'keyword' && newBid !== currentBid) {
+      await appleAds.updateKeywordBid(
+        entity.campaign_id,
+        entity.adgroup_id,
+        entity.entity_id,
+        newBid
+      );
+
+      await db.query(`
+        INSERT INTO asa_change_history (
+          entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+          change_type, field_name, old_value, new_value, source
+        ) VALUES ('keyword', $1, $2, $3, $1, 'bid_update', 'bidAmount', $4, $5, 'schedule')
       `, [entity.entity_id, entity.campaign_id, entity.adgroup_id, String(currentBid), String(newBid)]);
     }
 
@@ -695,6 +753,68 @@ class RulesEngine {
    */
   async previewRule(ruleId) {
     return this.executeRule(ruleId, true);
+  }
+
+  /**
+   * Simulate rule execution with what-if analysis
+   * Returns detailed information about affected entities and predicted changes
+   */
+  async simulateRule(ruleId) {
+    const result = await this.executeRule(ruleId, true);
+
+    // Get rule to access scope
+    const ruleResult = await db.query('SELECT * FROM asa_automation_rules WHERE id = $1', [ruleId]);
+    const rule = ruleResult.rows[0];
+
+    // Get entities with names
+    const entities = await this.getEntitiesForRule(rule);
+    const entityMap = new Map();
+
+    entities.forEach(entity => {
+      const name = entity.keyword_text || entity.adgroup_name || entity.campaign_name || `${result.scope}_${entity.entity_id}`;
+      entityMap.set(entity.entity_id.toString(), name);
+    });
+
+    // Transform results for UI display
+    const affectedEntities = result.results
+      .filter(r => !r.skipped)
+      .map(r => ({
+        entityId: r.entityId,
+        entityType: result.scope,
+        entityName: entityMap.get(r.entityId.toString()) || `${result.scope}_${r.entityId}`,
+        currentMetrics: r.evaluation?.conditions[0]?.metrics || {},
+        conditionsMet: r.evaluation?.allMet || false,
+        conditions: r.evaluation?.conditions || [],
+        action: {
+          type: result.actionType,
+          oldValue: r.actionResult?.previousValue,
+          newValue: r.actionResult?.newValue,
+        }
+      }));
+
+    const skippedEntities = result.results
+      .filter(r => r.skipped)
+      .map(r => ({
+        entityId: r.entityId,
+        entityType: result.scope,
+        entityName: entityMap.get(r.entityId.toString()) || `${result.scope}_${r.entityId}`,
+        reason: r.reason,
+        evaluation: r.evaluation
+      }));
+
+    return {
+      ruleId: result.ruleId,
+      ruleName: result.ruleName,
+      scope: result.scope,
+      actionType: result.actionType,
+      summary: {
+        totalEntities: result.totalEntities,
+        affected: affectedEntities.length,
+        skipped: skippedEntities.length
+      },
+      affectedEntities,
+      skippedEntities
+    };
   }
 }
 

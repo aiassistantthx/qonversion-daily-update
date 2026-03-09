@@ -10,6 +10,8 @@ const api = axios.create({
 // Campaigns
 export const getCampaigns = (params = {}) => api.get('/campaigns', { params }).then(res => res.data);
 export const getCampaign = (id) => api.get(`/campaigns/${id}`).then(res => res.data);
+export const createCampaign = (data) => api.post('/campaigns', data).then(res => res.data);
+export const copyCampaign = (id, data) => api.post(`/campaigns/${id}/copy`, data).then(res => res.data);
 export const updateCampaignStatus = (id, status) => api.patch(`/campaigns/${id}/status`, { status }).then(res => res.data);
 export const updateCampaignBudget = (id, dailyBudget) => api.patch(`/campaigns/${id}/budget`, { dailyBudget }).then(res => res.data);
 
@@ -30,6 +32,11 @@ export const bulkUpdateKeywordBids = (data) => api.patch('/keywords/bulk/bid', d
 export const bulkUpdateKeywordStatus = (data) => api.patch('/keywords/bulk/status', data).then(res => res.data);
 export const createKeywords = (data) => api.post('/keywords/bulk', data).then(res => res.data);
 
+// Negative Keywords
+export const getNegativeKeywords = (params) => api.get('/negative-keywords', { params }).then(res => res.data);
+export const createNegativeKeywords = (data) => api.post('/negative-keywords', data).then(res => res.data);
+export const deleteNegativeKeyword = (keywordId, data) => api.delete(`/negative-keywords/${keywordId}`, { data }).then(res => res.data);
+
 // Rules
 export const getRules = (params) => api.get('/rules', { params }).then(res => res.data);
 export const getRule = (id) => api.get(`/rules/${id}`).then(res => res.data);
@@ -39,11 +46,13 @@ export const deleteRule = (id) => api.delete(`/rules/${id}`).then(res => res.dat
 export const executeRule = (id, dryRun = false) =>
   api.post(`/rules/${id}/execute?dry_run=${dryRun}`).then(res => res.data);
 export const previewRule = (id) => api.get(`/rules/${id}/preview`).then(res => res.data);
+export const simulateRule = (id) => api.post(`/rules/${id}/simulate`).then(res => res.data);
 export const executeAllRules = (dryRun = false, frequency = null) => {
   const params = { dry_run: dryRun };
   if (frequency) params.frequency = frequency;
   return api.post('/rules/execute-all', null, { params }).then(res => res.data);
 };
+export const getRuleTemplates = () => api.get('/rule-templates').then(res => res.data);
 
 // Templates
 export const getTemplates = (params) => api.get('/templates', { params }).then(res => res.data);
@@ -60,5 +69,14 @@ export const getEntityHistory = (type, id) => api.get(`/history/entity/${type}/$
 export const getSyncStatus = () => api.get('/sync/status').then(res => res.data);
 export const triggerSync = (days = 7) => api.post(`/sync?days=${days}`).then(res => res.data);
 export const triggerIncrementalSync = () => api.post('/sync/incremental').then(res => res.data);
+
+// Trends
+export const getTrends = (params = {}) => api.get('/trends', { params }).then(res => res.data);
+
+// Countries
+export const getCountries = (params = {}) => api.get('/countries', { params }).then(res => res.data);
+
+// Search Terms
+export const getSearchTerms = (params = {}) => api.get('/search-terms', { params }).then(res => res.data);
 
 export default api;

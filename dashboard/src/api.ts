@@ -142,7 +142,42 @@ export interface YoYData {
     lastYear: number;
     thisYearSubs: number;
     lastYearSubs: number;
+    thisYearSpend: number;
+    lastYearSpend: number;
   }>;
+}
+
+export interface ForecastData {
+  historical: Array<{
+    month: string;
+    revenue: number;
+    weeklyRevenue: number;
+    yearlyRevenue: number;
+    monthlyRevenue: number;
+  }>;
+  renewalForecast: Array<{
+    month: string;
+    totalRevenue: number;
+    totalRevenueOptimistic: number;
+    totalRevenuePessimistic: number;
+    weeklyRevenue: number;
+    yearlyRevenue: number;
+    monthlyRevenue: number;
+    weeklyBase: number;
+  }>;
+  validation: {
+    results: Array<{
+      month: string;
+      actual: number;
+      forecasted: number;
+      errorPercent: string;
+    }>;
+    avgError: string | null;
+  };
+  modelParameters: {
+    yearlyRenewalRate: number;
+    weeklyWeeklyRetention: number;
+  };
 }
 
 // API functions
@@ -157,4 +192,5 @@ export const api = {
   getCohorts: (months = 6) => fetchApi<{ cohorts: CohortData[] }>(`/dashboard/cohorts?months=${months}`),
   getPayback: (months = 6) => fetchApi<{ payback: PaybackData[] }>(`/dashboard/payback?months=${months}`),
   getYoY: () => fetchApi<YoYData>('/dashboard/yoy'),
+  getForecast: () => fetchApi<ForecastData>('/dashboard/forecast'),
 };

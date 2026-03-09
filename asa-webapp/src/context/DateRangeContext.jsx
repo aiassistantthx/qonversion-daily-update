@@ -15,13 +15,21 @@ export function DateRangeProvider({ children }) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [compareEnabled, setCompareEnabled] = useState(false);
 
   const queryParams = useMemo(() => {
+    const params = {};
     if (isCustom && customFrom && customTo) {
-      return { from: customFrom, to: customTo };
+      params.from = customFrom;
+      params.to = customTo;
+    } else {
+      params.days = days;
     }
-    return { days };
-  }, [days, customFrom, customTo, isCustom]);
+    if (compareEnabled) {
+      params.compare = 'true';
+    }
+    return params;
+  }, [days, customFrom, customTo, isCustom, compareEnabled]);
 
   const setPreset = (presetDays) => {
     if (presetDays === null) {
@@ -48,12 +56,14 @@ export function DateRangeProvider({ children }) {
       customFrom,
       customTo,
       isCustom,
+      compareEnabled,
       queryParams,
       label,
       setPreset,
       setCustomRange,
       setCustomFrom,
       setCustomTo,
+      setCompareEnabled,
     }}>
       {children}
     </DateRangeContext.Provider>

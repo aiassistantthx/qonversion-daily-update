@@ -21,7 +21,7 @@ export function detectAnomaly(
   currentValue: number,
   historicalValues: number[],
   metricName: string,
-  isLowerBetter = false
+  _isLowerBetter = false
 ): AnomalyInfo | undefined {
   if (!historicalValues || historicalValues.length < 3) return undefined;
 
@@ -40,7 +40,6 @@ export function detectAnomaly(
   if (Math.abs(deviationPercent) < 20 || Math.abs(zScore) < 2) return undefined;
 
   const isHigh = currentValue > mean;
-  const isBad = isLowerBetter ? isHigh : !isHigh;
 
   return {
     type: Math.abs(zScore) > 3 ? 'critical' : 'warning',

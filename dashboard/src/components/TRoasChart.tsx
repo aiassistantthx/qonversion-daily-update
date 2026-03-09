@@ -2,6 +2,8 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
   CartesianGrid, ReferenceLine, ReferenceArea
 } from 'recharts';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -35,16 +37,17 @@ interface TRoasChartProps {
 }
 
 export function TRoasChart({ data, selectedCohorts }: TRoasChartProps) {
-  if (!data) {
+  if (!data || !data.cohorts || !data.chartData) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-        Loading tROAS data...
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>tROAS (Cumulative ROAS) by Cohort Age</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
-  const chartData = data.chartData || [];
-  const cohortMonths = data.cohorts?.map(c => c.month) || [];
+  const chartData = data.chartData;
+  const cohortMonths = data.cohorts.map(c => c.month);
   const displayCohorts = selectedCohorts?.length
     ? cohortMonths.filter(m => selectedCohorts.includes(m))
     : cohortMonths.slice(-6); // Last 6 cohorts
@@ -52,11 +55,51 @@ export function TRoasChart({ data, selectedCohorts }: TRoasChartProps) {
   // Find where to show shaded area (before breakeven)
   const avgBreakeven = data.averageBreakevenDay;
 
+  const handleExport = () => {
+    const headers = ['Cohort', 'Spend', 'D7', 'D14', 'D30', 'D60', 'D90', 'D120', 'D180', 'Current', 'Breakeven Day'];
+    const rows = data.cohorts.map(c => [
+      c.month,
+      c.spend.toFixed(2),
+      c.roas.d7 != null ? (c.roas.d7 * 100).toFixed(1) + '%' : '',
+      c.roas.d14 != null ? (c.roas.d14 * 100).toFixed(1) + '%' : '',
+      c.roas.d30 != null ? (c.roas.d30 * 100).toFixed(1) + '%' : '',
+      c.roas.d60 != null ? (c.roas.d60 * 100).toFixed(1) + '%' : '',
+      c.roas.d90 != null ? (c.roas.d90 * 100).toFixed(1) + '%' : '',
+      c.roas.d120 != null ? (c.roas.d120 * 100).toFixed(1) + '%' : '',
+      c.roas.d180 != null ? (c.roas.d180 * 100).toFixed(1) + '%' : '',
+      c.roas.current != null ? (c.roas.current * 100).toFixed(1) + '%' : '',
+      c.breakevenDay != null ? c.breakevenDay : '',
+    ]);
+    exportToCSV('troas-cohorts', headers, rows);
+  };
+
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
-        tROAS (Cumulative ROAS) by Cohort Age
-      </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827' }}>
+          tROAS (Cumulative ROAS) by Cohort Age
+        </h3>
+        <button
+          onClick={handleExport}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          title="Export to CSV"
+        >
+          <Download size={14} />
+          Export
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
         Cumulative return on ad spend over time. 100% = breakeven point.
         {avgBreakeven && (

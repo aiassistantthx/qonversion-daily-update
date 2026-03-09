@@ -339,6 +339,14 @@ class AppleAdsService {
   }
 
   /**
+   * Create a new campaign
+   */
+  async createCampaign(campaignData) {
+    const response = await this.request('/campaigns', 'POST', campaignData);
+    return response.data;
+  }
+
+  /**
    * Update campaign settings
    */
   async updateCampaign(campaignId, updates) {
@@ -513,6 +521,41 @@ class AppleAdsService {
       keywords
     );
     return response.data || [];
+  }
+
+  /**
+   * Create negative keywords for an ad group
+   */
+  async createAdGroupNegativeKeywords(campaignId, adGroupId, keywords) {
+    // keywords: [{ text: "keyword", matchType: "EXACT"|"BROAD" }]
+    const response = await this.request(
+      `/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords/bulk`,
+      'POST',
+      keywords
+    );
+    return response.data || [];
+  }
+
+  /**
+   * Delete a negative keyword from a campaign
+   */
+  async deleteNegativeKeyword(campaignId, keywordId) {
+    const response = await this.request(
+      `/campaigns/${campaignId}/negativekeywords/${keywordId}`,
+      'DELETE'
+    );
+    return response;
+  }
+
+  /**
+   * Delete a negative keyword from an ad group
+   */
+  async deleteAdGroupNegativeKeyword(campaignId, adGroupId, keywordId) {
+    const response = await this.request(
+      `/campaigns/${campaignId}/adgroups/${adGroupId}/negativekeywords/${keywordId}`,
+      'DELETE'
+    );
+    return response;
   }
 
   // ================================================
