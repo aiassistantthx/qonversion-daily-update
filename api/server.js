@@ -244,6 +244,26 @@ app.post('/migrate/fix-event-names', async (req, res) => {
   }
 });
 
+// Fix event_name format in events_v2: snake_case -> Title Case
+app.post('/migrate/fix-event-names-v2', async (req, res) => {
+  try {
+    const result = await db.query(`
+      UPDATE events_v2
+      SET event_name = INITCAP(REPLACE(event_name, '_', ' '))
+      WHERE event_name LIKE '%_%'
+      RETURNING id
+    `);
+
+    res.json({
+      success: true,
+      updated: result.rowCount,
+      message: 'Event names in events_v2 converted from snake_case to Title Case'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Drop legacy qonversion_events table
 app.post('/migrate/drop-qonversion-events', async (req, res) => {
   try {
