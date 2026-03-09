@@ -128,7 +128,7 @@ export default function Dashboard() {
       {/* Health Score and Main Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <HealthScoreWidget campaigns={campaigns} />
-        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <MetricCard
           title="Spend"
           value={totalSpend.toFixed(2)}
@@ -181,7 +181,7 @@ export default function Dashboard() {
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent>
             <p className="text-sm text-gray-500">Impressions</p>
@@ -214,7 +214,7 @@ export default function Dashboard() {
           <CardTitle>Campaign Health Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {['ok', 'risk', 'bad', 'loss', 'unknown'].map(status => {
               const count = trafficLightCounts[status] || 0;
               const color = getTrafficLightColor(status);

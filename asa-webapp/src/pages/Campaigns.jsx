@@ -385,12 +385,12 @@ export default function Campaigns() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
-          <p className="text-gray-500">{dateLabel}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Campaigns</h1>
+          <p className="text-gray-500 dark:text-gray-400">{dateLabel}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ColumnPicker
             columns={COLUMN_DEFINITIONS}
             visibleColumns={visibleColumns}
@@ -414,8 +414,8 @@ export default function Campaigns() {
       />
 
       {/* Filters and Actions */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 flex-1">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <Input
@@ -430,7 +430,7 @@ export default function Campaigns() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm touch-target"
           >
             <option value="">All Status</option>
             <option value="ENABLED">Enabled</option>
@@ -440,7 +440,7 @@ export default function Campaigns() {
           <select
             value={healthFilter}
             onChange={(e) => setHealthFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm touch-target"
           >
             <option value="">All Health</option>
             <option value="ok">OK (≥1.5x)</option>
@@ -465,10 +465,10 @@ export default function Campaigns() {
 
       {/* Table */}
       <Card>
-        <Table>
+        <Table stickyFirstColumn={true}>
           <TableHead>
             <TableRow>
-              <TableHeader className="w-10">
+              <TableHeader className="w-10" sticky>
                 <input
                   type="checkbox"
                   checked={selectedIds.size === campaigns.length && campaigns.length > 0}
@@ -476,20 +476,14 @@ export default function Campaigns() {
                   className="rounded border-gray-300"
                 />
               </TableHeader>
-              <SortHeader
-                field="name"
-                onClick={() => handleSort('name')}
-                sortField={sortField}
-                sortDirection={sortDirection}
-                draggable
-                onDragStart={(e) => handleDragStart(e, 'name')}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, 'name')}
-                onDragEnd={handleDragEnd}
-                draggedColumn={draggedColumn}
-              >
-                Campaign
-              </SortHeader>
+              <TableHeader sticky className="cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort('name')}>
+                <div className="flex items-center gap-1">
+                  Campaign
+                  {sortField === 'name' && (
+                    sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                  )}
+                </div>
+              </TableHeader>
               {columnOrder.map((columnId) => {
                 if (!visibleColumns[columnId]) return null;
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
@@ -585,7 +579,7 @@ export default function Campaigns() {
 
                 return (
                   <TableRow key={campaign.id} className="hover:bg-gray-50">
-                    <TableCell>
+                    <TableCell sticky>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(campaign.id)}
@@ -593,7 +587,7 @@ export default function Campaigns() {
                         className="rounded border-gray-300"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sticky>
                       <button
                         onClick={() => navigate(`/adgroups?campaigns=${campaign.id}`)}
                         className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"

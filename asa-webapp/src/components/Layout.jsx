@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import {
   LayoutDashboard,
   Megaphone,
@@ -12,6 +13,8 @@ import {
   Search,
   Moon,
   Sun,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
 import { useTheme } from '../context/ThemeContext';
@@ -86,11 +89,33 @@ function DateRangePicker() {
 export default function Layout({ children }) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex bg-white dark:bg-gray-950">
+      {/* Mobile menu button */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-lg bg-gray-900 text-white"
+        aria-label="Toggle menu"
+      >
+        {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
+      {/* Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 dark:bg-gray-950 text-white flex flex-col border-r border-gray-800 dark:border-gray-900">
+      <aside className={`
+        w-64 bg-gray-900 dark:bg-gray-950 text-white flex flex-col border-r border-gray-800 dark:border-gray-900
+        fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
         <div className="p-4 border-b border-gray-800 dark:border-gray-900 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">ASA Manager</h1>
@@ -121,6 +146,7 @@ export default function Layout({ children }) {
                 <li key={item.path}>
                   <Link
                     to={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                       isActive
                         ? 'bg-blue-600 text-white'
@@ -142,11 +168,11 @@ export default function Layout({ children }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
-        <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-6 py-3">
+      <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900 w-full lg:w-auto">
+        <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-4 lg:px-6 py-3 pt-16 lg:pt-3">
           <DataFreshness />
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4 lg:p-6">{children}</div>
       </main>
     </div>
   );

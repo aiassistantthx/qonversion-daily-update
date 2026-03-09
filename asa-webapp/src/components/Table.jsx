@@ -1,7 +1,7 @@
-export function Table({ children, className = '' }) {
+export function Table({ children, className = '', stickyFirstColumn = false }) {
   return (
     <div className={`overflow-x-auto ${className}`}>
-      <table className="min-w-full divide-y divide-gray-200">
+      <table className={`min-w-full divide-y divide-gray-200 ${stickyFirstColumn ? 'mobile-sticky-table' : ''}`}>
         {children}
       </table>
     </div>
@@ -35,10 +35,10 @@ export function TableRow({ children, className = '', onClick }) {
   );
 }
 
-export function TableHeader({ children, className = '', onClick }) {
+export function TableHeader({ children, className = '', onClick, sticky = false }) {
   return (
     <th
-      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className}`}
+      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${sticky ? 'sticky-col' : ''} ${className}`}
       onClick={onClick}
     >
       {children}
@@ -46,9 +46,9 @@ export function TableHeader({ children, className = '', onClick }) {
   );
 }
 
-export function TableCell({ children, className = '' }) {
+export function TableCell({ children, className = '', sticky = false }) {
   return (
-    <td className={`px-4 py-3 whitespace-nowrap text-sm ${className}`}>
+    <td className={`px-4 py-3 whitespace-nowrap text-sm ${sticky ? 'sticky-col' : ''} ${className}`}>
       {children}
     </td>
   );
