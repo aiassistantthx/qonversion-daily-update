@@ -6,10 +6,11 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids } from '../lib/api';
+import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { Modal } from '../components/Modal';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent
 } from 'lucide-react';
 
 export default function Keywords() {
@@ -32,6 +33,8 @@ export default function Keywords() {
   const [editingKeywordId, setEditingKeywordId] = useState(null);
   const [newBid, setNewBid] = useState('');
   const [bulkBidAmount, setBulkBidAmount] = useState('');
+  const [bulkBidMode, setBulkBidMode] = useState('absolute'); // 'absolute' or 'percent'
+  const [confirmModal, setConfirmModal] = useState({ open: false, action: null, message: '' });
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 

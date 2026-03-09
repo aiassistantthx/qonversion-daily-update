@@ -677,6 +677,85 @@ app.post('/migrate/asa', async (req, res) => {
   }
 });
 
+// Backfill campaign attribution from user mapping
+// POST /backfill/campaign-attribution
+// Body: { mappings: [{ q_user_id, campaign_id, campaign_name }] }
+app.post('/backfill/campaign-attribution', async (req, res) => {
+  try {
+    const { mappings } = req.body;
+
+    if (!mappings || !Array.isArray(mappings)) {
+      return res.status(400).json({ error: 'mappings array required' });
+    }
+
+    console.log(`Backfill request: ${mappings.length} user mappings`);
+
+    let updated = 0;
+    const batchSize = 100;
+
+    for (let i = 0; i < mappings.length; i += batchSize) {
+      const batch = mappings.slice(i, i + batchSize);
+
+      for (const mapping of batch) {
+        const { q_user_id, campaign_id, campaign_name } = mapping;
+
+        if (!q_user_id || !campaign_id) continue;
+
+        const result = await db.query(`
+          UPDATE events_v2
+          SET
+            campaign_id = $1,
+            campaign_name = COALESCE(campaign_name, $2),
+            media_source = COALESCE(media_source, 'Apple AdServices')
+          WHERE q_user_id = $3
+            AND campaign_id IS NULL
+        `, [campaign_id, campaign_name, q_user_id]);
+
+        updated += result.rowCount;
+      }
+    }
+
+    // Get final stats
+    const stats = await db.query(`
+      SELECT
+        COUNT(DISTINCT q_user_id) as total_asa_users,
+        COUNT(DISTINCT CASE WHEN campaign_id IS NOT NULL THEN q_user_id END) as with_campaign_id
+      FROM events_v2
+      WHERE media_source = 'Apple AdServices'
+    `);
+
+    res.json({
+      success: true,
+      mappings_received: mappings.length,
+      rows_updated: updated,
+      stats: stats.rows[0],
+    });
+  } catch (error) {
+    console.error('Backfill error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get campaign name -> id mapping
+app.get('/backfill/campaign-mapping', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT DISTINCT campaign_id, campaign_name
+      FROM apple_ads_campaigns
+      WHERE campaign_name IS NOT NULL AND campaign_id IS NOT NULL
+    `);
+
+    const mapping = {};
+    for (const row of result.rows) {
+      mapping[row.campaign_name] = row.campaign_id;
+    }
+
+    res.json({ mapping, count: Object.keys(mapping).length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
