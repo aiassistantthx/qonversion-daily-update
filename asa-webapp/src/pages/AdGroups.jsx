@@ -9,7 +9,7 @@ import { Input } from '../components/Input';
 import { getCampaigns, getAdGroups } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
-  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X
+  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
 } from 'lucide-react';
 
 export default function AdGroups() {
@@ -178,6 +178,37 @@ export default function AdGroups() {
     }
   };
 
+  const exportCSV = () => {
+    const headers = ['Ad Group', 'Campaign', 'Status', 'Bid', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const rows = adGroups.map(ag => {
+      const p = ag.performance || {};
+      const spend = parseFloat(p.spend || 0);
+      const revenue = parseFloat(p.revenue || 0);
+      const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
+      return [
+        `"${ag.name}"`,
+        `"${ag.campaignName}"`,
+        ag.status,
+        ag.defaultBidAmount?.amount || '',
+        spend.toFixed(2),
+        p.impressions || 0,
+        p.taps || 0,
+        p.installs || 0,
+        p.cpa ? parseFloat(p.cpa).toFixed(2) : '',
+        revenue.toFixed(2),
+        roas,
+        p.cop ? parseFloat(p.cop).toFixed(2) : '',
+      ];
+    });
+    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `adgroups-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
   const removeCampaignFilter = (id) => {
     const newIds = campaignIds.filter(cId => cId !== id);
     if (newIds.length === 0) {
@@ -213,6 +244,9 @@ export default function AdGroups() {
           </div>
           <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
+        <Button variant="secondary" onClick={exportCSV}>
+          <Download size={16} /> Export CSV
+        </Button>
       </div>
 
       {/* Campaign Filters */}

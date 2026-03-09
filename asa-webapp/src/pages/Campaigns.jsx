@@ -10,7 +10,7 @@ import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Play, Pause,
-  Search, ArrowRight, Layers, KeyRound
+  Search, ArrowRight, Layers, KeyRound, Download
 } from 'lucide-react';
 
 export default function Campaigns() {
@@ -134,6 +134,36 @@ export default function Campaigns() {
     }
   };
 
+  const exportCSV = () => {
+    const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const rows = campaigns.map(c => {
+      const p = c.performance || {};
+      const spend = parseFloat(p.spend || 0);
+      const revenue = parseFloat(p.revenue || 0);
+      const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
+      return [
+        `"${c.name}"`,
+        c.status,
+        c.dailyBudgetAmount?.amount || '',
+        spend.toFixed(2),
+        p.impressions || 0,
+        p.taps || 0,
+        p.installs || 0,
+        p.cpa ? parseFloat(p.cpa).toFixed(2) : '',
+        revenue.toFixed(2),
+        roas,
+        p.cop ? parseFloat(p.cop).toFixed(2) : '',
+      ];
+    });
+    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `campaigns-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
   const SortHeader = ({ field, children, className = '' }) => (
     <TableHeader
       className={`cursor-pointer select-none hover:bg-gray-100 ${className}`}
@@ -155,6 +185,9 @@ export default function Campaigns() {
           <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
           <p className="text-gray-500">{dateLabel}</p>
         </div>
+        <Button variant="secondary" onClick={exportCSV}>
+          <Download size={16} /> Export CSV
+        </Button>
       </div>
 
       {/* Filters and Actions */}
