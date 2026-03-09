@@ -265,6 +265,9 @@ export default function Campaigns() {
           <Button variant="secondary" onClick={exportCSV}>
             <Download size={16} /> Export CSV
           </Button>
+          <Button onClick={() => navigate('/campaigns/create')}>
+            Create Campaign
+          </Button>
         </div>
       </div>
 

@@ -339,6 +339,14 @@ class AppleAdsService {
   }
 
   /**
+   * Create a new campaign
+   */
+  async createCampaign(campaignData) {
+    const response = await this.request('/campaigns', 'POST', campaignData);
+    return response.data;
+  }
+
+  /**
    * Update campaign settings
    */
   async updateCampaign(campaignId, updates) {

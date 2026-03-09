@@ -10,6 +10,7 @@ const api = axios.create({
 // Campaigns
 export const getCampaigns = (params = {}) => api.get('/campaigns', { params }).then(res => res.data);
 export const getCampaign = (id) => api.get(`/campaigns/${id}`).then(res => res.data);
+export const createCampaign = (data) => api.post('/campaigns', data).then(res => res.data);
 export const updateCampaignStatus = (id, status) => api.patch(`/campaigns/${id}/status`, { status }).then(res => res.data);
 export const updateCampaignBudget = (id, dailyBudget) => api.patch(`/campaigns/${id}/budget`, { dailyBudget }).then(res => res.data);
 
