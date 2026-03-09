@@ -199,18 +199,54 @@ interface FunnelData {
   days: number;
 }
 
-function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
+function KPICard({ title, value, subtitle, icon: Icon, change, invertChange, sparklineData }: {
   title: string;
   value: string;
   subtitle?: string;
   icon?: React.ElementType;
   change?: number | null;
   invertChange?: boolean;
+  sparklineData?: number[];
 }) {
   const changeColor = change != null
     ? (invertChange ? (change < 0 ? '#10b981' : '#ef4444') : (change > 0 ? '#10b981' : '#ef4444'))
     : undefined;
   const changeSign = change != null && change > 0 ? '+' : '';
+
+  const renderSparkline = () => {
+    if (!sparklineData || sparklineData.length < 2) return null;
+
+    const width = 60;
+    const height = 24;
+    const validData = sparklineData.filter(v => v != null && !isNaN(v));
+    if (validData.length < 2) return null;
+
+    const max = Math.max(...validData);
+    const min = Math.min(...validData);
+    const range = max - min || 1;
+
+    const points = validData.map((val, i) => {
+      const x = (i / (validData.length - 1)) * width;
+      const y = height - ((val - min) / range) * height;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const trend = validData[validData.length - 1] >= validData[0];
+    const lineColor = invertChange ? (trend ? '#ef4444' : '#10b981') : (trend ? '#10b981' : '#ef4444');
+
+    return (
+      <svg width={width} height={height} style={{ marginLeft: 'auto' }}>
+        <polyline
+          points={points}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  };
 
   return (
     <div style={styles.card}>
@@ -227,6 +263,7 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange }: {
         )}
       </div>
       {subtitle && <div style={styles.cardSubtitle}>{subtitle}</div>}
+      {renderSparkline()}
     </div>
   );
 }
@@ -396,6 +433,13 @@ export function Overview() {
   const keywords = keywordsData?.keywords || [];
   const keywordTotals = keywordsData?.totals;
 
+  const last7Days = daily.slice(-7);
+  const spendSparkline = last7Days.map(d => d.spend);
+  const revenueSparkline = last7Days.map(d => d.revenue);
+  const subscribersSparkline = last7Days.map(d => d.subscribers);
+  const copSparkline = last7Days.map(d => d.cop).filter(v => v != null) as number[];
+  const roasSparkline = last7Days.map(d => d.roas).filter(v => v != null) as number[];
+
   const dailyChartData = daily.slice(-30).map(d => {
     const dateObj = new Date(d.date);
     let formattedDate;
@@ -469,25 +513,25 @@ export function Overview() {
 
       {/* KPI Cards Row 1 */}
       <div style={styles.kpiGrid}>
-        <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} change={cm?.spendChange} />
-        <KPICard title="Revenue" value={fmtK(cm?.revenue || 0)} icon={TrendingUp} change={cm?.revenueChange} />
-        <KPICard title="New Subscribers" value={String(cm?.subscribers || 0)} icon={Users} change={cm?.subscribersChange} />
-        <KPICard title="COP" value={fmt(cm?.cop)} subtitle="excl. last 4 days" icon={Target} change={cm?.copChange} invertChange />
+        <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} change={cm?.spendChange} sparklineData={spendSparkline} />
+        <KPICard title="Revenue" value={fmtK(cm?.revenue || 0)} icon={TrendingUp} change={cm?.revenueChange} sparklineData={revenueSparkline} />
+        <KPICard title="New Subscribers" value={String(cm?.subscribers || 0)} icon={Users} change={cm?.subscribersChange} sparklineData={subscribersSparkline} />
+        <KPICard title="COP" value={fmt(cm?.cop)} subtitle="excl. last 4 days" icon={Target} change={cm?.copChange} invertChange sparklineData={copSparkline} />
       </div>
 
       {/* KPI Cards Row 2 */}
       <div style={styles.kpiGrid}>
-        <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" />
-        <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" />
+        <KPICard title="COP 3d" value={fmt(cm?.cop3d)} subtitle="closed cohorts" sparklineData={copSparkline} invertChange />
+        <KPICard title="COP 7d" value={fmt(cm?.cop7d)} subtitle="closed cohorts" sparklineData={copSparkline} invertChange />
         <KPICard title="CR to Paid" value={fmtPct(cm?.crToPaid)} subtitle="excl. last 4 days" change={cm?.crChange} />
-        <KPICard title="ROAS" value={cm?.roas != null ? `${cm.roas.toFixed(2)}x` : '—'} subtitle="Apple Ads cohort" icon={TrendingUp} change={cm?.roasChange} />
+        <KPICard title="ROAS" value={cm?.roas != null ? `${cm.roas.toFixed(2)}x` : '—'} subtitle="Apple Ads cohort" icon={TrendingUp} change={cm?.roasChange} sparklineData={roasSparkline} />
       </div>
 
       {/* KPI Cards Row 3 - Forecasts */}
       <div style={styles.kpiGrid}>
-        <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" />
-        <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" />
-        <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} />
+        <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" sparklineData={spendSparkline} />
+        <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" sparklineData={revenueSparkline} />
+        <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} sparklineData={copSparkline} invertChange />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
 
