@@ -38,3 +38,6 @@ export { TrendChart } from './TrendChart';
 export type { TrendChartData } from './TrendChart';
 
 export { YoYComparisonCards } from './YoYComparisonCards';
+
+export { MRRBreakdown } from './MRRBreakdown';
+export type { MRRBreakdownData } from './MRRBreakdown';

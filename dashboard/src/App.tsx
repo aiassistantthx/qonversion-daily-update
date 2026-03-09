@@ -18,12 +18,13 @@ import {
   WeeklyChurnChart,
   RenewalRatesTable,
   CountriesTable,
+  MRRBreakdown,
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection,
   RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData
+  CountriesData, MRRBreakdownData
 } from './components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -338,6 +339,11 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`).then(r => r.json()),
   });
 
+  const { data: mrrBreakdownData } = useQuery<MRRBreakdownData>({
+    queryKey: ['mrr-breakdown'],
+    queryFn: () => fetch(`${API_URL}/dashboard/mrr?months=12`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -474,6 +480,9 @@ function Dashboard() {
 
       {/* Subscription Breakdown */}
       <SubscriptionBreakdown data={subscriptionBreakdownData} />
+
+      {/* MRR Breakdown */}
+      <MRRBreakdown data={mrrBreakdownData} />
 
       {/* Revenue by Day Chart */}
       <RevenueByDayChart data={revenueByDayData} />
