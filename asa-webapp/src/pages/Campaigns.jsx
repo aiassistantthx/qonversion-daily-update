@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { ColumnPicker } from '../components/ColumnPicker';
+import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -195,6 +196,22 @@ export default function Campaigns() {
       setSelectedIds(new Set(campaigns.map(c => c.id)));
     }
   };
+
+  const handleBulkPause = async () => {
+    for (const id of selectedIds) {
+      await statusMutation.mutateAsync({ id, status: 'PAUSED' });
+    }
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkEnable = async () => {
+    for (const id of selectedIds) {
+      await statusMutation.mutateAsync({ id, status: 'ENABLED' });
+    }
+    setSelectedIds(new Set());
+  };
+
+  const selectedCampaigns = campaigns.filter(c => selectedIds.has(c.id));
 
   const exportCSV = () => {
     const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP', 'TTR', 'CVR', 'CPT', 'CPM'];
@@ -477,6 +494,17 @@ export default function Campaigns() {
           Showing {campaigns.length} campaigns
         </div>
       )}
+
+      <BulkActionsToolbar
+        selectedCount={selectedIds.size}
+        selectedItems={selectedCampaigns}
+        onSelectAll={toggleSelectAll}
+        onDeselectAll={() => setSelectedIds(new Set())}
+        onPause={handleBulkPause}
+        onEnable={handleBulkEnable}
+        entityType="campaigns"
+        canAdjustBid={false}
+      />
     </div>
   );
 }

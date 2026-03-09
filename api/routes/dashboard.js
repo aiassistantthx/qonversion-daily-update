@@ -163,6 +163,7 @@ router.get('/main', async (req, res) => {
     // Get date range from query params (defaults to last 30 days)
     const from = req.query.from || daysAgo(30);
     const to = req.query.to || formatDate(new Date());
+    const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
 
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -447,21 +448,34 @@ router.get('/main', async (req, res) => {
 
     // ---- DAILY DATA (using date range from query params) ----
     // Revenue by event_date, but cohort conversions by install_date
+    // Aggregate by scale: day, week, or month
+    let dateGroupBy, dateSelect;
+    if (scale === 'week') {
+      dateGroupBy = "DATE_TRUNC('week', date)";
+      dateSelect = "DATE_TRUNC('week', date)";
+    } else if (scale === 'month') {
+      dateGroupBy = "DATE_TRUNC('month', date)";
+      dateSelect = "DATE_TRUNC('month', date)";
+    } else {
+      dateGroupBy = "date";
+      dateSelect = "date";
+    }
+
     const dailyQuery = `
       WITH daily_revenue AS (
         SELECT
-          DATE(event_date) as day,
+          ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"} as day,
           SUM(price_usd) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
         WHERE event_date >= $1::date AND event_date <= $2::date
-        GROUP BY DATE(event_date)
+        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"}
       ),
       cohort_conversions AS (
         SELECT
-          DATE(install_date) as cohort_day,
+          ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"} as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
         FROM events_v2
         WHERE install_date >= $1::date AND install_date <= $2::date
@@ -469,13 +483,13 @@ router.get('/main', async (req, res) => {
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           )
-        GROUP BY DATE(install_date)
+        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"}
       ),
       daily_spend AS (
-        SELECT date as day, SUM(spend) as spend
+        SELECT ${dateSelect} as day, SUM(spend) as spend
         FROM apple_ads_campaigns
         WHERE date >= $1::date AND date <= $2::date
-        GROUP BY date
+        GROUP BY ${dateGroupBy}
       )
       SELECT
         ds.day,

@@ -11,6 +11,7 @@ const db = require('../db');
 const appleAds = require('../services/appleAds');
 const rulesEngine = require('../services/rulesEngine');
 const { predictRoas, findPaybackDays } = require('../lib/predictions');
+const cache = require('../lib/cache');
 
 // ================================================
 // MIDDLEWARE
@@ -48,6 +49,26 @@ async function recordChange(entityType, entityId, changeType, fieldName, oldValu
   }
 }
 
+/**
+ * Invalidate cache on data changes
+ */
+function invalidateCache(entityType, entityId) {
+  switch (entityType) {
+    case 'campaign':
+      cache.invalidate('campaigns:*');
+      cache.invalidate(`campaign:${entityId}:*`);
+      break;
+    case 'adgroup':
+      cache.invalidate('adgroups:*');
+      cache.invalidate(`adgroup:${entityId}:*`);
+      break;
+    case 'keyword':
+      cache.invalidate('keywords:*');
+      cache.invalidate(`keyword:${entityId}:*`);
+      break;
+  }
+}
+
 // ================================================
 // CAMPAIGNS
 // ================================================
@@ -69,6 +90,17 @@ router.get('/campaigns', async (req, res) => {
 
     // Parse date range
     let { days = 7, from, to } = req.query;
+
+    // Check cache
+    const cacheKey = `campaigns:${days}:${from}:${to}:${status}:${sort}:${compare}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const metadata = cache.getMetadata(cacheKey);
+      res.set('X-Cache', 'HIT');
+      res.set('X-Cache-Age', metadata.age);
+      res.set('X-Last-Updated', metadata.createdAt);
+      return res.json(cached);
+    }
     let dateFilter;
     let prevDateFilter;
 
@@ -300,14 +332,21 @@ router.get('/campaigns', async (req, res) => {
       prevTotals.cop = prevTotals.paidUsers > 0 ? prevTotals.spend / prevTotals.paidUsers : 0;
     }
 
-    res.json({
+    const responseData = {
       total: enriched.length,
       dateRange: dateFilter,
       prevDateRange: prevDateFilter,
       totals,
       prevTotals,
       data: enriched.slice(offset, offset + parseInt(limit))
-    });
+    };
+
+    // Cache for 10 minutes (600 seconds)
+    cache.set(cacheKey, responseData, 600);
+
+    res.set('X-Cache', 'MISS');
+    res.set('X-Last-Updated', new Date().toISOString());
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -320,6 +359,18 @@ router.get('/campaigns', async (req, res) => {
 router.get('/campaigns/:id', async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Check cache
+    const cacheKey = `campaign:${id}:details`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const metadata = cache.getMetadata(cacheKey);
+      res.set('X-Cache', 'HIT');
+      res.set('X-Cache-Age', metadata.age);
+      res.set('X-Last-Updated', metadata.createdAt);
+      return res.json(cached);
+    }
+
     const campaign = await appleAds.getCampaign(id);
 
     // Get ad groups
@@ -330,11 +381,18 @@ router.get('/campaigns/:id', async (req, res) => {
       SELECT * FROM v_campaign_performance WHERE campaign_id = $1
     `, [id]);
 
-    res.json({
+    const responseData = {
       ...campaign,
       adGroups,
       performance: performance.rows[0] || null
-    });
+    };
+
+    // Cache for 10 minutes
+    cache.set(cacheKey, responseData, 600);
+
+    res.set('X-Cache', 'MISS');
+    res.set('X-Last-Updated', new Date().toISOString());
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -521,6 +579,9 @@ router.patch('/campaigns/:id/status', async (req, res) => {
     // Record change
     await recordChange('campaign', id, 'status_update', 'status', current.status, status, 'api', null, req);
 
+    // Invalidate cache
+    invalidateCache('campaign', id);
+
     res.json({ success: true, previousStatus: current.status, newStatus: status, data: result });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -558,6 +619,9 @@ router.patch('/campaigns/:id/budget', async (req, res) => {
       null,
       req
     );
+
+    // Invalidate cache
+    invalidateCache('campaign', id);
 
     res.json({ success: true, data: result });
   } catch (error) {
@@ -895,6 +959,17 @@ router.get('/keywords', async (req, res) => {
       return res.status(400).json({ error: 'campaign_id is required' });
     }
 
+    // Check cache
+    const cacheKey = `keywords:${campaign_id}:${adgroup_id}:${status}:${days}:${from}:${to}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const metadata = cache.getMetadata(cacheKey);
+      res.set('X-Cache', 'HIT');
+      res.set('X-Cache-Age', metadata.age);
+      res.set('X-Last-Updated', metadata.createdAt);
+      return res.json(cached);
+    }
+
     // Parse date range
     let { days = 7, from, to } = req.query;
     let dateFilter;
@@ -1010,11 +1085,18 @@ router.get('/keywords', async (req, res) => {
 
     const result = await db.query(baseQuery, params);
 
-    res.json({
+    const responseData = {
       total: totalCount,
       dateRange: dateFilter,
       data: result.rows
-    });
+    };
+
+    // Cache for 10 minutes
+    cache.set(cacheKey, responseData, 600);
+
+    res.set('X-Cache', 'MISS');
+    res.set('X-Last-Updated', new Date().toISOString());
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1098,6 +1180,9 @@ router.patch('/keywords/:keywordId/bid', async (req, res) => {
 
     // Record change
     await recordChange('keyword', keywordId, 'bid_update', 'bidAmount', current.bidAmount?.amount, String(bidAmount), 'api', null, req);
+
+    // Invalidate cache
+    invalidateCache('keyword', keywordId);
 
     res.json({
       success: true,

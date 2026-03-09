@@ -336,13 +336,24 @@ function Dashboard() {
   const keywords = keywordsData?.keywords || [];
   const keywordTotals = keywordsData?.totals;
 
-  const dailyChartData = daily.slice(-30).map(d => ({
-    date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    revenue: d.revenue,
-    spend: d.spend,
-    cop: d.cop,
-    copPredicted: d.copPredicted,
-  }));
+  const dailyChartData = daily.slice(-30).map(d => {
+    const dateObj = new Date(d.date);
+    let formattedDate;
+    if (dateScale === 'month') {
+      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    } else if (dateScale === 'week') {
+      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else {
+      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return {
+      date: formattedDate,
+      revenue: d.revenue,
+      spend: d.spend,
+      cop: d.cop,
+      copPredicted: d.copPredicted,
+    };
+  });
 
   const monthlyChartData = monthly.map(m => ({
     month: m.month,
@@ -474,7 +485,9 @@ function Dashboard() {
 
       {/* Daily Chart */}
       <div style={styles.chartCard}>
-        <h3 style={styles.chartTitle}>Last 30 Days - Revenue, Spend & COP</h3>
+        <h3 style={styles.chartTitle}>
+          {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
+        </h3>
         <div style={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={dailyChartData}>

@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
-import { getCampaigns, getAdGroups } from '../lib/api';
+import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
@@ -14,6 +15,7 @@ import {
 
 export default function AdGroups() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { queryParams, label: dateLabel } = useDateRange();
 
@@ -179,6 +181,49 @@ export default function AdGroups() {
       setSelectedIds(new Set(adGroups.map(ag => `${ag.campaignId}-${ag.id}`)));
     }
   };
+
+  const handleBulkPause = async () => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'PAUSED');
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkEnable = async () => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'ENABLED');
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkAdjustBid = async ({ type, value }) => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      const adGroup = adGroups.find(ag => ag.campaignId === parseInt(campaignId) && ag.id === parseInt(adGroupId));
+      if (!adGroup || !adGroup.defaultBidAmount) continue;
+
+      let newBid;
+      if (type === 'percent') {
+        newBid = adGroup.defaultBidAmount.amount * (1 + value / 100);
+      } else {
+        newBid = adGroup.defaultBidAmount.amount + value;
+      }
+
+      newBid = Math.max(0.01, newBid);
+      await updateAdGroupBid(parseInt(campaignId), parseInt(adGroupId), {
+        amount: newBid,
+        currency: adGroup.defaultBidAmount.currency,
+      });
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const selectedAdGroups = adGroups.filter(ag => selectedIds.has(`${ag.campaignId}-${ag.id}`));
 
   const navigateToKeywords = (campaignId, adGroupId) => {
     if (adGroupId) {
@@ -431,6 +476,18 @@ export default function AdGroups() {
           Showing {adGroups.length} ad groups
         </div>
       )}
+
+      <BulkActionsToolbar
+        selectedCount={selectedIds.size}
+        selectedItems={selectedAdGroups}
+        onSelectAll={toggleSelectAll}
+        onDeselectAll={() => setSelectedIds(new Set())}
+        onPause={handleBulkPause}
+        onEnable={handleBulkEnable}
+        onAdjustBid={handleBulkAdjustBid}
+        entityType="ad groups"
+        canAdjustBid={true}
+      />
     </div>
   );
 }
