@@ -24,7 +24,7 @@ const navItems = [
 ];
 
 function DateRangePicker() {
-  const { days, isCustom, customFrom, customTo, setPreset, setCustomFrom, setCustomTo } = useDateRange();
+  const { days, isCustom, customFrom, customTo, compareEnabled, setPreset, setCustomFrom, setCustomTo, setCompareEnabled } = useDateRange();
 
   return (
     <div className="space-y-2">
@@ -59,6 +59,18 @@ function DateRangePicker() {
           />
         </div>
       )}
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="checkbox"
+          id="compare-toggle"
+          checked={compareEnabled}
+          onChange={(e) => setCompareEnabled(e.target.checked)}
+          className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+        />
+        <label htmlFor="compare-toggle" className="text-xs text-gray-300 cursor-pointer">
+          Compare to previous period
+        </label>
+      </div>
     </div>
   );
 }

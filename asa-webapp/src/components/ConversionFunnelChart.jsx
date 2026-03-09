@@ -12,12 +12,24 @@ export default function ConversionFunnelChart({ data }) {
     );
   }
 
-  const chartData = data.data.map(item => ({
-    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    installs: item.installs,
-    trials: item.trials,
-    paid_users: item.paid_users
-  }));
+  const hasPrevData = data.prevData && data.prevData.length > 0;
+
+  const chartData = data.data.map((item, index) => {
+    const row = {
+      date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      installs: item.installs,
+      trials: item.trials,
+      paid_users: item.paid_users
+    };
+
+    if (hasPrevData && data.prevData[index]) {
+      row.prev_installs = data.prevData[index].installs;
+      row.prev_trials = data.prevData[index].trials;
+      row.prev_paid_users = data.prevData[index].paid_users;
+    }
+
+    return row;
+  });
 
   const totals = data.totals || {};
 
@@ -104,6 +116,37 @@ export default function ConversionFunnelChart({ data }) {
               dot={{ r: 3 }}
               name="Paid Users"
             />
+            {hasPrevData && (
+              <>
+                <Line
+                  type="monotone"
+                  dataKey="prev_installs"
+                  stroke="#d1d5db"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 2 }}
+                  name="Prev Installs"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="prev_trials"
+                  stroke="#7dd3fc"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 2 }}
+                  name="Prev Trials"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="prev_paid_users"
+                  stroke="#86efac"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 2 }}
+                  name="Prev Paid Users"
+                />
+              </>
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

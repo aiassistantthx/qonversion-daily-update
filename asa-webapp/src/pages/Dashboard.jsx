@@ -15,13 +15,17 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
+function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
   const colors = {
     blue: 'bg-blue-100 text-blue-600',
     green: 'bg-green-100 text-green-600',
     red: 'bg-red-100 text-red-600',
     purple: 'bg-purple-100 text-purple-600',
   };
+
+  const percentChange = prevValue && prevValue !== 0
+    ? ((value - prevValue) / prevValue) * 100
+    : null;
 
   return (
     <Card>
@@ -34,6 +38,11 @@ function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color 
           <p className="text-2xl font-bold">
             {prefix}{typeof value === 'number' ? value.toLocaleString() : value}{suffix}
           </p>
+          {percentChange !== null && (
+            <p className={`text-xs font-medium ${percentChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {percentChange >= 0 ? '↑' : '↓'} {Math.abs(percentChange).toFixed(1)}% vs previous
+            </p>
+          )}
           {subtext && <p className="text-xs text-gray-400">{subtext}</p>}
         </div>
       </CardContent>
@@ -76,6 +85,7 @@ export default function Dashboard() {
   // Use totals from API (includes all campaigns from DB, not just active ones)
   const campaigns = campaignsData?.data || [];
   const totals = campaignsData?.totals || {};
+  const prevTotals = campaignsData?.prevTotals || {};
   const totalSpend = totals.spend || 0;
   const totalImpressions = totals.impressions || 0;
   const totalTaps = totals.taps || 0;
@@ -86,6 +96,13 @@ export default function Dashboard() {
   const avgCpa = totals.cpa || 0;
   const roas = totals.roas || 0;
   const cop = totals.cop || 0;
+
+  const prevSpend = prevTotals.spend || 0;
+  const prevRevenue = prevTotals.revenue || 0;
+  const prevRoas = prevTotals.roas || 0;
+  const prevInstalls = prevTotals.installs || 0;
+  const prevCpa = prevTotals.cpa || 0;
+  const prevCop = prevTotals.cop || 0;
 
   // Sort campaigns by revenue for top performers
   const topCampaigns = [...campaigns]
@@ -106,6 +123,7 @@ export default function Dashboard() {
         <MetricCard
           title="Spend"
           value={totalSpend.toFixed(2)}
+          prevValue={prevSpend > 0 ? prevSpend.toFixed(2) : null}
           prefix="$"
           icon={DollarSign}
           color="blue"
@@ -113,6 +131,7 @@ export default function Dashboard() {
         <MetricCard
           title="Revenue"
           value={totalRevenue.toFixed(2)}
+          prevValue={prevRevenue > 0 ? prevRevenue.toFixed(2) : null}
           prefix="$"
           icon={TrendingUp}
           color="green"
@@ -120,6 +139,7 @@ export default function Dashboard() {
         <MetricCard
           title="ROAS"
           value={roas.toFixed(2)}
+          prevValue={prevRoas > 0 ? prevRoas.toFixed(2) : null}
           suffix="x"
           icon={BarChart3}
           color={roas >= 1 ? 'green' : 'red'}
@@ -127,12 +147,14 @@ export default function Dashboard() {
         <MetricCard
           title="Installs"
           value={totalInstalls}
+          prevValue={prevInstalls > 0 ? prevInstalls : null}
           icon={Download}
           color="purple"
         />
         <MetricCard
           title="CPA"
           value={avgCpa.toFixed(2)}
+          prevValue={prevCpa > 0 ? prevCpa.toFixed(2) : null}
           prefix="$"
           icon={MousePointer}
           color="blue"
@@ -140,6 +162,7 @@ export default function Dashboard() {
         <MetricCard
           title="COP"
           value={cop.toFixed(2)}
+          prevValue={prevCop > 0 ? prevCop.toFixed(2) : null}
           prefix="$"
           icon={DollarSign}
           color="purple"

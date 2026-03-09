@@ -10,7 +10,7 @@ const router = express.Router();
 const db = require('../db');
 const appleAds = require('../services/appleAds');
 const rulesEngine = require('../services/rulesEngine');
-const { predictRoas } = require('../lib/predictions');
+const { predictRoas, findPaybackDays } = require('../lib/predictions');
 
 // ================================================
 // MIDDLEWARE
@@ -65,17 +65,34 @@ async function recordChange(entityType, entityId, changeType, fieldName, oldValu
  */
 router.get('/campaigns', async (req, res) => {
   try {
-    const { status, limit = 100, offset = 0, sort = 'revenue' } = req.query;
+    const { status, limit = 100, offset = 0, sort = 'revenue', compare } = req.query;
 
     // Parse date range
     let { days = 7, from, to } = req.query;
     let dateFilter;
+    let prevDateFilter;
 
     if (from && to) {
       dateFilter = { from, to };
+      if (compare === 'true') {
+        const currentFrom = new Date(from);
+        const currentTo = new Date(to);
+        const diffDays = Math.ceil((currentTo - currentFrom) / (1000 * 60 * 60 * 24));
+        const prevTo = new Date(currentFrom);
+        prevTo.setDate(prevTo.getDate() - 1);
+        const prevFrom = new Date(prevTo);
+        prevFrom.setDate(prevFrom.getDate() - diffDays);
+        prevDateFilter = {
+          from: prevFrom.toISOString().split('T')[0],
+          to: prevTo.toISOString().split('T')[0]
+        };
+      }
     } else {
       days = parseInt(days) || 7;
       dateFilter = { days };
+      if (compare === 'true') {
+        prevDateFilter = { days, offset: days };
+      }
     }
 
     // Get from Apple Ads API
@@ -96,6 +113,18 @@ router.get('/campaigns', async (req, res) => {
     const revenueCondition = dateFilter.days
       ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
       : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
+
+    // Build previous period conditions if comparison enabled
+    let prevDateCondition, prevRevenueCondition;
+    if (compare === 'true' && prevDateFilter) {
+      if (prevDateFilter.days) {
+        prevDateCondition = `date >= CURRENT_DATE - INTERVAL '${prevDateFilter.days * 2} days' AND date < CURRENT_DATE - INTERVAL '${prevDateFilter.days} days'`;
+        prevRevenueCondition = `install_date >= CURRENT_DATE - INTERVAL '${prevDateFilter.days * 2} days' AND install_date < CURRENT_DATE - INTERVAL '${prevDateFilter.days} days'`;
+      } else {
+        prevDateCondition = `date >= '${prevDateFilter.from}' AND date <= '${prevDateFilter.to}'`;
+        prevRevenueCondition = `install_date >= '${prevDateFilter.from}' AND install_date <= '${prevDateFilter.to}'`;
+      }
+    }
 
     const performanceQuery = await db.query(`
       SELECT
@@ -204,16 +233,23 @@ router.get('/campaigns', async (req, res) => {
         SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as total_impressions,
         SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as total_taps,
         SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as total_installs
+        ${compare === 'true' && prevDateCondition ? `,
+        SUM(CASE WHEN ${prevDateCondition} THEN spend ELSE 0 END) as prev_spend,
+        SUM(CASE WHEN ${prevDateCondition} THEN impressions ELSE 0 END) as prev_impressions,
+        SUM(CASE WHEN ${prevDateCondition} THEN taps ELSE 0 END) as prev_taps,
+        SUM(CASE WHEN ${prevDateCondition} THEN installs ELSE 0 END) as prev_installs` : ''}
       FROM apple_ads_campaigns
     `);
 
     const revenueQuery = await db.query(`
       SELECT
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue,
-        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as total_paid_users
+        SUM(CASE WHEN ${revenueCondition} AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue,
+        COUNT(DISTINCT CASE WHEN ${revenueCondition} AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as total_paid_users
+        ${compare === 'true' && prevRevenueCondition ? `,
+        SUM(CASE WHEN ${prevRevenueCondition} AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as prev_revenue,
+        COUNT(DISTINCT CASE WHEN ${prevRevenueCondition} AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as prev_paid_users` : ''}
       FROM events_v2
-      WHERE ${revenueCondition}
-        AND campaign_id IS NOT NULL
+      WHERE campaign_id IS NOT NULL
     `);
 
     const totals = {
@@ -228,10 +264,27 @@ router.get('/campaigns', async (req, res) => {
     totals.cpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
     totals.cop = totals.paidUsers > 0 ? totals.spend / totals.paidUsers : 0;
 
+    let prevTotals;
+    if (compare === 'true') {
+      prevTotals = {
+        spend: parseFloat(totalsQuery.rows[0]?.prev_spend) || 0,
+        impressions: parseInt(totalsQuery.rows[0]?.prev_impressions) || 0,
+        taps: parseInt(totalsQuery.rows[0]?.prev_taps) || 0,
+        installs: parseInt(totalsQuery.rows[0]?.prev_installs) || 0,
+        revenue: parseFloat(revenueQuery.rows[0]?.prev_revenue) || 0,
+        paidUsers: parseInt(revenueQuery.rows[0]?.prev_paid_users) || 0,
+      };
+      prevTotals.roas = prevTotals.spend > 0 ? prevTotals.revenue / prevTotals.spend : 0;
+      prevTotals.cpa = prevTotals.installs > 0 ? prevTotals.spend / prevTotals.installs : 0;
+      prevTotals.cop = prevTotals.paidUsers > 0 ? prevTotals.spend / prevTotals.paidUsers : 0;
+    }
+
     res.json({
       total: enriched.length,
       dateRange: dateFilter,
+      prevDateRange: prevDateFilter,
       totals,
+      prevTotals,
       data: enriched.slice(offset, offset + parseInt(limit))
     });
   } catch (error) {
@@ -1744,10 +1797,21 @@ router.get('/countries', async (req, res) => {
  */
 router.get('/trends', async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, compare } = req.query;
 
     if (!from || !to) {
       return res.status(400).json({ error: 'from and to dates are required (YYYY-MM-DD)' });
+    }
+
+    let prevFrom, prevTo;
+    if (compare === 'true') {
+      const currentFrom = new Date(from);
+      const currentTo = new Date(to);
+      const diffDays = Math.ceil((currentTo - currentFrom) / (1000 * 60 * 60 * 24));
+      prevTo = new Date(currentFrom);
+      prevTo.setDate(prevTo.getDate() - 1);
+      prevFrom = new Date(prevTo);
+      prevFrom.setDate(prevFrom.getDate() - diffDays);
     }
 
     const query = `
@@ -1820,6 +1884,11 @@ router.get('/trends', async (req, res) => {
 
     const result = await db.query(query, [from, to]);
 
+    let prevResult;
+    if (compare === 'true' && prevFrom && prevTo) {
+      prevResult = await db.query(query, [prevFrom.toISOString().split('T')[0], prevTo.toISOString().split('T')[0]]);
+    }
+
     const totalsQuery = await db.query(`
       SELECT
         SUM(spend) as total_spend,
@@ -1858,7 +1927,7 @@ router.get('/trends', async (req, res) => {
     const totalTrials = parseInt(trialsQuery.rows[0]?.total_trials) || 0;
     const totalPaidUsers = parseInt(paidQuery.rows[0]?.total_paid_users) || 0;
 
-    res.json({
+    const responseData = {
       from,
       to,
       totals: {
@@ -1883,7 +1952,23 @@ router.get('/trends', async (req, res) => {
         install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
         trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
       }))
-    });
+    };
+
+    if (compare === 'true' && prevResult) {
+      responseData.prevData = prevResult.rows.map(row => ({
+        date: row.date,
+        spend: parseFloat(row.spend) || 0,
+        revenue: parseFloat(row.revenue) || 0,
+        roas: parseFloat(row.roas) || 0,
+        installs: parseInt(row.installs) || 0,
+        trials: parseInt(row.trials) || 0,
+        paid_users: parseInt(row.paid_users) || 0,
+        install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
+        trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
+      }));
+    }
+
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2077,6 +2162,7 @@ router.get('/cohorts', async (req, res) => {
         const cohortAge = parseInt(row.cohort_age || 0);
         const currentRoas = parseFloat(row.roas_total || 0);
         const predictions = predictRoas(currentRoas, cohortAge);
+        const paybackDays = findPaybackDays(currentRoas, cohortAge, predictions.predicted_roas_365);
 
         return {
           cohort: row.cohort,
@@ -2098,6 +2184,7 @@ router.get('/cohorts', async (req, res) => {
             d180: predictions.predicted_roas_180,
             d365: predictions.predicted_roas_365,
           },
+          paybackDays,
         revenue: {
           d0: parseFloat(row.revenue_d0 || 0),
           d3: parseFloat(row.revenue_d3 || 0),
@@ -2136,6 +2223,7 @@ router.get('/cohorts', async (req, res) => {
           : 0;
         const totalRoas = totals.spend > 0 ? totals.revenue_total / totals.spend : 0;
         const totalPredictions = predictRoas(totalRoas, avgCohortAge);
+        const totalPaybackDays = findPaybackDays(totalRoas, avgCohortAge, totalPredictions.predicted_roas_365);
 
         return {
           spend: totals.spend,
@@ -2154,6 +2242,7 @@ router.get('/cohorts', async (req, res) => {
             d180: totalPredictions.predicted_roas_180,
             d365: totalPredictions.predicted_roas_365,
           },
+          paybackDays: totalPaybackDays,
         revenue: {
           d0: totals.revenue_d0,
           d3: totals.revenue_d3,

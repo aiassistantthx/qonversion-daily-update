@@ -22,6 +22,7 @@ export interface CohortData {
     d180: number | null;
     d365: number | null;
   };
+  paybackDays?: number | null;
   revenue: {
     d0: number;
     d3: number;
@@ -75,6 +76,7 @@ export interface CohortsData {
       d180: number | null;
       d365: number | null;
     };
+    paybackDays?: number | null;
     revenue: {
       d0: number;
       d3: number;
@@ -162,6 +164,22 @@ function getTextColor(roas: number): string {
   return roas > 0.7 ? '#000' : '#fff';
 }
 
+// Get traffic light color for payback period
+function getPaybackColor(days: number | null): string {
+  if (days === null) return '#ef4444'; // red - never pays back
+  if (days < 90) return '#10b981'; // green - pays back within 90 days
+  if (days < 180) return '#f59e0b'; // orange - pays back within 90-180 days
+  return '#ef4444'; // red - pays back after 180 days or never
+}
+
+// Format payback days display
+function formatPaybackDays(days: number | null): string {
+  if (days === null) return 'Never';
+  if (days < 365) return `${days}d`;
+  const years = (days / 365).toFixed(1);
+  return `${years}y`;
+}
+
 export function CohortTable({ data }: CohortTableProps) {
   const [viewMode, setViewMode] = useState<'roas' | 'revenue' | 'cop'>('roas');
 
@@ -187,7 +205,7 @@ export function CohortTable({ data }: CohortTableProps) {
   );
 
   const handleExport = () => {
-    const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total', 'Predicted D180', 'Predicted D365'];
+    const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total', 'Predicted D180', 'Predicted D365', 'Payback Days'];
     const rows = data.cohorts.map(c => {
       if (viewMode === 'roas') {
         return [
@@ -205,6 +223,7 @@ export function CohortTable({ data }: CohortTableProps) {
           (c.roas.total * 100).toFixed(1) + '%',
           c.predictedRoas?.d180 !== null && c.predictedRoas?.d180 !== undefined ? ((c.predictedRoas.d180 * 100).toFixed(1) + '%') : 'N/A',
           c.predictedRoas?.d365 !== null && c.predictedRoas?.d365 !== undefined ? ((c.predictedRoas.d365 * 100).toFixed(1) + '%') : 'N/A',
+          c.paybackDays !== null && c.paybackDays !== undefined ? c.paybackDays : 'Never',
         ];
       } else if (viewMode === 'cop') {
         return [
@@ -347,6 +366,7 @@ export function CohortTable({ data }: CohortTableProps) {
                 <>
                   <th style={{ ...thRightStyle, background: '#fef3c7', fontWeight: 600 }} title="Predicted ROAS at day 180">D180*</th>
                   <th style={{ ...thRightStyle, background: '#fef3c7', fontWeight: 600 }} title="Predicted ROAS at day 365">D365*</th>
+                  <th style={{ ...thRightStyle, background: '#e0f2fe', fontWeight: 600 }} title="Predicted payback period (when ROAS reaches 1.0)">Payback</th>
                 </>
               )}
             </tr>
@@ -538,6 +558,14 @@ export function CohortTable({ data }: CohortTableProps) {
                           }}>
                             {cohort.predictedRoas.d365 !== null ? `${(cohort.predictedRoas.d365 * 100).toFixed(0)}%` : 'N/A'}
                           </td>
+                          <td style={{
+                            ...tdRightStyle,
+                            background: getPaybackColor(cohort.paybackDays ?? null),
+                            color: '#fff',
+                            fontWeight: 600,
+                          }}>
+                            {formatPaybackDays(cohort.paybackDays ?? null)}
+                          </td>
                         </>
                       )}
                     </>
@@ -598,6 +626,14 @@ export function CohortTable({ data }: CohortTableProps) {
                       <td style={{ ...tdRightStyle, background: '#fef3c7', fontStyle: 'italic' }}>
                         {data.totals.predictedRoas.d365 !== null ? `${(data.totals.predictedRoas.d365 * 100).toFixed(0)}%` : 'N/A'}
                       </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: getPaybackColor(data.totals.paybackDays ?? null),
+                        color: '#fff',
+                        fontWeight: 600,
+                      }}>
+                        {formatPaybackDays(data.totals.paybackDays ?? null)}
+                      </td>
                     </>
                   )}
                 </>
@@ -619,6 +655,11 @@ export function CohortTable({ data }: CohortTableProps) {
             <strong>Predicted columns (D180*, D365*):</strong> Forecast future ROAS based on decay curves from mature cohorts.
             The model uses current performance and cohort age to extrapolate expected ROAS at 180 and 365 days.
             Predictions assume similar retention and monetization patterns to historical data.
+            <br />
+            <strong>Payback Period:</strong> Predicted day when ROAS reaches 1.0 (breakeven).
+            Traffic light colors: <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (&lt;90d),
+            <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (90-180d),
+            <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (&gt;180d or never).
           </>
         )}
         {viewMode === 'cop' && (
