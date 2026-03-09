@@ -44,6 +44,7 @@ export const executeAllRules = (dryRun = false, frequency = null) => {
   if (frequency) params.frequency = frequency;
   return api.post('/rules/execute-all', null, { params }).then(res => res.data);
 };
+export const getRuleTemplates = () => api.get('/rule-templates').then(res => res.data);
 
 // Templates
 export const getTemplates = (params) => api.get('/templates', { params }).then(res => res.data);

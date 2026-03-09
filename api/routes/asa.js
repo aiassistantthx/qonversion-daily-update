@@ -942,6 +942,22 @@ router.patch('/keywords/bulk/status', async (req, res) => {
 // ================================================
 
 /**
+ * GET /asa/rule-templates
+ * Get predefined rule templates
+ */
+router.get('/rule-templates', async (req, res) => {
+  try {
+    const templates = require('../data/rule-templates.json');
+    res.json({
+      total: templates.length,
+      data: templates
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /asa/rules
  * List all automation rules
  */
