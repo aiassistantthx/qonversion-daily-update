@@ -3354,7 +3354,8 @@ router.get('/mrr', async (req, res) => {
           SUM(CASE
             WHEN new_revenue > 0 AND product_id LIKE '%yearly%' THEN new_revenue / 12
             WHEN new_revenue > 0 AND product_id LIKE '%monthly%' THEN new_revenue
-            WHEN new_revenue > 0 ELSE new_revenue * 4.33
+            WHEN new_revenue > 0 THEN new_revenue * 4.33
+            ELSE 0
           END) as new_mrr,
           SUM(CASE
             WHEN product_id LIKE '%yearly%' THEN (new_revenue + renewal_revenue) / 12
