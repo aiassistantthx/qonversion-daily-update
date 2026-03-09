@@ -54,10 +54,28 @@ async function recordChange(entityType, entityId, changeType, fieldName, oldValu
 /**
  * GET /asa/campaigns
  * List all campaigns with optional filters
+ *
+ * Query params:
+ * - days: number of days (default 7)
+ * - from: start date (YYYY-MM-DD)
+ * - to: end date (YYYY-MM-DD)
+ * - status: filter by status
+ * - sort: revenue (default), spend, roas, name
  */
 router.get('/campaigns', async (req, res) => {
   try {
-    const { status, limit = 100, offset = 0 } = req.query;
+    const { status, limit = 100, offset = 0, sort = 'revenue' } = req.query;
+
+    // Parse date range
+    let { days = 7, from, to } = req.query;
+    let dateFilter;
+
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
+    }
 
     // Get from Apple Ads API
     const campaigns = await appleAds.getCampaigns();
@@ -68,10 +86,63 @@ router.get('/campaigns', async (req, res) => {
       filtered = campaigns.filter(c => c.status === status.toUpperCase());
     }
 
-    // Get local performance data
+    // Build dynamic performance query
+    const dateCondition = dateFilter.days
+      ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+
+    const revenueCondition = dateFilter.days
+      ? `se.event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `se.event_date >= '${dateFilter.from}' AND se.event_date <= '${dateFilter.to}'`;
+
     const performanceQuery = await db.query(`
-      SELECT * FROM v_campaign_performance
+      SELECT
+        c.campaign_id,
+        c.campaign_name,
+        c.campaign_status,
+        c.daily_budget,
+        c.spend,
+        c.impressions,
+        c.taps,
+        c.installs,
+        c.cpa,
+        c.last_data_date,
+        COALESCE(r.revenue, 0) as revenue,
+        COALESCE(r.paid_users, 0) as paid_users,
+        CASE WHEN c.spend > 0 THEN COALESCE(r.revenue, 0) / c.spend ELSE 0 END as roas,
+        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN c.spend / r.paid_users ELSE NULL END as cop
+      FROM (
+        SELECT
+          campaign_id,
+          MAX(campaign_name) as campaign_name,
+          MAX(campaign_status) as campaign_status,
+          MAX(daily_budget) as daily_budget,
+          SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
+          SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
+          SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
+          CASE WHEN SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) > 0
+               THEN SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) /
+                    SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END)
+               ELSE NULL
+          END as cpa,
+          MAX(date) as last_data_date
+        FROM apple_ads_campaigns
+        GROUP BY campaign_id
+      ) c
+      LEFT JOIN (
+        SELECT
+          ua.campaign_id,
+          SUM(CASE WHEN se.refund = false THEN COALESCE(se.price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN se.event_name IN ('Subscription Started', 'Trial Converted') THEN se.q_user_id END) as paid_users
+        FROM subscription_events se
+        JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
+        WHERE ${revenueCondition}
+          AND ua.campaign_id IS NOT NULL
+        GROUP BY ua.campaign_id
+      ) r ON c.campaign_id = r.campaign_id
     `);
+
     // Use string keys to ensure type matching
     const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.campaign_id), p]));
 
@@ -81,28 +152,28 @@ router.get('/campaigns', async (req, res) => {
       performance: performanceMap.get(String(campaign.id)) || null
     }));
 
-    // Sort by revenue (descending) by default
-    const { sort = 'revenue' } = req.query;
+    // Sort
     enriched.sort((a, b) => {
       const perfA = a.performance || {};
       const perfB = b.performance || {};
 
       switch (sort) {
         case 'revenue':
-          return (parseFloat(perfB.revenue_7d) || 0) - (parseFloat(perfA.revenue_7d) || 0);
+          return (parseFloat(perfB.revenue) || 0) - (parseFloat(perfA.revenue) || 0);
         case 'spend':
-          return (parseFloat(perfB.spend_7d) || 0) - (parseFloat(perfA.spend_7d) || 0);
+          return (parseFloat(perfB.spend) || 0) - (parseFloat(perfA.spend) || 0);
         case 'roas':
-          return (parseFloat(perfB.roas_7d) || 0) - (parseFloat(perfA.roas_7d) || 0);
+          return (parseFloat(perfB.roas) || 0) - (parseFloat(perfA.roas) || 0);
         case 'name':
           return (a.name || '').localeCompare(b.name || '');
         default:
-          return (parseFloat(perfB.revenue_7d) || 0) - (parseFloat(perfA.revenue_7d) || 0);
+          return (parseFloat(perfB.revenue) || 0) - (parseFloat(perfA.revenue) || 0);
       }
     });
 
     res.json({
       total: enriched.length,
+      dateRange: dateFilter,
       data: enriched.slice(offset, offset + parseInt(limit))
     });
   } catch (error) {

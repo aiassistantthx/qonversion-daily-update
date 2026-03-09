@@ -9,8 +9,17 @@ import { Input } from '../components/Input';
 import { getCampaigns, updateCampaignStatus, updateCampaignBudget } from '../lib/api';
 import {
   ChevronUp, ChevronDown, Play, Pause, Edit2, X, Check,
-  Search, ArrowRight, Layers, KeyRound
+  Search, ArrowRight, Layers, KeyRound, Calendar
 } from 'lucide-react';
+
+// Date range presets
+const DATE_PRESETS = [
+  { label: 'Last 7 days', days: 7 },
+  { label: 'Last 14 days', days: 14 },
+  { label: 'Last 30 days', days: 30 },
+  { label: 'Last 90 days', days: 90 },
+  { label: 'Custom', days: null },
+];
 
 export default function Campaigns() {
   const navigate = useNavigate();
@@ -18,15 +27,29 @@ export default function Campaigns() {
 
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState('name');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortField, setSortField] = useState('revenue');
+  const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [editingBudgetId, setEditingBudgetId] = useState(null);
   const [newBudget, setNewBudget] = useState('');
 
+  // Date range state
+  const [days, setDays] = useState(7);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showCustomDates, setShowCustomDates] = useState(false);
+
+  // Build query params for API
+  const queryParams = useMemo(() => {
+    if (showCustomDates && customFrom && customTo) {
+      return { from: customFrom, to: customTo, sort: sortField };
+    }
+    return { days, sort: sortField };
+  }, [days, customFrom, customTo, showCustomDates, sortField]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['campaigns'],
-    queryFn: getCampaigns,
+    queryKey: ['campaigns', queryParams],
+    queryFn: () => getCampaigns(queryParams),
   });
 
   const statusMutation = useMutation({
@@ -78,24 +101,32 @@ export default function Campaigns() {
           bVal = parseFloat(b.dailyBudgetAmount?.amount || 0);
           break;
         case 'spend':
-          aVal = parseFloat(a.performance?.spend_7d || 0);
-          bVal = parseFloat(b.performance?.spend_7d || 0);
+          aVal = parseFloat(a.performance?.spend || 0);
+          bVal = parseFloat(b.performance?.spend || 0);
+          break;
+        case 'revenue':
+          aVal = parseFloat(a.performance?.revenue || 0);
+          bVal = parseFloat(b.performance?.revenue || 0);
+          break;
+        case 'roas':
+          aVal = parseFloat(a.performance?.roas || 0);
+          bVal = parseFloat(b.performance?.roas || 0);
           break;
         case 'impressions':
-          aVal = parseInt(a.performance?.impressions_7d || 0);
-          bVal = parseInt(b.performance?.impressions_7d || 0);
+          aVal = parseInt(a.performance?.impressions || 0);
+          bVal = parseInt(b.performance?.impressions || 0);
           break;
         case 'taps':
-          aVal = parseInt(a.performance?.taps_7d || 0);
-          bVal = parseInt(b.performance?.taps_7d || 0);
+          aVal = parseInt(a.performance?.taps || 0);
+          bVal = parseInt(b.performance?.taps || 0);
           break;
         case 'installs':
-          aVal = parseInt(a.performance?.installs_7d || 0);
-          bVal = parseInt(b.performance?.installs_7d || 0);
+          aVal = parseInt(a.performance?.installs || 0);
+          bVal = parseInt(b.performance?.installs || 0);
           break;
         case 'cpa':
-          aVal = parseFloat(a.performance?.cpa_7d || 999999);
-          bVal = parseFloat(b.performance?.cpa_7d || 999999);
+          aVal = parseFloat(a.performance?.cpa || 999999);
+          bVal = parseFloat(b.performance?.cpa || 999999);
           break;
         default:
           aVal = a.name;
@@ -172,6 +203,57 @@ export default function Campaigns() {
         </div>
       </div>
 
+      {/* Date Range Selector */}
+      <Card className="p-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Calendar size={18} className="text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Date Range:</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {DATE_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => {
+                  if (preset.days === null) {
+                    setShowCustomDates(true);
+                  } else {
+                    setShowCustomDates(false);
+                    setDays(preset.days);
+                  }
+                }}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  (!showCustomDates && days === preset.days) || (showCustomDates && preset.days === null)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {showCustomDates && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="w-40"
+              />
+              <span className="text-gray-500">to</span>
+              <Input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="w-40"
+              />
+            </div>
+          )}
+        </div>
+      </Card>
+
       {/* Filters and Actions */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 flex-1">
@@ -233,10 +315,9 @@ export default function Campaigns() {
               </TableHeader>
               <SortHeader field="name">Campaign</SortHeader>
               <SortHeader field="status">Status</SortHeader>
-              <SortHeader field="budget">Daily Budget</SortHeader>
-              <SortHeader field="spend" className="text-right">Spend (7d)</SortHeader>
-              <SortHeader field="impressions" className="text-right">Impr</SortHeader>
-              <SortHeader field="taps" className="text-right">Taps</SortHeader>
+              <SortHeader field="spend" className="text-right">Spend</SortHeader>
+              <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
+              <SortHeader field="roas" className="text-right">ROAS</SortHeader>
               <SortHeader field="installs" className="text-right">Installs</SortHeader>
               <SortHeader field="cpa" className="text-right">CPA</SortHeader>
               <TableHeader className="w-24">Actions</TableHeader>
@@ -245,17 +326,17 @@ export default function Campaigns() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8">Loading campaigns...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8">Loading campaigns...</TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-red-500">
+                <TableCell colSpan={9} className="text-center py-8 text-red-500">
                   Error: {error.message}
                 </TableCell>
               </TableRow>
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                   No campaigns found
                 </TableCell>
               </TableRow>
@@ -287,63 +368,23 @@ export default function Campaigns() {
                   <TableCell>
                     <StatusBadge status={campaign.status} />
                   </TableCell>
-                  <TableCell>
-                    {editingBudgetId === campaign.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          value={newBudget}
-                          onChange={(e) => setNewBudget(e.target.value)}
-                          className="w-24"
-                        />
-                        <button
-                          onClick={() => {
-                            const budget = parseFloat(newBudget);
-                            if (!isNaN(budget) && budget > 0) {
-                              budgetMutation.mutate({ id: campaign.id, dailyBudget: budget });
-                            }
-                          }}
-                          className="text-green-600 hover:text-green-700"
-                        >
-                          <Check size={16} />
-                        </button>
-                        <button
-                          onClick={() => setEditingBudgetId(null)}
-                          className="text-gray-400 hover:text-gray-500"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span>${campaign.dailyBudgetAmount?.amount || '-'}</span>
-                        <button
-                          onClick={() => {
-                            setEditingBudgetId(campaign.id);
-                            setNewBudget(campaign.dailyBudgetAmount?.amount || '');
-                          }}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                      </div>
-                    )}
+                  <TableCell className="text-right">
+                    ${parseFloat(campaign.performance?.spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-medium text-green-600">
+                    ${parseFloat(campaign.performance?.revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${parseFloat(campaign.performance?.spend_7d || 0).toFixed(2)}
+                    <span className={parseFloat(campaign.performance?.roas || 0) >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                      {parseFloat(campaign.performance?.roas || 0).toFixed(2)}x
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {parseInt(campaign.performance?.impressions_7d || 0).toLocaleString()}
+                    {parseInt(campaign.performance?.installs || 0).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    {parseInt(campaign.performance?.taps_7d || 0).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {parseInt(campaign.performance?.installs_7d || 0)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {campaign.performance?.cpa_7d
-                      ? `$${parseFloat(campaign.performance.cpa_7d).toFixed(2)}`
+                    {campaign.performance?.cpa
+                      ? `$${parseFloat(campaign.performance.cpa).toFixed(2)}`
                       : '-'}
                   </TableCell>
                   <TableCell>
