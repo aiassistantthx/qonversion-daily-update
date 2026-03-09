@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { api } from '../api';
-import { MetricCard } from '../components/MetricCard';
+import { MetricCard, detectAnomaly } from '../components/MetricCard';
 import { HealthGauge } from '../components/HealthGauge';
 import { YoYComparisonCards } from '../components/YoYComparisonCards';
 import { AlertTriangle, CheckCircle, DollarSign, Users, Zap } from 'lucide-react';
@@ -54,7 +54,23 @@ export function DailyDashboard() {
     ? ((todayCop - yesterdayCop) / yesterdayCop) * 100
     : undefined;
 
-  // Anomaly detection (simple threshold-based)
+  // Historical data for anomaly detection
+  const historicalRevenue = dailyData?.metrics?.slice(1, 8).map(m => m.revenue) || [];
+  const historicalTrials = dailyData?.metrics?.slice(1, 8).map(m => m.trials) || [];
+  const historicalCop = dailyData?.metrics?.slice(1, 8).map(m => m.cop).filter(Boolean) as number[] || [];
+
+  // Detect anomalies for each metric
+  const revenueAnomaly = summary?.today.revenue
+    ? detectAnomaly(summary.today.revenue, historicalRevenue, 'Revenue')
+    : undefined;
+  const trialsAnomaly = summary?.today.trials
+    ? detectAnomaly(summary.today.trials, historicalTrials, 'Trials')
+    : undefined;
+  const copAnomaly = todayCop
+    ? detectAnomaly(todayCop, historicalCop, 'COP', true) // Lower is better for COP
+    : undefined;
+
+  // Anomaly detection (simple threshold-based) for alert list
   const anomalies = [];
   if (health && health.components.cop.value > 60) {
     anomalies.push({ type: 'warning', message: `COP above target: $${health.components.cop.value.toFixed(0)}` });
@@ -81,12 +97,14 @@ export function DailyDashboard() {
           changeLabel={`vs $${summary?.today.revenue ? (summary.today.revenue - (summary.vsYesterday.revenueAbsolute || 0)).toLocaleString() : 0} yesterday`}
           sparkline={revenueSparkline}
           format="currency"
+          anomaly={revenueAnomaly}
         />
 
         <MetricCard
           title="Trials"
           value={summary?.today.trials || 0}
           sparkline={trialsSparkline}
+          anomaly={trialsAnomaly}
         />
 
         <MetricCard
@@ -94,6 +112,7 @@ export function DailyDashboard() {
           value={todayCop ? `$${todayCop.toFixed(0)}` : '—'}
           change={copChange}
           changeLabel="Cost per payer (d7)"
+          anomaly={copAnomaly}
         />
       </div>
 
