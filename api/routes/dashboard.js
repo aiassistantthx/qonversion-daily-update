@@ -72,11 +72,10 @@ const getDecayFactor = (days, curve = COP_DECAY_CURVE) => {
 const getRoasDecayFactor = (days) => getDecayFactor(days, ROAS_DECAY_CURVE);
 
 // Find days when ROAS reaches target using the decay curve
+// Extrapolates beyond 365 days if needed
 const findPaybackDays = (currentRoas, currentDays, predictedFinalRoas) => {
   if (!predictedFinalRoas || predictedFinalRoas <= 0) return null;
-
-  // If predicted final ROAS < 1.0, cohort will never pay back
-  if (predictedFinalRoas < 1.0) return null;
+  if (!currentRoas || currentRoas <= 0) return null;
 
   // If already paid back
   if (currentRoas >= 1.0) {
@@ -95,6 +94,48 @@ const findPaybackDays = (currentRoas, currentDays, predictedFinalRoas) => {
     }
     return 365;
   }
+
+  // If predicted final ROAS at 365 days >= 1.0, find when within the curve
+  if (predictedFinalRoas >= 1.0) {
+    const keys = Object.keys(ROAS_DECAY_CURVE).map(Number).sort((a, b) => a - b);
+    for (let i = 0; i < keys.length; i++) {
+      const day = keys[i];
+      const roasAtDay = predictedFinalRoas * ROAS_DECAY_CURVE[day];
+      if (roasAtDay >= 1.0) {
+        if (i === 0) return day;
+        const prevDay = keys[i - 1];
+        const prevRoas = predictedFinalRoas * ROAS_DECAY_CURVE[prevDay];
+        const t = (1.0 - prevRoas) / (roasAtDay - prevRoas);
+        return Math.round(prevDay + t * (day - prevDay));
+      }
+    }
+    return 365;
+  }
+
+  // Predicted ROAS at 365 days < 1.0 - extrapolate beyond 365 days
+  // Calculate yearly ROAS growth rate from the second half of the curve (d180 to d365)
+  // Use this rate to project when ROAS would reach 1.0
+  const roasAt180 = predictedFinalRoas * 0.81;  // 81% at d180
+  const roasAt365 = predictedFinalRoas;         // 100% at d365
+  const dailyGrowthRate = (roasAt365 - roasAt180) / (365 - 180);  // Growth per day in second half
+
+  // Project when ROAS will reach 1.0
+  const roasNeeded = 1.0 - roasAt365;
+  if (dailyGrowthRate <= 0) return null;  // No growth, will never pay back
+
+  const additionalDays = roasNeeded / dailyGrowthRate;
+  const paybackDays = Math.round(365 + additionalDays);
+
+  // Cap at 5 years (1825 days) - beyond that is too uncertain
+  if (paybackDays > 1825) return null;
+
+  return paybackDays;
+};
+
+// Legacy function for backward compatibility - find when ROAS reaches target within curve
+const findPaybackDaysWithinCurve = (currentRoas, currentDays, predictedFinalRoas) => {
+  if (!predictedFinalRoas || predictedFinalRoas <= 0) return null;
+  if (predictedFinalRoas < 1.0) return null;
 
   // Will pay back - find when by interpolating the curve
   const keys = Object.keys(ROAS_DECAY_CURVE).map(Number).sort((a, b) => a - b);
