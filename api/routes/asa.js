@@ -541,7 +541,7 @@ router.get('/keywords', async (req, res) => {
       : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
 
     // Get keywords with dynamic performance data
-    let query = `
+    let baseQuery = `
       WITH keyword_perf AS (
         SELECT
           keyword_id,
@@ -563,6 +563,13 @@ router.get('/keywords', async (req, res) => {
           AND keyword_id IS NOT NULL
           AND campaign_id = $1
         GROUP BY keyword_id
+      ),
+      keyword_base AS (
+        SELECT DISTINCT ON (keyword_id)
+          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+        ORDER BY keyword_id, date DESC
       )
       SELECT
         k.keyword_id,
@@ -581,13 +588,7 @@ router.get('/keywords', async (req, res) => {
         CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / p.spend ELSE 0 END as roas_7d,
         CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(p.spend, 0) / r.paid_users ELSE NULL END as cop_7d,
         CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d
-      FROM (
-        SELECT DISTINCT ON (keyword_id)
-          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount
-        FROM apple_ads_keywords
-        WHERE campaign_id = $1
-        ORDER BY keyword_id, date DESC
-      ) k
+      FROM keyword_base k
       LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id
       LEFT JOIN keyword_revenue r ON k.keyword_id::TEXT = r.keyword_id::TEXT
       WHERE 1=1
@@ -595,20 +596,36 @@ router.get('/keywords', async (req, res) => {
     const params = [campaign_id];
 
     if (adgroup_id) {
-      query += ` AND k.adgroup_id = $${params.length + 1}`;
+      baseQuery += ` AND k.adgroup_id = $${params.length + 1}`;
       params.push(adgroup_id);
     }
 
-    // Note: keyword_status column doesn't exist in apple_ads_keywords table
-    // Status filter is not supported for now
+    // Get total count
+    const countQuery = `
+      WITH keyword_base AS (
+        SELECT DISTINCT ON (keyword_id)
+          keyword_id, campaign_id, adgroup_id
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+        ORDER BY keyword_id, date DESC
+      )
+      SELECT COUNT(*) as total
+      FROM keyword_base k
+      WHERE 1=1
+      ${adgroup_id ? ` AND k.adgroup_id = $${params.length}` : ''}
+    `;
 
-    query += ` ORDER BY spend_7d DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const countResult = await db.query(countQuery, params);
+    const totalCount = parseInt(countResult.rows[0]?.total || 0);
+
+    // Add pagination to main query
+    baseQuery += ` ORDER BY spend_7d DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
-    const result = await db.query(query, params);
+    const result = await db.query(baseQuery, params);
 
     res.json({
-      total: result.rowCount,
+      total: totalCount,
       dateRange: dateFilter,
       data: result.rows
     });

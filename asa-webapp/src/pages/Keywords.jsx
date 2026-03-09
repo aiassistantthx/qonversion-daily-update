@@ -20,6 +20,7 @@ export default function Keywords() {
 
   const campaignIdsParam = searchParams.get('campaigns');
   const adGroupIdsParam = searchParams.get('adgroups');
+  const pageParam = searchParams.get('page');
   const campaignIds = campaignIdsParam ? campaignIdsParam.split(',') : [];
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
@@ -31,6 +32,8 @@ export default function Keywords() {
   const [editingKeywordId, setEditingKeywordId] = useState(null);
   const [newBid, setNewBid] = useState('');
   const [bulkBidAmount, setBulkBidAmount] = useState('');
+  const [page, setPage] = useState(parseInt(pageParam) || 1);
+  const itemsPerPage = 20;
 
   // Get campaigns for names
   const { data: campaignsData } = useQuery({
@@ -46,11 +49,12 @@ export default function Keywords() {
 
   // Get keywords with filters
   const { data: keywordsData, isLoading } = useQuery({
-    queryKey: ['keywords', { campaignIds, adGroupIds, queryParams }],
+    queryKey: ['keywords', { campaignIds, adGroupIds, queryParams, page }],
     queryFn: () => getKeywords({
       campaign_id: campaignIds.length === 1 ? campaignIds[0] : undefined,
       adgroup_id: adGroupIds.length === 1 ? adGroupIds[0] : undefined,
-      limit: 500,
+      limit: itemsPerPage,
+      offset: (page - 1) * itemsPerPage,
       ...queryParams,
     }),
   });
@@ -73,9 +77,13 @@ export default function Keywords() {
     },
   });
 
-  // Filter and sort
+  // Get all keywords data (including total for all pages)
+  const allKeywordsData = keywordsData?.data || [];
+  const totalKeywords = keywordsData?.total || allKeywordsData.length;
+
+  // Filter and sort current page
   const keywords = useMemo(() => {
-    let result = keywordsData?.data || [];
+    let result = allKeywordsData;
 
     // Filter by campaign IDs if multiple
     if (campaignIds.length > 1) {
@@ -159,7 +167,9 @@ export default function Keywords() {
     });
 
     return result;
-  }, [keywordsData, campaignIds, adGroupIds, matchTypeFilter, searchQuery, sortField, sortDirection]);
+  }, [allKeywordsData, campaignIds, adGroupIds, matchTypeFilter, searchQuery, sortField, sortDirection]);
+
+  const totalPages = Math.ceil(totalKeywords / itemsPerPage);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -168,6 +178,7 @@ export default function Keywords() {
       setSortField(field);
       setSortDirection('desc');
     }
+    setPage(1);
   };
 
   const toggleSelect = (id) => {
@@ -190,12 +201,21 @@ export default function Keywords() {
     }
   };
 
+  const updateSearchParams = (newParams) => {
+    const params = {};
+    if (campaignIds.length > 0) params.campaigns = campaignIds.join(',');
+    if (adGroupIds.length > 0) params.adgroups = adGroupIds.join(',');
+    if (page > 1) params.page = page;
+    setSearchParams({ ...params, ...newParams });
+  };
+
   const clearCampaignFilter = (id) => {
     const newCampaigns = campaignIds.filter(cId => cId !== id);
     const params = {};
     if (newCampaigns.length > 0) params.campaigns = newCampaigns.join(',');
     if (adGroupIds.length > 0) params.adgroups = adGroupIds.join(',');
     setSearchParams(params);
+    setPage(1);
   };
 
   const clearAdGroupFilter = (id) => {
@@ -204,6 +224,17 @@ export default function Keywords() {
     if (campaignIds.length > 0) params.campaigns = campaignIds.join(',');
     if (newAdGroups.length > 0) params.adgroups = newAdGroups.join(',');
     setSearchParams(params);
+    setPage(1);
+  };
+
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    const params = {};
+    if (campaignIds.length > 0) params.campaigns = campaignIds.join(',');
+    if (adGroupIds.length > 0) params.adgroups = adGroupIds.join(',');
+    if (newPage > 1) params.page = newPage;
+    setSearchParams(params);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleBulkBidUpdate = () => {
@@ -419,14 +450,20 @@ export default function Keywords() {
             type="text"
             placeholder="Search keywords..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
             className="pl-10"
           />
         </div>
 
         <select
           value={matchTypeFilter}
-          onChange={(e) => setMatchTypeFilter(e.target.value)}
+          onChange={(e) => {
+            setMatchTypeFilter(e.target.value);
+            setPage(1);
+          }}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
         >
           <option value="">All Match Types</option>
@@ -575,8 +612,60 @@ export default function Keywords() {
       </Card>
 
       {keywords.length > 0 && (
-        <div className="text-center text-sm text-gray-500">
-          Showing {keywords.length} keywords
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-500">
+            Showing {(page - 1) * itemsPerPage + 1} to {Math.min(page * itemsPerPage, totalKeywords)} of {totalKeywords} keywords
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page === 1}
+              >
+                Previous
+              </Button>
+
+              <div className="flex items-center gap-1">
+                {[...Array(totalPages)].map((_, i) => {
+                  const pageNum = i + 1;
+                  if (
+                    pageNum === 1 ||
+                    pageNum === totalPages ||
+                    (pageNum >= page - 2 && pageNum <= page + 2)
+                  ) {
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-1 rounded text-sm ${
+                          pageNum === page
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  } else if (pageNum === page - 3 || pageNum === page + 3) {
+                    return <span key={pageNum} className="text-gray-400">...</span>;
+                  }
+                  return null;
+                })}
+              </div>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
