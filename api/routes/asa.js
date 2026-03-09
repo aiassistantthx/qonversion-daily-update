@@ -91,9 +91,10 @@ router.get('/campaigns', async (req, res) => {
       ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
       : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
 
+    // Use install_date for LTV-based revenue (lifetime value of users acquired in period)
     const revenueCondition = dateFilter.days
-      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
+      ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
 
     const performanceQuery = await db.query(`
       SELECT
@@ -338,9 +339,10 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
       : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
 
+    // Use install_date for LTV-based revenue (lifetime value of users acquired in period)
     const revenueCondition = dateFilter.days
-      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
+      ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
 
     // Get performance data aggregated by adgroup
     const performanceQuery = await db.query(`
@@ -536,9 +538,10 @@ router.get('/keywords', async (req, res) => {
       ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
       : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
 
+    // Use install_date for LTV-based revenue (lifetime value of users acquired in period)
     const revenueCondition = dateFilter.days
-      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
+      ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
 
     // Get keywords with dynamic performance data
     let baseQuery = `
