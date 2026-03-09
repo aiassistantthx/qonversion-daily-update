@@ -23,20 +23,20 @@ interface RenewalRatesTableProps {
 type CohortType = RenewalRatesData['cohorts'][0];
 
 export function RenewalRatesTable({ data }: RenewalRatesTableProps) {
+  const { sortedData: sortedCohorts, sortKey, sortAsc, handleSort } = useSortableData<CohortType>(
+    data?.cohorts || [],
+    'month' as keyof CohortType,
+    false
+  );
+
   if (!data) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Yearly Renewal Rates</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>API endpoint coming soon</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
-
-  const { sortedData: sortedCohorts, sortKey, sortAsc, handleSort } = useSortableData<CohortType>(
-    data.cohorts || [],
-    'month' as keyof CohortType,
-    false
-  );
 
   const maturedCohorts = sortedCohorts.filter(c => c.isMatured);
   const pendingCohorts = sortedCohorts.filter(c => !c.isMatured);

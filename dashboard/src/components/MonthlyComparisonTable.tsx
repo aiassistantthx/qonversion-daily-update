@@ -32,7 +32,8 @@ interface MonthlyComparisonTableProps {
   } | undefined;
 }
 
-function formatCurrency(val: number): string {
+function formatCurrency(val: number | undefined | null): string {
+  if (val == null) return '—';
   if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
   if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
   return `$${val.toFixed(0)}`;
@@ -71,17 +72,7 @@ function getCellColor(diff: number | null, invertColors = false): string {
 }
 
 export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
-  if (!data || !data.monthlyTrend || data.monthlyTrend.length === 0) {
-    return (
-      <div style={styles.card}>
-        <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-          No monthly comparison data available
-        </div>
-      </div>
-    );
-  }
-
-  const rows: MonthlyComparisonRow[] = data.monthlyTrend.map(m => {
+  const rows: MonthlyComparisonRow[] = (data?.monthlyTrend || []).map(m => {
     const revenueDiff = m.lastYear > 0 ? ((m.thisYear - m.lastYear) / m.lastYear) * 100 : null;
     const subsDiff = m.lastYearSubs > 0 ? ((m.thisYearSubs - m.lastYearSubs) / m.lastYearSubs) * 100 : null;
     const spendDiff = m.lastYearSpend > 0 ? ((m.thisYearSpend - m.lastYearSpend) / m.lastYearSpend) * 100 : null;
@@ -106,6 +97,16 @@ export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
     'monthNum' as keyof MonthlyComparisonRow,
     true
   );
+
+  if (!data || !data.monthlyTrend || data.monthlyTrend.length === 0) {
+    return (
+      <div style={styles.card}>
+        <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
+          No monthly comparison data available
+        </div>
+      </div>
+    );
+  }
 
   const totals = sortedData.reduce(
     (acc, row) => ({
@@ -181,10 +182,10 @@ export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
                   {formatDiff(row.spendDiff)}
                 </td>
                 <td style={{ ...styles.tdRight, background: '#fafafa' }}>
-                  {row.subs2025.toLocaleString()}
+                  {row.subs2025?.toLocaleString() ?? '—'}
                 </td>
                 <td style={{ ...styles.tdRight, background: '#fafafa' }}>
-                  {row.subs2026.toLocaleString()}
+                  {row.subs2026?.toLocaleString() ?? '—'}
                 </td>
                 <td style={{ ...styles.tdRight, background: getCellColor(row.subsDiff) }}>
                   {formatDiff(row.subsDiff)}
@@ -214,10 +215,10 @@ export function MonthlyComparisonTable({ data }: MonthlyComparisonTableProps) {
                 {formatDiff(totalSpendDiff)}
               </td>
               <td style={{ ...styles.tdRight, fontWeight: 700, background: '#f3f4f6' }}>
-                {totals.subs2025.toLocaleString()}
+                {totals.subs2025?.toLocaleString() ?? '—'}
               </td>
               <td style={{ ...styles.tdRight, fontWeight: 700, background: '#f3f4f6' }}>
-                {totals.subs2026.toLocaleString()}
+                {totals.subs2026?.toLocaleString() ?? '—'}
               </td>
               <td style={{ ...styles.tdRight, fontWeight: 700, background: getCellColor(totalSubsDiff) }}>
                 {formatDiff(totalSubsDiff)}

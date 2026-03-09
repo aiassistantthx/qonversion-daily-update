@@ -46,6 +46,11 @@ export function PaybackGauge({
     if (isBreakEven || currentPercent === 0 || !cohortStartDate) return null;
 
     const daysElapsed = Math.floor((Date.now() - new Date(cohortStartDate).getTime()) / (1000 * 60 * 60 * 24));
+
+    // Don't show projection for young cohorts (< 30 days) - linear extrapolation is unreliable
+    // Most revenue comes from initial purchases, then growth slows (renewals)
+    if (daysElapsed < 30) return null;
+
     const projectedDays = Math.ceil((100 / currentPercent) * daysElapsed);
 
     const cohortDate = new Date(cohortStartDate);

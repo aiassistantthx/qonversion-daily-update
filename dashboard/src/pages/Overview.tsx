@@ -255,11 +255,8 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange, spa
     : undefined;
   const changeSign = change != null && change > 0 ? '+' : '';
 
-  // Detect anomaly from sparkline data
-  const numericValue = parseFloat(value.replace(/[$,%K]/g, ''));
-  const anomaly = !isNaN(numericValue) && sparklineData
-    ? detectKPIAnomaly(numericValue, sparklineData, title)
-    : undefined;
+  // Anomaly detection disabled - was comparing formatted values incorrectly
+  const anomaly = undefined;
 
   const renderSparkline = () => {
     if (!sparklineData || sparklineData.length < 2) return null;
@@ -629,17 +626,6 @@ export function Overview() {
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
 
-      {/* Payback Gauge */}
-      {marketing.length > 0 && marketing[0].roas.total !== null && (
-        <div style={{ marginBottom: 16 }}>
-          <PaybackGauge
-            currentPercent={(marketing[0].roas.total || 0) * 100}
-            breakEvenDay={marketing[0].paybackMonths ? marketing[0].paybackMonths * 30 : null}
-            targetDays={60}
-            cohortStartDate={marketing[0].month}
-          />
-        </div>
-      )}
 
       {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>
@@ -693,46 +679,46 @@ export function Overview() {
       </div>
 
       {/* Trend Chart - Spend/Revenue/ROAS */}
-      <TrendChart data={trendChartData} />
+      {trendChartData?.data && <TrendChart data={trendChartData} />}
 
       {/* Subscription Breakdown */}
       <SubscriptionBreakdown data={subscriptionBreakdownData} />
 
       {/* MRR Breakdown */}
-      <MRRBreakdown data={mrrBreakdownData} />
+      {mrrBreakdownData?.current && <MRRBreakdown data={mrrBreakdownData} />}
 
       {/* Active Subscribers Widget */}
-      <ActiveSubscribersWidget data={activeSubscribersData} />
+      {activeSubscribersData?.current && <ActiveSubscribersWidget data={activeSubscribersData} />}
 
       {/* Revenue YoY Comparison */}
-      <RevenueYoYChart data={revenueYoYData} />
+      {revenueYoYData?.chartData && <RevenueYoYChart data={revenueYoYData} />}
 
       {/* Monthly Comparison Table */}
-      <MonthlyComparisonTable data={yoyData} />
+      {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
 
       {/* Scenario Modeling */}
       <ScenarioModeling />
 
       {/* Revenue by Day Chart */}
-      <RevenueByDayChart data={revenueByDayData} />
+      {revenueByDayData?.cohorts && <RevenueByDayChart data={revenueByDayData} />}
 
       {/* tROAS Chart */}
-      <TRoasChart data={tRoasData} />
+      {tRoasData?.cohorts && <TRoasChart data={tRoasData} />}
 
       {/* Retention Chart */}
-      <RetentionChart data={retentionData} />
+      {retentionData?.cohorts && <RetentionChart data={retentionData} />}
 
       {/* Payer Share Chart */}
-      <PayerShareChart data={payerShareData} />
+      {payerShareData?.cohorts && <PayerShareChart data={payerShareData} />}
 
       {/* Weekly Churn Analysis */}
-      <WeeklyChurnChart data={weeklyChurnData} />
+      {weeklyChurnData?.cohorts && <WeeklyChurnChart data={weeklyChurnData} />}
 
       {/* Yearly Renewal Rates */}
-      <RenewalRatesTable data={renewalRatesData} />
+      {renewalRatesData?.cohorts && <RenewalRatesTable data={renewalRatesData} />}
 
       {/* Countries Ranking */}
-      <CountriesTable data={countriesData} />
+      {countriesData?.countries && <CountriesTable data={countriesData} />}
 
       {/* Daily Chart */}
       <div style={styles.chartCard}>

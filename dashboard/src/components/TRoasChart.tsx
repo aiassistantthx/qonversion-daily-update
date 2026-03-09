@@ -37,17 +37,17 @@ interface TRoasChartProps {
 }
 
 export function TRoasChart({ data, selectedCohorts }: TRoasChartProps) {
-  if (!data) {
+  if (!data || !data.cohorts || !data.chartData) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>tROAS (Cumulative ROAS) by Cohort Age</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>API endpoint coming soon</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
-  const chartData = data.chartData || [];
-  const cohortMonths = data.cohorts?.map(c => c.month) || [];
+  const chartData = data.chartData;
+  const cohortMonths = data.cohorts.map(c => c.month);
   const displayCohorts = selectedCohorts?.length
     ? cohortMonths.filter(m => selectedCohorts.includes(m))
     : cohortMonths.slice(-6); // Last 6 cohorts

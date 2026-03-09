@@ -29,18 +29,18 @@ const COLORS = {
 };
 
 export function SubscriptionBreakdown({ data }: SubscriptionBreakdownProps) {
-  if (!data) {
+  if (!data || !data.current) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Revenue by Subscription Type</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>API endpoint coming soon</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
   const pieData = [
-    { name: 'Weekly', value: data.current.weekly.revenue, percentage: data.current.weekly.percentage },
-    { name: 'Yearly', value: data.current.yearly.revenue, percentage: data.current.yearly.percentage },
+    { name: 'Weekly', value: data.current.weekly?.revenue || 0, percentage: data.current.weekly?.percentage || 0 },
+    { name: 'Yearly', value: data.current.yearly?.revenue || 0, percentage: data.current.yearly?.percentage || 0 },
   ];
 
   const trendData = data.trend?.map(t => ({

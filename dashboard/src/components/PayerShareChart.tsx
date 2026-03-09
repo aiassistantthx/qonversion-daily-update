@@ -47,16 +47,17 @@ interface PayerShareChartProps {
 }
 
 export function PayerShareChart({ data, mode = 'all' }: PayerShareChartProps) {
-  if (!data) {
+  if (!data || !data.cohorts || !data.chartData) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-        Loading payer share data...
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Payer Share Analysis</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
-  const chartData = data.chartData || [];
-  const cohortMonths = data.cohorts?.map(c => c.month).slice(-6) || [];
+  const chartData = data.chartData;
+  const cohortMonths = data.cohorts.map(c => c.month).slice(-6);
 
   const handleExport = () => {
     const modeLabel = mode === 'trial' ? 'trial-conversions' : mode === 'direct' ? 'direct-purchases' : 'all-payers';

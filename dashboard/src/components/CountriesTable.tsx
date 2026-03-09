@@ -53,6 +53,8 @@ const METRIC_OPTIONS: MetricOption[] = [
 
 const DEFAULT_METRICS = ['revenue', 'roas', 'cop', 'subscribers'];
 
+type CountryRow = NonNullable<CountriesData['countries']>[0];
+
 export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
   const [showSource, setShowSource] = useState<'all' | 'apple_ads' | 'organic'>('all');
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(() => {
@@ -71,27 +73,26 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
     setVisibleMetrics(metrics);
   }, []);
 
-  if (!data) {
-    return (
-      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
-        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Countries Ranking</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>API endpoint coming soon</div>
-      </div>
-    );
-  }
+  // Filter countries - must be before hooks to maintain consistent hook order
+  const countries = data?.countries || [];
+  const filteredCountries = showSource === 'all'
+    ? countries
+    : countries.filter(c => c.source === showSource);
 
-  // Filter countries
-  let filteredCountries = data.countries || [];
-  if (showSource !== 'all') {
-    filteredCountries = filteredCountries.filter(c => c.source === showSource);
-  }
-
-  type CountryRow = typeof filteredCountries[0];
   const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<CountryRow>(
     filteredCountries,
     'revenue' as keyof CountryRow,
     false
   );
+
+  if (!data) {
+    return (
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Countries Ranking</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
+      </div>
+    );
+  }
 
   const sortedCountries = sortedData.slice(0, topN);
 

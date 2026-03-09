@@ -44,16 +44,17 @@ interface WeeklyChurnChartProps {
 }
 
 export function WeeklyChurnChart({ data }: WeeklyChurnChartProps) {
-  if (!data) {
+  if (!data || !data.cohorts || !data.chartData) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-        Loading weekly churn data...
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Weekly Churn Analysis</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
       </div>
     );
   }
 
-  const chartData = data.chartData || [];
-  const cohortMonths = data.cohorts?.map(c => c.month).slice(-6) || [];
+  const chartData = data.chartData;
+  const cohortMonths = data.cohorts.map(c => c.month).slice(-6);
 
   const handleExport = () => {
     const headers = ['Cohort', 'Initial', 'W1', 'W2', 'W3', 'W4', 'W8', 'W12', 'Steady State'];
