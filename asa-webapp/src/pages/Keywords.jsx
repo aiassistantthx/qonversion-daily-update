@@ -174,6 +174,22 @@ export default function Keywords() {
           aVal = parseFloat(a.sov || 0);
           bVal = parseFloat(b.sov || 0);
           break;
+        case 'ttr':
+          aVal = parseFloat(a.ttr_7d || 0);
+          bVal = parseFloat(b.ttr_7d || 0);
+          break;
+        case 'cvr':
+          aVal = parseFloat(a.cvr_7d || 0);
+          bVal = parseFloat(b.cvr_7d || 0);
+          break;
+        case 'cpt':
+          aVal = parseFloat(a.cpt_7d || 999999);
+          bVal = parseFloat(b.cpt_7d || 999999);
+          break;
+        case 'cpm':
+          aVal = parseFloat(a.cpm_7d || 999999);
+          bVal = parseFloat(b.cpm_7d || 999999);
+          break;
         default:
           aVal = a.keyword_text || '';
           bVal = b.keyword_text || '';
@@ -323,11 +339,13 @@ export default function Keywords() {
   };
 
   const exportCSV = () => {
-    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
       const spend = parseFloat(k.spend_7d || 0);
       const revenue = parseFloat(k.revenue_7d || 0);
       const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
+      const ttr = parseFloat(k.ttr_7d || 0);
+      const cvr = parseFloat(k.cvr_7d || 0);
       return [
         `"${k.keyword_text}"`,
         k.match_type,
@@ -337,8 +355,12 @@ export default function Keywords() {
         k.impressions_7d || 0,
         parseFloat(k.sov || 0).toFixed(2),
         k.taps_7d || 0,
+        (ttr * 100).toFixed(2) + '%',
         k.installs_7d || 0,
+        (cvr * 100).toFixed(2) + '%',
         k.cpa_7d || '',
+        k.cpt_7d || '',
+        k.cpm_7d || '',
         revenue.toFixed(2),
         roas,
         k.cop_7d || '',
@@ -627,8 +649,12 @@ export default function Keywords() {
                 <SortHeader field="impressions" className="text-right">Impressions</SortHeader>
                 <SortHeader field="sov" className="text-right">SOV %</SortHeader>
                 <SortHeader field="taps" className="text-right">Taps</SortHeader>
+                <SortHeader field="ttr" className="text-right">TTR</SortHeader>
                 <SortHeader field="installs" className="text-right">Installs</SortHeader>
+                <SortHeader field="cvr" className="text-right">CVR</SortHeader>
                 <SortHeader field="cpa" className="text-right">CPA</SortHeader>
+                <SortHeader field="cpt" className="text-right">CPT</SortHeader>
+                <SortHeader field="cpm" className="text-right">CPM</SortHeader>
                 <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
                 <SortHeader field="roas" className="text-right">ROAS</SortHeader>
                 <SortHeader field="cop" className="text-right">COP</SortHeader>
@@ -637,11 +663,11 @@ export default function Keywords() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={17} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={17} className="text-center py-8 text-gray-500">
                     No keywords found. Select a campaign from the Campaigns page.
                   </TableCell>
                 </TableRow>
@@ -730,10 +756,22 @@ export default function Keywords() {
                         {parseInt(kw.taps_7d || 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
+                        {(parseFloat(kw.ttr_7d || 0) * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
                         {parseInt(kw.installs_7d || 0)}
                       </TableCell>
                       <TableCell className="text-right">
+                        {(parseFloat(kw.cvr_7d || 0) * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
                         {kw.cpa_7d ? `$${parseFloat(kw.cpa_7d).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {kw.cpt_7d ? `$${parseFloat(kw.cpt_7d).toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {kw.cpm_7d ? `$${parseFloat(kw.cpm_7d).toFixed(2)}` : '-'}
                       </TableCell>
                       <TableCell className="text-right text-green-600">
                         ${revenue.toFixed(2)}

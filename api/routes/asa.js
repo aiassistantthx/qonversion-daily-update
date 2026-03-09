@@ -142,7 +142,11 @@ router.get('/campaigns', async (req, res) => {
         COALESCE(r.revenue, 0) as revenue,
         COALESCE(r.paid_users, 0) as paid_users,
         CASE WHEN c.spend > 0 THEN COALESCE(r.revenue, 0) / c.spend ELSE 0 END as roas,
-        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN c.spend / r.paid_users ELSE NULL END as cop
+        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN c.spend / r.paid_users ELSE NULL END as cop,
+        CASE WHEN c.impressions > 0 THEN c.taps::float / c.impressions ELSE 0 END as ttr,
+        CASE WHEN c.taps > 0 THEN c.installs::float / c.taps ELSE 0 END as cvr,
+        CASE WHEN c.taps > 0 THEN c.spend / c.taps ELSE NULL END as cpt,
+        CASE WHEN c.impressions > 0 THEN (c.spend / c.impressions) * 1000 ELSE NULL END as cpm
       FROM (
         SELECT
           campaign_id,
@@ -503,6 +507,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
     const enriched = adGroups.map(ag => {
       const perf = performanceMap.get(String(ag.id)) || {};
       const spend = parseFloat(perf.spend || 0);
+      const impressions = parseInt(perf.impressions || 0);
+      const taps = parseInt(perf.taps || 0);
       const installs = parseInt(perf.installs || 0);
       const revenue = parseFloat(perf.revenue || 0);
       const paidUsers = parseInt(perf.paid_users || 0);
@@ -511,14 +517,18 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
         ...ag,
         performance: {
           spend,
-          impressions: parseInt(perf.impressions || 0),
-          taps: parseInt(perf.taps || 0),
+          impressions,
+          taps,
           installs,
           revenue,
           paid_users: paidUsers,
           cpa: installs > 0 ? spend / installs : null,
           roas: spend > 0 ? revenue / spend : 0,
           cop: paidUsers > 0 ? spend / paidUsers : null,
+          ttr: impressions > 0 ? taps / impressions : 0,
+          cvr: taps > 0 ? installs / taps : 0,
+          cpt: taps > 0 ? spend / taps : null,
+          cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
         }
       };
     });
@@ -725,6 +735,9 @@ router.get('/keywords', async (req, res) => {
         CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / p.spend ELSE 0 END as roas_7d,
         CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(p.spend, 0) / r.paid_users ELSE NULL END as cop_7d,
         CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d,
+        CASE WHEN COALESCE(p.taps, 0) > 0 THEN COALESCE(p.installs, 0)::float / p.taps ELSE 0 END as cvr_7d,
+        CASE WHEN COALESCE(p.taps, 0) > 0 THEN COALESCE(p.spend, 0) / p.taps ELSE NULL END as cpt_7d,
+        CASE WHEN COALESCE(p.impressions, 0) > 0 THEN (COALESCE(p.spend, 0) / p.impressions) * 1000 ELSE NULL END as cpm_7d,
         CASE WHEN ti.total_impr > 0 THEN (COALESCE(p.impressions, 0)::float / ti.total_impr) * 100 ELSE 0 END as sov
       FROM keyword_base k
       LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id

@@ -24,6 +24,10 @@ const DEFAULT_COLUMNS = {
   roas: true,
   installs: true,
   cpa: true,
+  ttr: false,
+  cvr: false,
+  cpt: false,
+  cpm: false,
 };
 
 const COLUMN_DEFINITIONS = [
@@ -34,6 +38,10 @@ const COLUMN_DEFINITIONS = [
   { id: 'roas', label: 'ROAS' },
   { id: 'installs', label: 'Installs' },
   { id: 'cpa', label: 'CPA' },
+  { id: 'ttr', label: 'TTR' },
+  { id: 'cvr', label: 'CVR' },
+  { id: 'cpt', label: 'CPT' },
+  { id: 'cpm', label: 'CPM' },
 ];
 
 export default function Campaigns() {
@@ -130,6 +138,22 @@ export default function Campaigns() {
           aVal = getPerf(a, 'cpa') || 999999;
           bVal = getPerf(b, 'cpa') || 999999;
           break;
+        case 'ttr':
+          aVal = getPerf(a, 'ttr');
+          bVal = getPerf(b, 'ttr');
+          break;
+        case 'cvr':
+          aVal = getPerf(a, 'cvr');
+          bVal = getPerf(b, 'cvr');
+          break;
+        case 'cpt':
+          aVal = getPerf(a, 'cpt') || 999999;
+          bVal = getPerf(b, 'cpt') || 999999;
+          break;
+        case 'cpm':
+          aVal = getPerf(a, 'cpm') || 999999;
+          bVal = getPerf(b, 'cpm') || 999999;
+          break;
         default:
           aVal = a.name.toLowerCase();
           bVal = b.name.toLowerCase();
@@ -173,12 +197,14 @@ export default function Campaigns() {
   };
 
   const exportCSV = () => {
-    const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP', 'TTR', 'CVR', 'CPT', 'CPM'];
     const rows = campaigns.map(c => {
       const p = c.performance || {};
       const spend = parseFloat(p.spend || 0);
       const revenue = parseFloat(p.revenue || 0);
       const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
+      const ttr = parseFloat(p.ttr || 0);
+      const cvr = parseFloat(p.cvr || 0);
       return [
         `"${c.name}"`,
         c.status,
@@ -191,6 +217,10 @@ export default function Campaigns() {
         revenue.toFixed(2),
         roas,
         p.cop ? parseFloat(p.cop).toFixed(2) : '',
+        (ttr * 100).toFixed(2) + '%',
+        (cvr * 100).toFixed(2) + '%',
+        p.cpt ? parseFloat(p.cpt).toFixed(2) : '',
+        p.cpm ? parseFloat(p.cpm).toFixed(2) : '',
       ];
     });
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -309,6 +339,10 @@ export default function Campaigns() {
               {visibleColumns.roas && <SortHeader field="roas" className="text-right">ROAS</SortHeader>}
               {visibleColumns.installs && <SortHeader field="installs" className="text-right">Installs</SortHeader>}
               {visibleColumns.cpa && <SortHeader field="cpa" className="text-right">CPA</SortHeader>}
+              {visibleColumns.ttr && <SortHeader field="ttr" className="text-right">TTR</SortHeader>}
+              {visibleColumns.cvr && <SortHeader field="cvr" className="text-right">CVR</SortHeader>}
+              {visibleColumns.cpt && <SortHeader field="cpt" className="text-right">CPT</SortHeader>}
+              {visibleColumns.cpm && <SortHeader field="cpm" className="text-right">CPM</SortHeader>}
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
@@ -385,6 +419,26 @@ export default function Campaigns() {
                     {visibleColumns.cpa && (
                       <TableCell className="text-right">
                         {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
+                      </TableCell>
+                    )}
+                    {visibleColumns.ttr && (
+                      <TableCell className="text-right">
+                        {(getPerf(campaign, 'ttr') * 100).toFixed(2)}%
+                      </TableCell>
+                    )}
+                    {visibleColumns.cvr && (
+                      <TableCell className="text-right">
+                        {(getPerf(campaign, 'cvr') * 100).toFixed(2)}%
+                      </TableCell>
+                    )}
+                    {visibleColumns.cpt && (
+                      <TableCell className="text-right">
+                        {getPerf(campaign, 'cpt') ? `$${getPerf(campaign, 'cpt').toFixed(2)}` : '-'}
+                      </TableCell>
+                    )}
+                    {visibleColumns.cpm && (
+                      <TableCell className="text-right">
+                        {getPerf(campaign, 'cpm') ? `$${getPerf(campaign, 'cpm').toFixed(2)}` : '-'}
                       </TableCell>
                     )}
                     <TableCell>

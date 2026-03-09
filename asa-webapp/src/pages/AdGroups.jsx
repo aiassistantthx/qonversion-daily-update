@@ -123,6 +123,22 @@ export default function AdGroups() {
           aVal = getPerf(a, 'cpa') || 999999;
           bVal = getPerf(b, 'cpa') || 999999;
           break;
+        case 'ttr':
+          aVal = getPerf(a, 'ttr');
+          bVal = getPerf(b, 'ttr');
+          break;
+        case 'cvr':
+          aVal = getPerf(a, 'cvr');
+          bVal = getPerf(b, 'cvr');
+          break;
+        case 'cpt':
+          aVal = getPerf(a, 'cpt') || 999999;
+          bVal = getPerf(b, 'cpt') || 999999;
+          break;
+        case 'cpm':
+          aVal = getPerf(a, 'cpm') || 999999;
+          bVal = getPerf(b, 'cpm') || 999999;
+          break;
         default:
           aVal = (a.name || '').toLowerCase();
           bVal = (b.name || '').toLowerCase();
@@ -323,6 +339,10 @@ export default function AdGroups() {
               <SortHeader field="roas" className="text-right">ROAS</SortHeader>
               <SortHeader field="installs" className="text-right">Installs</SortHeader>
               <SortHeader field="cpa" className="text-right">CPA</SortHeader>
+              <SortHeader field="ttr" className="text-right">TTR</SortHeader>
+              <SortHeader field="cvr" className="text-right">CVR</SortHeader>
+              <SortHeader field="cpt" className="text-right">CPT</SortHeader>
+              <SortHeader field="cpm" className="text-right">CPM</SortHeader>
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
@@ -377,6 +397,18 @@ export default function AdGroups() {
                   </TableCell>
                   <TableCell className="text-right">
                     {getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(getPerf(ag, 'ttr') * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(getPerf(ag, 'cvr') * 100).toFixed(2)}%
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}
                   </TableCell>
                   <TableCell>
                     <Button
