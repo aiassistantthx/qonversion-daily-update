@@ -2278,7 +2278,7 @@ router.get('/debug-attribution', async (req, res) => {
         ua.campaign_id as ua_campaign_id,
         ua.adgroup_id as ua_adgroup_id,
         ua.keyword_id as ua_keyword_id,
-        ua.created_at as ua_created_at
+        ua.attributed_at as ua_attributed_at
       FROM missing_users mu
       LEFT JOIN user_attributions ua ON mu.q_user_id = ua.user_id
     `);
