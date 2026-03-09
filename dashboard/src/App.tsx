@@ -500,7 +500,7 @@ function Dashboard() {
                 <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 7d</th>
                 <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 30d</th>
                 <th style={{ ...styles.thRight, background: '#dbeafe' }}>ROAS 60d</th>
-                <th style={{ ...styles.thRight, background: '#fef3c7' }}>Predicted</th>
+                <th style={{ ...styles.thRight, background: '#fef3c7' }}>Fact ROAS</th>
                 <th style={styles.thRight}>Payback</th>
               </tr>
             </thead>
@@ -520,12 +520,12 @@ function Dashboard() {
                   <td style={{ ...styles.tdRight, background: '#dbeafe', color: row.roas.d60 && row.roas.d60 >= 1 ? '#10b981' : '#ef4444' }}>
                     {row.roas.d60 ? `${row.roas.d60.toFixed(2)}x` : '—'}
                   </td>
-                  <td style={{ ...styles.tdRight, background: '#fef3c7', fontWeight: 500 }}>
-                    {row.roas.predicted ? `${row.roas.predicted.toFixed(2)}x` : '—'}
+                  <td style={{ ...styles.tdRight, background: '#fef3c7', fontWeight: 500, color: row.roas.total && row.roas.total >= 1 ? '#10b981' : '#ef4444' }}>
+                    {row.roas.total ? `${row.roas.total.toFixed(2)}x` : '—'}
                   </td>
                   <td style={{ ...styles.tdRight, color: row.isPaidBack ? '#10b981' : (row.predictedPaybackMonths ? '#f59e0b' : '#9ca3af') }}>
                     {row.paybackMonths ? `${row.paybackMonths}mo` :
-                     row.predictedPaybackMonths ? (row.predictedPaybackMonths > 24 ? '>2yr' : `~${row.predictedPaybackMonths}mo`) : '—'}
+                     row.predictedPaybackMonths ? (row.predictedPaybackMonths > 24 ? '>2yr' : `~${row.predictedPaybackMonths}mo`) : 'n/a'}
                   </td>
                 </tr>
               ))}
