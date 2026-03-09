@@ -40,7 +40,6 @@ export function detectAnomaly(
   if (Math.abs(deviationPercent) < 20 || Math.abs(zScore) < 2) return undefined;
 
   const isHigh = currentValue > mean;
-  const isBad = isLowerBetter ? isHigh : !isHigh;
 
   return {
     type: Math.abs(zScore) > 3 ? 'critical' : 'warning',

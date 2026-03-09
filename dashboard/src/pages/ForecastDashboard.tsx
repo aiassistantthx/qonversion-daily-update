@@ -108,7 +108,7 @@ export function ForecastDashboard() {
                   borderRadius: '8px',
                   color: '#e6edf3'
                 }}
-                formatter={(value: number) => [`$${(value / 1000).toFixed(1)}k`, '']}
+                formatter={(value) => [`$${(Number(value) / 1000).toFixed(1)}k`, '']}
                 labelFormatter={(label) => `Month: ${label}`}
               />
               <Area

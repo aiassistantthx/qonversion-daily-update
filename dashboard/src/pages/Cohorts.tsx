@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, X, ChevronDown } from 'lucide-react';
-import { CohortTable, CohortsData } from '../components/CohortTable';
+import { CohortTable, type CohortsData } from '../components/CohortTable';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
