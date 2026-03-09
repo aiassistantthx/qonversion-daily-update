@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Globe, Download } from 'lucide-react';
+import { Globe, Download } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
 import { MetricSelector, type MetricOption } from './MetricSelector';
+import { useSortableData, SortIcon } from './SortableTable';
 
 export interface CountriesData {
   countries: Array<{
@@ -30,8 +31,6 @@ interface CountriesTableProps {
   topN?: number;
 }
 
-type SortKey = 'country' | 'revenue' | 'spend' | 'roas' | 'cop' | 'subscribers' | 'trials';
-
 // Country flag emoji from country code
 function getFlag(countryCode: string): string {
   if (!countryCode || countryCode.length !== 2) return '🌍';
@@ -55,8 +54,6 @@ const METRIC_OPTIONS: MetricOption[] = [
 const DEFAULT_METRICS = ['revenue', 'roas', 'cop', 'subscribers'];
 
 export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('revenue');
-  const [sortAsc, setSortAsc] = useState(false);
   const [showSource, setShowSource] = useState<'all' | 'apple_ads' | 'organic'>('all');
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(() => {
     const stored = localStorage.getItem('countries-visible-metrics');
@@ -83,31 +80,20 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
     );
   }
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(false);
-    }
-  };
-
-  // Filter and sort countries
+  // Filter countries
   let filteredCountries = data.countries || [];
   if (showSource !== 'all') {
     filteredCountries = filteredCountries.filter(c => c.source === showSource);
   }
 
-  const sortedCountries = [...filteredCountries].sort((a, b) => {
-    let aVal = a[sortKey];
-    let bVal = b[sortKey];
-    if (aVal == null) aVal = -Infinity;
-    if (bVal == null) bVal = -Infinity;
-    if (typeof aVal === 'string') {
-      return sortAsc ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
-    }
-    return sortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-  }).slice(0, topN);
+  type CountryRow = typeof filteredCountries[0];
+  const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<CountryRow>(
+    filteredCountries,
+    'revenue' as keyof CountryRow,
+    false
+  );
+
+  const sortedCountries = sortedData.slice(0, topN);
 
   const handleExport = () => {
     const headers = ['#', 'Country', 'Country Code'];
@@ -147,11 +133,6 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
     });
 
     exportToCSV('countries-ranking', headers, rows);
-  };
-
-  const SortIcon = ({ column }: { column: SortKey }) => {
-    if (sortKey !== column) return null;
-    return sortAsc ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
   };
 
   return (
@@ -223,57 +204,57 @@ export function CountriesTable({ data, topN = 20 }: CountriesTableProps) {
               <th style={thStyle}>#</th>
               <th
                 style={{ ...thStyle, cursor: 'pointer' }}
-                onClick={() => handleSort('country')}
+                onClick={() => handleSort('country' as keyof CountryRow)}
               >
-                Country <SortIcon column="country" />
+                Country <SortIcon column="country" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
               {showSource === 'all' && <th style={thStyle}>Source</th>}
               {visibleMetrics.includes('revenue') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('revenue')}
+                  onClick={() => handleSort('revenue' as keyof CountryRow)}
                 >
-                  Revenue <SortIcon column="revenue" />
+                  Revenue <SortIcon column="revenue" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('spend') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('spend')}
+                  onClick={() => handleSort('spend' as keyof CountryRow)}
                 >
-                  Spend <SortIcon column="spend" />
+                  Spend <SortIcon column="spend" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('roas') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('roas')}
+                  onClick={() => handleSort('roas' as keyof CountryRow)}
                 >
-                  ROAS <SortIcon column="roas" />
+                  ROAS <SortIcon column="roas" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('cop') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('cop')}
+                  onClick={() => handleSort('cop' as keyof CountryRow)}
                 >
-                  COP <SortIcon column="cop" />
+                  COP <SortIcon column="cop" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('subscribers') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('subscribers')}
+                  onClick={() => handleSort('subscribers' as keyof CountryRow)}
                 >
-                  Subs <SortIcon column="subscribers" />
+                  Subs <SortIcon column="subscribers" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('trials') && (
                 <th
                   style={{ ...thRightStyle, cursor: 'pointer' }}
-                  onClick={() => handleSort('trials')}
+                  onClick={() => handleSort('trials' as keyof CountryRow)}
                 >
-                  Trials <SortIcon column="trials" />
+                  Trials <SortIcon column="trials" currentColumn={sortKey as string} ascending={sortAsc} />
                 </th>
               )}
               {visibleMetrics.includes('crToPaid') && (

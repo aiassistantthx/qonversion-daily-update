@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Calendar, Download, TrendingUp } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
+import { useSortableData, SortIcon } from './SortableTable';
 
 export interface CohortData {
   cohort: string;
@@ -182,6 +183,11 @@ function formatPaybackDays(days: number | null): string {
 
 export function CohortTable({ data }: CohortTableProps) {
   const [viewMode, setViewMode] = useState<'roas' | 'revenue' | 'cop'>('roas');
+  const { sortedData: sortedCohorts, sortKey, sortAsc, handleSort } = useSortableData<CohortData>(
+    data?.cohorts || [],
+    'cohort' as keyof CohortData,
+    false
+  );
 
   if (!data) {
     return (
@@ -206,7 +212,7 @@ export function CohortTable({ data }: CohortTableProps) {
 
   const handleExport = () => {
     const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total', 'Predicted D180', 'Predicted D365', 'Payback Days'];
-    const rows = data.cohorts.map(c => {
+    const rows = sortedCohorts.map(c => {
       if (viewMode === 'roas') {
         return [
           c.cohort,
@@ -350,10 +356,18 @@ export function CohortTable({ data }: CohortTableProps) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>
-              <th style={thStyle}>Cohort</th>
-              <th style={thRightStyle}>Age</th>
-              <th style={thRightStyle}>Spend</th>
-              <th style={thRightStyle}>Users</th>
+              <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('cohort' as keyof CohortData)}>
+                Cohort <SortIcon column="cohort" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th style={{ ...thRightStyle, cursor: 'pointer' }} onClick={() => handleSort('cohortAge' as keyof CohortData)}>
+                Age <SortIcon column="cohortAge" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th style={{ ...thRightStyle, cursor: 'pointer' }} onClick={() => handleSort('spend' as keyof CohortData)}>
+                Spend <SortIcon column="spend" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
+              <th style={{ ...thRightStyle, cursor: 'pointer' }} onClick={() => handleSort('users' as keyof CohortData)}>
+                Users <SortIcon column="users" currentColumn={sortKey as string} ascending={sortAsc} />
+              </th>
               <th style={thRightStyle}>D0</th>
               <th style={thRightStyle}>D3</th>
               <th style={thRightStyle}>D7</th>
@@ -372,7 +386,7 @@ export function CohortTable({ data }: CohortTableProps) {
             </tr>
           </thead>
           <tbody>
-            {data.cohorts.map((cohort) => {
+            {sortedCohorts.map((cohort) => {
               return (
                 <tr key={cohort.cohort} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={tdStyle}>

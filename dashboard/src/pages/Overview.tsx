@@ -26,6 +26,8 @@ import {
   PayerShareChart,
   ActiveSubscribersWidget,
   PaybackGauge,
+  useSortableData,
+  SortIcon,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
@@ -434,6 +436,20 @@ export function Overview() {
   const keywords = keywordsData?.keywords || [];
   const keywordTotals = keywordsData?.totals;
 
+  // Sorting hooks for tables
+  type MonthlyRow = typeof monthly[0];
+  type MarketingRow = typeof marketing[0];
+  type KeywordRow = typeof keywords[0];
+
+  const { sortedData: sortedMonthly, sortKey: monthlySortKey, sortAsc: monthlySortAsc, handleSort: handleMonthlySort } =
+    useSortableData<MonthlyRow>(monthly, 'month' as keyof MonthlyRow, false);
+
+  const { sortedData: sortedMarketing, sortKey: marketingSortKey, sortAsc: marketingSortAsc, handleSort: handleMarketingSort } =
+    useSortableData<MarketingRow>(marketing, 'month' as keyof MarketingRow, false);
+
+  const { sortedData: sortedKeywords, sortKey: keywordsSortKey, sortAsc: keywordsSortAsc, handleSort: handleKeywordsSort } =
+    useSortableData<KeywordRow>(keywords, 'spend' as keyof KeywordRow, false);
+
   const last7Days = daily.slice(-7);
   const spendSparkline = last7Days.map(d => d.spend);
   const revenueSparkline = last7Days.map(d => d.revenue);
@@ -789,17 +805,31 @@ export function Overview() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Month</th>
-                <th style={styles.thRight}>Spend</th>
-                <th style={styles.thRight}>Sales</th>
-                <th style={styles.thRight}>Subs</th>
-                <th style={styles.thRight}>COP</th>
-                <th style={styles.thRight}>CR %</th>
-                <th style={styles.thRight}>ROAS (net)</th>
+                <th style={{ ...styles.th, cursor: 'pointer' }} onClick={() => handleMonthlySort('month' as keyof MonthlyRow)}>
+                  Month <SortIcon column="month" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('spend' as keyof MonthlyRow)}>
+                  Spend <SortIcon column="spend" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('revenue' as keyof MonthlyRow)}>
+                  Sales <SortIcon column="revenue" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('subscribers' as keyof MonthlyRow)}>
+                  Subs <SortIcon column="subscribers" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('cop' as keyof MonthlyRow)}>
+                  COP <SortIcon column="cop" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('crToPaid' as keyof MonthlyRow)}>
+                  CR % <SortIcon column="crToPaid" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMonthlySort('roas' as keyof MonthlyRow)}>
+                  ROAS (net) <SortIcon column="roas" currentColumn={monthlySortKey as string} ascending={monthlySortAsc} />
+                </th>
               </tr>
             </thead>
             <tbody>
-              {monthly.map(row => {
+              {sortedMonthly.map(row => {
                 const roasNet = row.roas ? row.roas * 0.82 : null;
                 return (
                   <tr key={row.month} style={styles.tr}>
@@ -830,9 +860,15 @@ export function Overview() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Month</th>
-                <th style={styles.thRight}>Spend</th>
-                <th style={styles.thRight}>Age</th>
+                <th style={{ ...styles.th, cursor: 'pointer' }} onClick={() => handleMarketingSort('month' as keyof MarketingRow)}>
+                  Month <SortIcon column="month" currentColumn={marketingSortKey as string} ascending={marketingSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMarketingSort('spend' as keyof MarketingRow)}>
+                  Spend <SortIcon column="spend" currentColumn={marketingSortKey as string} ascending={marketingSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleMarketingSort('cohortAge' as keyof MarketingRow)}>
+                  Age <SortIcon column="cohortAge" currentColumn={marketingSortKey as string} ascending={marketingSortAsc} />
+                </th>
                 <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 4d</th>
                 <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 7d</th>
                 <th style={{ ...styles.thRight, background: '#f0fdf4' }}>COP 30d</th>
@@ -846,7 +882,7 @@ export function Overview() {
               </tr>
             </thead>
             <tbody>
-              {marketing.map(row => (
+              {sortedMarketing.map(row => (
                 <tr key={row.month} style={styles.tr}>
                   <td style={styles.td}>{row.month}</td>
                   <td style={styles.tdRight}>{fmt(row.spend)}</td>
@@ -901,20 +937,40 @@ export function Overview() {
           <table style={styles.table}>
             <thead style={{ position: 'sticky', top: 0, background: '#fff' }}>
               <tr>
-                <th style={styles.th}>Keyword</th>
-                <th style={styles.th}>Campaign</th>
-                <th style={styles.thRight}>Spend</th>
-                <th style={styles.thRight}>Installs</th>
-                <th style={styles.thRight}>Trials</th>
-                <th style={styles.thRight}>Conversions</th>
-                <th style={styles.thRight}>CPI</th>
-                <th style={styles.thRight}>COP</th>
-                <th style={styles.thRight}>ROAS</th>
-                <th style={styles.thRight}>CR %</th>
+                <th style={{ ...styles.th, cursor: 'pointer' }} onClick={() => handleKeywordsSort('keyword' as keyof KeywordRow)}>
+                  Keyword <SortIcon column="keyword" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.th, cursor: 'pointer' }} onClick={() => handleKeywordsSort('campaign' as keyof KeywordRow)}>
+                  Campaign <SortIcon column="campaign" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('spend' as keyof KeywordRow)}>
+                  Spend <SortIcon column="spend" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('installs' as keyof KeywordRow)}>
+                  Installs <SortIcon column="installs" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('trials' as keyof KeywordRow)}>
+                  Trials <SortIcon column="trials" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('conversions' as keyof KeywordRow)}>
+                  Conversions <SortIcon column="conversions" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('cpi' as keyof KeywordRow)}>
+                  CPI <SortIcon column="cpi" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('cop' as keyof KeywordRow)}>
+                  COP <SortIcon column="cop" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('roas' as keyof KeywordRow)}>
+                  ROAS <SortIcon column="roas" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
+                <th style={{ ...styles.thRight, cursor: 'pointer' }} onClick={() => handleKeywordsSort('crToPaid' as keyof KeywordRow)}>
+                  CR % <SortIcon column="crToPaid" currentColumn={keywordsSortKey as string} ascending={keywordsSortAsc} />
+                </th>
               </tr>
             </thead>
             <tbody>
-              {keywords.slice(0, 50).map((kw, i) => (
+              {sortedKeywords.slice(0, 50).map((kw, i) => (
                 <tr key={kw.keywordId || i} style={styles.tr}>
                   <td style={{ ...styles.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <Search size={12} style={{ marginRight: 6, color: '#9ca3af' }} />
