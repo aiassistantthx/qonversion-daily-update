@@ -381,25 +381,6 @@ export default function Campaigns() {
     setDraggedColumn(null);
   };
 
-  const SortHeader = ({ field, children, className = '' }) => (
-    <TableHeader
-      className={`cursor-pointer select-none hover:bg-gray-100 ${className} ${draggedColumn === field ? 'opacity-50' : ''}`}
-      onClick={() => handleSort(field)}
-      draggable
-      onDragStart={(e) => handleDragStart(e, field)}
-      onDragOver={handleDragOver}
-      onDrop={(e) => handleDrop(e, field)}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        {sortField === field && (
-          sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-        )}
-      </div>
-    </TableHeader>
-  );
-
   const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 3;
 
   return (
@@ -495,7 +476,20 @@ export default function Campaigns() {
                   className="rounded border-gray-300"
                 />
               </TableHeader>
-              <SortHeader field="name">Campaign</SortHeader>
+              <SortHeader
+                field="name"
+                onClick={() => handleSort('name')}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                draggable
+                onDragStart={(e) => handleDragStart(e, 'name')}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, 'name')}
+                onDragEnd={handleDragEnd}
+                draggedColumn={draggedColumn}
+              >
+                Campaign
+              </SortHeader>
               {columnOrder.map((columnId) => {
                 if (!visibleColumns[columnId]) return null;
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
@@ -523,7 +517,16 @@ export default function Campaigns() {
                   <SortHeader
                     key={columnId}
                     field={columnId}
+                    onClick={() => handleSort(columnId)}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
                     className={isRightAligned ? 'text-right' : ''}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, columnId)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, columnId)}
+                    onDragEnd={handleDragEnd}
+                    draggedColumn={draggedColumn}
                   >
                     {column.label}
                   </SortHeader>
