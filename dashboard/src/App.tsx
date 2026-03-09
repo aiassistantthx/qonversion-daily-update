@@ -4,12 +4,16 @@ import { Overview } from './pages/Overview';
 import { MarketingDashboard } from './pages/MarketingDashboard';
 import { CohortsDashboard } from './pages/CohortsDashboard';
 import { ForecastDashboard } from './pages/ForecastDashboard';
+import { ThemeContext, useThemeProvider, themes } from './styles/themes';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60000, retry: 1 } },
 });
 
 function DashboardLayout() {
+  const { theme, toggleTheme } = useThemeProvider();
+  const currentTheme = themes[theme];
+
   const tabs = [
     { path: '/dashboard/overview', label: 'Overview' },
     { path: '/dashboard/marketing', label: 'Marketing' },
@@ -18,35 +22,50 @@ function DashboardLayout() {
   ];
 
   return (
-    <div style={styles.container}>
-      {/* Header with Navigation */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>Analytics Dashboard</h1>
-        <nav style={styles.tabNav}>
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.path}
-              to={tab.path}
-              style={({ isActive }) => ({
-                ...styles.tab,
-                ...(isActive ? styles.tabActive : {}),
-              })}
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      <div style={{ ...styles.container, background: currentTheme.bg, minHeight: '100vh' }}>
+        <div style={{ ...styles.header }}>
+          <h1 style={{ ...styles.title, color: currentTheme.text }}>Analytics Dashboard</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <nav style={{ ...styles.tabNav, background: currentTheme.cardBg, borderColor: currentTheme.border }}>
+              {tabs.map((tab) => (
+                <NavLink
+                  key={tab.path}
+                  to={tab.path}
+                  style={({ isActive }) => ({
+                    ...styles.tab,
+                    color: isActive ? (theme === 'dark' ? '#000' : '#fff') : currentTheme.textMuted,
+                    ...(isActive ? { ...styles.tabActive, background: currentTheme.accent } : {}),
+                  })}
+                >
+                  {tab.label}
+                </NavLink>
+              ))}
+            </nav>
+            <button
+              onClick={toggleTheme}
+              style={{
+                ...styles.themeToggle,
+                background: currentTheme.cardBg,
+                borderColor: currentTheme.border,
+                color: currentTheme.text,
+              }}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
-              {tab.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+          </div>
+        </div>
 
-      {/* Content */}
-      <Routes>
-        <Route path="/overview" element={<Overview />} />
-        <Route path="/marketing" element={<MarketingDashboard />} />
-        <Route path="/cohorts" element={<CohortsDashboard />} />
-        <Route path="/forecast" element={<ForecastDashboard />} />
-        <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
-      </Routes>
-    </div>
+        <Routes>
+          <Route path="/overview" element={<Overview />} />
+          <Route path="/marketing" element={<MarketingDashboard />} />
+          <Route path="/cohorts" element={<CohortsDashboard />} />
+          <Route path="/forecast" element={<ForecastDashboard />} />
+          <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
+        </Routes>
+      </div>
+    </ThemeContext.Provider>
   );
 }
 
@@ -64,7 +83,7 @@ function App() {
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', -apple-system, sans-serif; background: #f9fafb; }
+        body { font-family: 'Inter', -apple-system, sans-serif; }
       `}</style>
     </QueryClientProvider>
   );
@@ -86,29 +105,31 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 24,
     fontWeight: 600,
-    color: '#111827',
   },
   tabNav: {
     display: 'flex',
     gap: 4,
-    background: '#fff',
     padding: 4,
     borderRadius: 8,
-    border: '1px solid #e5e7eb',
+    border: '1px solid',
   },
   tab: {
     padding: '8px 16px',
     fontSize: 14,
     fontWeight: 500,
-    color: '#6b7280',
     textDecoration: 'none',
     borderRadius: 6,
     transition: 'all 0.2s',
     cursor: 'pointer',
   },
-  tabActive: {
-    background: '#3b82f6',
-    color: '#fff',
+  tabActive: {},
+  themeToggle: {
+    padding: '8px 12px',
+    fontSize: 18,
+    border: '1px solid',
+    borderRadius: 8,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
 };
 
