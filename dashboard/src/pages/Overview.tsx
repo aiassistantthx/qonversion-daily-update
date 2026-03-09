@@ -24,12 +24,13 @@ import {
   ScenarioModeling,
   MetricSelector,
   PayerShareChart,
+  ActiveSubscribersWidget,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
   RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData, RevenueYoYData, PayerShareData
+  CountriesData, MRRBreakdownData, RevenueYoYData, PayerShareData, ActiveSubscribersData
 } from '../components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -383,6 +384,11 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/payer-share?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
+  const { data: activeSubscribersData } = useQuery<ActiveSubscribersData>({
+    queryKey: ['active-subscribers'],
+    queryFn: () => fetch(`${API_URL}/dashboard/active-subscribers`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -544,6 +550,9 @@ export function Overview() {
 
       {/* MRR Breakdown */}
       <MRRBreakdown data={mrrBreakdownData} />
+
+      {/* Active Subscribers Widget */}
+      <ActiveSubscribersWidget data={activeSubscribersData} />
 
       {/* Revenue YoY Comparison */}
       <RevenueYoYChart data={revenueYoYData} />

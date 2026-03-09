@@ -3596,4 +3596,111 @@ router.get('/payer-share', async (req, res) => {
   }
 });
 
+// Active Subscribers Gauge
+router.get('/active-subscribers', async (req, res) => {
+  try {
+    // Current active subscribers by type
+    const currentQuery = `
+      WITH recent_renewals AS (
+        SELECT DISTINCT
+          q_user_id,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            ELSE 'weekly'
+          END as sub_type
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+      )
+      SELECT
+        sub_type,
+        COUNT(*) as active_count
+      FROM recent_renewals
+      GROUP BY sub_type
+    `;
+    const currentResult = await db.query(currentQuery);
+
+    const current = { weekly: 0, yearly: 0, total: 0 };
+    for (const row of currentResult.rows) {
+      current[row.sub_type] = parseInt(row.active_count) || 0;
+    }
+    current.total = current.weekly + current.yearly;
+
+    // Previous period (30 days before)
+    const previousQuery = `
+      WITH recent_renewals AS (
+        SELECT DISTINCT
+          q_user_id,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            ELSE 'weekly'
+          END as sub_type
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '60 days'
+          AND event_date < CURRENT_DATE - INTERVAL '30 days'
+      )
+      SELECT
+        sub_type,
+        COUNT(*) as active_count
+      FROM recent_renewals
+      GROUP BY sub_type
+    `;
+    const previousResult = await db.query(previousQuery);
+
+    const previous = { weekly: 0, yearly: 0, total: 0 };
+    for (const row of previousResult.rows) {
+      previous[row.sub_type] = parseInt(row.active_count) || 0;
+    }
+    previous.total = previous.weekly + previous.yearly;
+
+    // Calculate trends
+    const weeklyTrend = previous.weekly > 0
+      ? ((current.weekly - previous.weekly) / previous.weekly) * 100
+      : 0;
+    const yearlyTrend = previous.yearly > 0
+      ? ((current.yearly - previous.yearly) / previous.yearly) * 100
+      : 0;
+    const totalTrend = previous.total > 0
+      ? ((current.total - previous.total) / previous.total) * 100
+      : 0;
+
+    // Sparkline data - last 30 days
+    const sparklineQuery = `
+      WITH daily_active AS (
+        SELECT
+          DATE_TRUNC('day', event_date)::date as day,
+          COUNT(DISTINCT q_user_id) as active_count
+        FROM events_v2
+        WHERE event_name = 'Subscription Renewed'
+          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY 1
+        ORDER BY 1
+      )
+      SELECT * FROM daily_active
+    `;
+    const sparklineResult = await db.query(sparklineQuery);
+    const sparkline = sparklineResult.rows.map(r => parseInt(r.active_count) || 0);
+
+    res.json({
+      current: {
+        weekly: current.weekly,
+        yearly: current.yearly,
+        total: current.total,
+        weeklyPercentage: current.total > 0 ? (current.weekly / current.total) * 100 : 0,
+        yearlyPercentage: current.total > 0 ? (current.yearly / current.total) * 100 : 0,
+      },
+      trend: {
+        weekly: weeklyTrend,
+        yearly: yearlyTrend,
+        total: totalTrend,
+      },
+      sparkline,
+    });
+  } catch (error) {
+    console.error('Active subscribers error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
