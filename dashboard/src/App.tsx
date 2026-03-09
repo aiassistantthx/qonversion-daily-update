@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Overview } from './pages/Overview';
@@ -5,6 +6,8 @@ import { MarketingDashboard } from './pages/MarketingDashboard';
 import { CohortsDashboard } from './pages/CohortsDashboard';
 import { ForecastDashboard } from './pages/ForecastDashboard';
 import { ThemeContext, useThemeProvider, themes } from './styles/themes';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { ShortcutsHelpModal } from './components';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60000, retry: 1 } },
@@ -13,6 +16,12 @@ const queryClient = new QueryClient({
 function DashboardLayout() {
   const { theme, toggleTheme } = useThemeProvider();
   const currentTheme = themes[theme];
+  const [showHelp, setShowHelp] = useState(false);
+
+  const shortcuts = useKeyboardShortcuts({
+    onRefresh: () => window.location.reload(),
+    onShowHelp: () => setShowHelp(true),
+  });
 
   const tabs = [
     { path: '/dashboard/overview', label: 'Overview' },
@@ -54,6 +63,18 @@ function DashboardLayout() {
             >
               {theme === 'light' ? '🌙' : '☀️'}
             </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              style={{
+                ...styles.themeToggle,
+                background: currentTheme.cardBg,
+                borderColor: currentTheme.border,
+                color: currentTheme.text,
+              }}
+              title="Keyboard shortcuts (Shift + ?)"
+            >
+              ?
+            </button>
           </div>
         </div>
 
@@ -64,6 +85,13 @@ function DashboardLayout() {
           <Route path="/forecast" element={<ForecastDashboard />} />
           <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
         </Routes>
+
+        {showHelp && (
+          <ShortcutsHelpModal
+            shortcuts={shortcuts}
+            onClose={() => setShowHelp(false)}
+          />
+        )}
       </div>
     </ThemeContext.Provider>
   );

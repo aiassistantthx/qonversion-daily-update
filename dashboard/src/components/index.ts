@@ -67,3 +67,5 @@ export { AnomalyBadge, detectAnomaly } from './AnomalyBadge';
 export type { AnomalyInfo } from './AnomalyBadge';
 
 export { MonthlyComparisonTable } from './MonthlyComparisonTable';
+
+export { ShortcutsHelpModal } from './ShortcutsHelpModal';
