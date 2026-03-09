@@ -80,7 +80,7 @@ router.get('/main', async (req, res) => {
     // Revenue this month (only actual revenue events) - total revenue
     const revenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
@@ -92,7 +92,7 @@ router.get('/main', async (req, res) => {
     // Revenue from users who installed THIS month AND came from Apple Ads
     const cohortRevenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND media_source = 'Apple AdServices'
         AND refund = false
@@ -104,7 +104,7 @@ router.get('/main', async (req, res) => {
     // New subscribers this month (trial_converted + subscription_started for yearly)
     const subscribersQuery = `
       SELECT COUNT(DISTINCT q_user_id) as subscribers
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND (
           event_name = 'Trial Converted'
@@ -121,7 +121,7 @@ router.get('/main', async (req, res) => {
         SELECT
           DATE(install_date) as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
           AND (
@@ -157,7 +157,7 @@ router.get('/main', async (req, res) => {
       ),
       subs AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events, period
+        FROM subscription_events, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
@@ -182,7 +182,7 @@ router.get('/main', async (req, res) => {
       ),
       subs AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events, period
+        FROM subscription_events, period
         WHERE DATE(install_date) BETWEEN start_date AND end_date
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
       ),
@@ -203,14 +203,14 @@ router.get('/main', async (req, res) => {
     const crQuery = `
       WITH cohort_trials AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
           AND event_name = 'Trial Started'
       ),
       cohort_converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
           AND event_name = 'Trial Converted'
@@ -244,7 +244,7 @@ router.get('/main', async (req, res) => {
     const prevCopQuery = `
       WITH cohort_conversions AS (
         SELECT COUNT(DISTINCT q_user_id) as subscribers
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND (
             event_name = 'Trial Converted'
@@ -267,13 +267,13 @@ router.get('/main', async (req, res) => {
     const prevCrQuery = `
       WITH cohort_trials AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND event_name = 'Trial Started'
       ),
       cohort_converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM qonversion_events
+        FROM subscription_events
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
           AND event_name = 'Trial Converted'
       )
@@ -347,7 +347,7 @@ router.get('/main', async (req, res) => {
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
-        FROM qonversion_events
+        FROM subscription_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '34 days'
         GROUP BY DATE(event_date)
       ),
@@ -355,7 +355,7 @@ router.get('/main', async (req, res) => {
         SELECT
           DATE(install_date) as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '34 days'
           AND (
             event_name = 'Trial Converted'
@@ -426,7 +426,7 @@ router.get('/main', async (req, res) => {
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
       ),
@@ -439,7 +439,7 @@ router.get('/main', async (req, res) => {
             WHERE event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           ) as subscribers
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           AND DATE(install_date) <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
@@ -605,7 +605,7 @@ router.get('/marketing', async (req, res) => {
           product_id,
           price_usd,
           refund
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           AND media_source = 'Apple AdServices'
       ),
@@ -782,7 +782,7 @@ router.get('/roas-evolution', async (req, res) => {
           price_usd,
           refund,
           event_name
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           AND media_source = 'Apple AdServices'
       ),
@@ -885,7 +885,7 @@ router.get('/keywords', async (req, res) => {
           WHERE event_name = 'Trial Converted'
           OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
         ) as conversions
-      FROM qonversion_events
+      FROM subscription_events
       WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
         AND media_source = 'Apple AdServices'
     `);
@@ -1007,7 +1007,7 @@ router.get('/forecast', async (req, res) => {
           event_date,
           price_usd,
           ROW_NUMBER() OVER (PARTITION BY q_user_id ORDER BY event_date DESC) as rn
-        FROM qonversion_events
+        FROM subscription_events
         WHERE event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
           AND product_id LIKE '%yearly%'
           AND refund = false
@@ -1035,7 +1035,7 @@ router.get('/forecast', async (req, res) => {
         COUNT(DISTINCT q_user_id) FILTER (
           WHERE event_name = 'Subscription Renewed'
         ) as renewals
-      FROM qonversion_events
+      FROM subscription_events
       WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
         AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
       GROUP BY TO_CHAR(event_date, 'YYYY-MM')
@@ -1075,7 +1075,7 @@ router.get('/forecast', async (req, res) => {
     // Get current month subscribers for new revenue forecast
     const currentMonthSubs = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as subs
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
         AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
     `);
@@ -1121,7 +1121,7 @@ router.get('/funnel', async (req, res) => {
             WHERE refund = false
             AND event_name IN ('Subscription Started', 'Trial Converted')
           ) as revenue
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
           AND install_date <= CURRENT_DATE - INTERVAL '7 days'
         GROUP BY media_source
@@ -1188,20 +1188,20 @@ router.get('/retention', async (req, res) => {
           TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
           q_user_id,
           MIN(event_date) as first_purchase_date
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
         GROUP BY TO_CHAR(install_date, 'YYYY-MM'), q_user_id
       ),
       renewals AS (
         SELECT q_user_id, event_date as renewal_date
-        FROM qonversion_events
+        FROM subscription_events
         WHERE event_name = 'Subscription Renewed'
           AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
       ),
       refunds AS (
         SELECT DISTINCT q_user_id
-        FROM qonversion_events
+        FROM subscription_events
         WHERE refund = true
           AND install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
       )
@@ -1249,7 +1249,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
         event_name,
         COUNT(*) as events,
         COALESCE(SUM(price_usd), 0) as revenue
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
       GROUP BY event_name
@@ -1259,7 +1259,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
     // Total revenue
     const totalResult = await db.query(`
       SELECT COALESCE(SUM(price_usd), 0) as total
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = false
     `, [month]);
@@ -1267,7 +1267,7 @@ router.get('/debug-revenue/:month', async (req, res) => {
     // Check for refunds in this month
     const refundsResult = await db.query(`
       SELECT COUNT(*) as cnt, COALESCE(SUM(price_usd), 0) as amount
-      FROM qonversion_events
+      FROM subscription_events
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
         AND refund = true
     `, [month]);
@@ -1291,7 +1291,7 @@ router.get('/debug-media-sources', async (req, res) => {
         media_source,
         COUNT(*) as events,
         COUNT(DISTINCT q_user_id) as users
-      FROM qonversion_events
+      FROM subscription_events
       WHERE install_date >= CURRENT_DATE - INTERVAL '90 days'
       GROUP BY media_source
       ORDER BY users DESC
@@ -1317,7 +1317,7 @@ router.get('/debug-cop/:date', async (req, res) => {
     // 2. Cohort conversions (installed on this date, converted anytime)
     const conversionsResult = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as conversions
-      FROM qonversion_events
+      FROM subscription_events
       WHERE DATE(install_date) = $1
         AND (
           event_name = 'Trial Converted'
@@ -1330,7 +1330,7 @@ router.get('/debug-cop/:date', async (req, res) => {
       SELECT
         event_name,
         COUNT(DISTINCT q_user_id) as users
-      FROM qonversion_events
+      FROM subscription_events
       WHERE DATE(install_date) = $1
         AND (
           event_name = 'Trial Converted'
@@ -1347,7 +1347,7 @@ router.get('/debug-cop/:date', async (req, res) => {
         product_id,
         DATE(install_date) as install_date,
         DATE(event_date) as event_date
-      FROM qonversion_events
+      FROM subscription_events
       WHERE DATE(install_date) = $1
         AND (
           event_name = 'Trial Converted'
@@ -1382,7 +1382,7 @@ router.get('/debug-conversion-delay', async (req, res) => {
       SELECT
         DATE_PART('day', event_date - install_date)::int as days_to_convert,
         COUNT(DISTINCT q_user_id) as users
-      FROM qonversion_events
+      FROM subscription_events
       WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
         AND install_date >= '2025-01-01'
         AND install_date <= CURRENT_DATE - INTERVAL '${minAge} days'
@@ -1408,7 +1408,7 @@ router.get('/debug-conversion-delay', async (req, res) => {
       SELECT
         FLOOR(DATE_PART('day', event_date - install_date) / 7)::int as week,
         COUNT(DISTINCT q_user_id) as users
-      FROM qonversion_events
+      FROM subscription_events
       WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
         AND install_date >= '2025-01-01'
         AND install_date <= CURRENT_DATE - INTERVAL '60 days'
@@ -1447,7 +1447,7 @@ router.get('/debug-cohort-decay', async (req, res) => {
           TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
           DATE_PART('day', event_date - install_date)::int as days_to_convert,
           COUNT(DISTINCT q_user_id) as users
-        FROM qonversion_events
+        FROM subscription_events
         WHERE (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           AND install_date >= '2025-01-01'
           AND install_date <= CURRENT_DATE - INTERVAL '30 days'
@@ -1498,7 +1498,7 @@ router.get('/debug', async (req, res) => {
   try {
     const eventsQuery = `
       SELECT event_name, COUNT(*) as cnt
-      FROM qonversion_events
+      FROM subscription_events
       GROUP BY event_name
       ORDER BY cnt DESC
     `;
@@ -1506,12 +1506,12 @@ router.get('/debug', async (req, res) => {
 
     const dateRange = await db.query(`
       SELECT MIN(event_date) as min_date, MAX(event_date) as max_date, COUNT(*) as total
-      FROM qonversion_events
+      FROM subscription_events
     `);
 
     const products = await db.query(`
       SELECT product_id, COUNT(*) as cnt
-      FROM qonversion_events
+      FROM subscription_events
       WHERE event_name IN ('subscription_started', 'Subscription Started')
       GROUP BY product_id
       ORDER BY cnt DESC
@@ -1520,7 +1520,7 @@ router.get('/debug', async (req, res) => {
 
     const mediaSources = await db.query(`
       SELECT media_source, COUNT(*) as events, COUNT(DISTINCT q_user_id) as users
-      FROM qonversion_events
+      FROM subscription_events
       WHERE install_date >= CURRENT_DATE - INTERVAL '90 days'
       GROUP BY media_source
       ORDER BY users DESC
@@ -1560,7 +1560,7 @@ router.get('/finmodel', async (req, res) => {
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
-        FROM qonversion_events
+        FROM subscription_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '${days} days'
         GROUP BY DATE(event_date)
       ),
@@ -1568,7 +1568,7 @@ router.get('/finmodel', async (req, res) => {
         SELECT
           DATE(install_date) as day,
           COUNT(DISTINCT q_user_id) as trials
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
           AND event_name = 'Trial Started'
         GROUP BY DATE(install_date)
@@ -1577,7 +1577,7 @@ router.get('/finmodel', async (req, res) => {
         SELECT
           DATE(event_date) as day,
           COUNT(DISTINCT q_user_id) as yearly_subs
-        FROM qonversion_events
+        FROM subscription_events
         WHERE event_date >= CURRENT_DATE - INTERVAL '${days} days'
           AND (
             (event_name = 'Trial Converted' AND product_id LIKE '%yearly%')
@@ -1590,7 +1590,7 @@ router.get('/finmodel', async (req, res) => {
           DATE(install_date) as day,
           COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
           COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted') as converted
-        FROM qonversion_events
+        FROM subscription_events
         WHERE install_date >= CURRENT_DATE - INTERVAL '${days + 7} days'
           AND install_date <= CURRENT_DATE - INTERVAL '4 days'
         GROUP BY DATE(install_date)
@@ -1630,7 +1630,7 @@ router.get('/finmodel', async (req, res) => {
         TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
         TO_CHAR(install_date, 'Mon YYYY') as cohort_label,
         SUM(price_usd) FILTER (WHERE refund = false) as total_revenue
-      FROM qonversion_events
+      FROM subscription_events
       WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
       GROUP BY TO_CHAR(install_date, 'YYYY-MM'), TO_CHAR(install_date, 'Mon YYYY')
