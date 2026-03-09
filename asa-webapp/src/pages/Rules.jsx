@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Input, Select, Textarea } from '../components/Input';
 import { StatusBadge, Badge } from '../components/Badge';
 import RuleTemplates from '../components/RuleTemplates';
+import RuleExecutionHistory from '../components/RuleExecutionHistory';
 import { getRules, getRule, createRule, updateRule, deleteRule, executeRule, previewRule } from '../lib/api';
 import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2 } from 'lucide-react';
 
@@ -546,6 +547,9 @@ export default function Rules() {
                             </div>
                           </div>
                         )}
+
+                        {/* Execution History */}
+                        <RuleExecutionHistory ruleId={rule.id} />
                       </TableCell>
                     </TableRow>
                   )}
