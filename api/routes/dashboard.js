@@ -3133,8 +3133,8 @@ router.get('/countries', async (req, res) => {
       country_spend AS (
         SELECT
           COALESCE(country, 'Unknown') as country,
-          SUM(spend) as spend
-        FROM apple_ads_campaigns
+          SUM(local_spend) as spend
+        FROM apple_ads_keywords
         WHERE date >= $1 AND date <= $2
         GROUP BY 1
       )
