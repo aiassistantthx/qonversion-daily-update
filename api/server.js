@@ -223,12 +223,20 @@ app.get('/debug/subscription-events', async (req, res) => {
   }
 });
 
-// Fix event_name format: snake_case -> Title Case
+// Fix event_name format: snake_case -> Title Case (both subscription_events AND events_v2)
 app.post('/migrate/fix-event-names', async (req, res) => {
   try {
-    // Update snake_case event names to Title Case
-    const result = await db.query(`
+    // Update snake_case event names to Title Case in subscription_events
+    const result1 = await db.query(`
       UPDATE subscription_events
+      SET event_name = INITCAP(REPLACE(event_name, '_', ' '))
+      WHERE event_name LIKE '%_%'
+      RETURNING id
+    `);
+
+    // Also update events_v2
+    const result2 = await db.query(`
+      UPDATE events_v2
       SET event_name = INITCAP(REPLACE(event_name, '_', ' '))
       WHERE event_name LIKE '%_%'
       RETURNING id
@@ -236,8 +244,9 @@ app.post('/migrate/fix-event-names', async (req, res) => {
 
     res.json({
       success: true,
-      updated: result.rowCount,
-      message: 'Event names converted from snake_case to Title Case'
+      updated_subscription_events: result1.rowCount,
+      updated_events_v2: result2.rowCount,
+      message: 'Event names converted from snake_case to Title Case in both tables'
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
