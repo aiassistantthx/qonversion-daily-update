@@ -1665,4 +1665,69 @@ router.get('/finmodel', async (req, res) => {
   }
 });
 
+// ============================================
+// COMPARE V1 vs V2 - Compare subscription_events vs events_v2
+// ============================================
+
+router.get('/compare', async (req, res) => {
+  try {
+    // Compare daily revenue from both tables
+    const v1Query = `
+      SELECT
+        DATE(event_date) as day,
+        COUNT(*) as events,
+        SUM(CASE WHEN event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted') AND refund = false THEN price_usd ELSE 0 END) as revenue,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Subscription Started', 'Trial Converted')) as subscribers,
+        COUNT(campaign_id) as with_campaign
+      FROM subscription_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY DATE(event_date)
+      ORDER BY day DESC
+    `;
+
+    const v2Query = `
+      SELECT
+        DATE(event_date) as day,
+        COUNT(*) as events,
+        SUM(CASE WHEN event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted') AND refund = false THEN price_usd ELSE 0 END) as revenue,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Subscription Started', 'Trial Converted')) as subscribers,
+        COUNT(campaign_id) as with_campaign
+      FROM events_v2
+      WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY DATE(event_date)
+      ORDER BY day DESC
+    `;
+
+    const [v1Result, v2Result] = await Promise.all([
+      db.query(v1Query),
+      db.query(v2Query),
+    ]);
+
+    // Total stats
+    const v1Stats = await db.query(`
+      SELECT COUNT(*) as total, COUNT(campaign_id) as with_campaign, COUNT(keyword_id) as with_keyword
+      FROM subscription_events
+    `);
+
+    const v2Stats = await db.query(`
+      SELECT COUNT(*) as total, COUNT(campaign_id) as with_campaign, COUNT(keyword_id) as with_keyword
+      FROM events_v2
+    `);
+
+    res.json({
+      v1: {
+        daily: v1Result.rows,
+        stats: v1Stats.rows[0],
+      },
+      v2: {
+        daily: v2Result.rows,
+        stats: v2Stats.rows[0],
+      },
+    });
+  } catch (error) {
+    console.error('Compare error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

@@ -257,6 +257,123 @@ app.post('/migrate/drop-qonversion-events', async (req, res) => {
   }
 });
 
+// Create events_v2 table with full denormalization
+app.post('/migrate/create-events-v2', async (req, res) => {
+  try {
+    // Step 1: Create new table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS events_v2 (
+        id SERIAL PRIMARY KEY,
+        transaction_id TEXT UNIQUE,
+        q_user_id TEXT NOT NULL,
+        custom_user_id TEXT,
+        event_date TIMESTAMP NOT NULL,
+        event_name TEXT NOT NULL,
+        product_id TEXT,
+        subscription_group TEXT,
+        currency TEXT,
+        price DECIMAL(10,2),
+        price_usd DECIMAL(10,2),
+        proceeds_usd DECIMAL(10,2),
+        refund BOOLEAN DEFAULT FALSE,
+        platform TEXT,
+        device_id TEXT,
+        locale TEXT,
+        country TEXT,
+        app_version TEXT,
+        install_date TIMESTAMP,
+        media_source TEXT,
+        campaign_id BIGINT,
+        campaign_name TEXT,
+        adgroup_id BIGINT,
+        keyword_id BIGINT,
+        source TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Step 2: Create indexes
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_v2_event_date ON events_v2(event_date);
+      CREATE INDEX IF NOT EXISTS idx_events_v2_user ON events_v2(q_user_id);
+      CREATE INDEX IF NOT EXISTS idx_events_v2_event_name ON events_v2(event_name);
+      CREATE INDEX IF NOT EXISTS idx_events_v2_install_date ON events_v2(install_date);
+      CREATE INDEX IF NOT EXISTS idx_events_v2_campaign ON events_v2(campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_events_v2_keyword ON events_v2(keyword_id);
+    `);
+
+    res.json({
+      success: true,
+      message: 'Table events_v2 created with indexes'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Migrate data from subscription_events to events_v2 with attribution enrichment
+app.post('/migrate/populate-events-v2', async (req, res) => {
+  try {
+    // Insert data from subscription_events, enriching with user_attributions
+    const result = await db.query(`
+      INSERT INTO events_v2 (
+        transaction_id, q_user_id, custom_user_id,
+        event_date, event_name, product_id, subscription_group,
+        currency, price, price_usd, proceeds_usd, refund,
+        platform, device_id, locale, country, app_version,
+        install_date, media_source, campaign_id, campaign_name,
+        adgroup_id, keyword_id, source
+      )
+      SELECT
+        se.transaction_id,
+        se.q_user_id,
+        se.custom_user_id,
+        se.event_date,
+        se.event_name,
+        se.product_id,
+        se.subscription_group,
+        se.currency,
+        se.price,
+        se.price_usd,
+        se.proceeds_usd,
+        se.refund,
+        se.platform,
+        se.device_id,
+        se.locale,
+        se.country,
+        se.app_version,
+        se.install_date,
+        COALESCE(se.media_source, CASE WHEN ua.campaign_id IS NOT NULL THEN 'Apple AdServices' END),
+        COALESCE(se.campaign_id, ua.campaign_id),
+        se.campaign_name,
+        ua.adgroup_id,
+        ua.keyword_id,
+        se.source
+      FROM subscription_events se
+      LEFT JOIN user_attributions ua ON se.q_user_id::TEXT = ua.user_id::TEXT
+      ON CONFLICT (transaction_id) DO NOTHING
+    `);
+
+    // Get stats
+    const stats = await db.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(campaign_id) as with_campaign,
+        COUNT(keyword_id) as with_keyword
+      FROM events_v2
+    `);
+
+    res.json({
+      success: true,
+      inserted: result.rowCount,
+      stats: stats.rows[0],
+      message: 'Data migrated to events_v2 with attribution enrichment'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Database migration endpoint for ASA management tables
 app.post('/migrate/asa', async (req, res) => {
   const migrationSQL = `

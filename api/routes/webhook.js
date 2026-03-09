@@ -130,7 +130,7 @@ async function saveEvent(eventData) {
   return result.rows[0];
 }
 
-// Save event to unified subscription_events table
+// Save event to unified subscription_events table (legacy)
 async function saveToSubscriptionEvents(eventData, attribution) {
   const payload = eventData.rawPayload;
 
@@ -195,6 +195,96 @@ async function saveToSubscriptionEvents(eventData, attribution) {
     campaignName,
     'webhook',
     JSON.stringify(payload),
+  ];
+
+  const result = await db.query(query, values);
+  return result.rows[0];
+}
+
+// Save event to events_v2 with full denormalized attribution
+async function saveToEventsV2(eventData, attribution) {
+  const payload = eventData.rawPayload;
+
+  const transactionId = payload.transaction?.transaction_id;
+  if (!transactionId) {
+    return null;
+  }
+
+  // If no attribution in payload, try to get from user_attributions
+  let finalAttribution = attribution;
+  if (!attribution?.campaignId && eventData.userId) {
+    try {
+      const attrResult = await db.query(
+        'SELECT campaign_id, adgroup_id, keyword_id FROM user_attributions WHERE user_id = $1 LIMIT 1',
+        [eventData.userId]
+      );
+      if (attrResult.rows[0]) {
+        finalAttribution = {
+          campaignId: attrResult.rows[0].campaign_id,
+          adgroupId: attrResult.rows[0].adgroup_id,
+          keywordId: attrResult.rows[0].keyword_id,
+        };
+      }
+    } catch (e) {
+      // Ignore lookup errors
+    }
+  }
+
+  // Get campaign_name if we have campaign_id
+  let campaignName = null;
+  if (finalAttribution?.campaignId) {
+    try {
+      const campaignResult = await db.query(
+        'SELECT campaign_name FROM apple_ads_campaigns WHERE campaign_id = $1 LIMIT 1',
+        [finalAttribution.campaignId]
+      );
+      if (campaignResult.rows[0]) {
+        campaignName = campaignResult.rows[0].campaign_name;
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  const query = `
+    INSERT INTO events_v2 (
+      transaction_id, q_user_id, custom_user_id,
+      event_date, event_name, product_id, subscription_group,
+      currency, price, price_usd, proceeds_usd, refund,
+      platform, device_id, locale, country, app_version,
+      install_date, media_source, campaign_id, campaign_name,
+      adgroup_id, keyword_id, source
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+    ON CONFLICT (transaction_id) DO NOTHING
+    RETURNING id
+  `;
+
+  const values = [
+    transactionId,
+    eventData.userId,
+    payload.custom_user_id || null,
+    eventData.createdAt,
+    eventData.eventName,
+    eventData.productId,
+    payload.subscription_group || null,
+    payload.price?.currency || null,
+    payload.price?.value || null,
+    payload.price?.value_usd || null,
+    payload.revenue?.is_proceed === 1 ? payload.revenue?.value_usd : null,
+    false,
+    eventData.platform,
+    payload.device_id || null,
+    payload.locale || null,
+    payload.country || null,
+    payload.app_version || null,
+    payload.user_install_date ? new Date(payload.user_install_date * 1000) : null,
+    finalAttribution?.campaignId ? 'Apple AdServices' : null,
+    finalAttribution?.campaignId || null,
+    campaignName,
+    finalAttribution?.adgroupId || null,
+    finalAttribution?.keywordId || null,
+    'webhook',
   ];
 
   const result = await db.query(query, values);
@@ -279,10 +369,16 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Save to unified subscription_events table
+    // Save to unified subscription_events table (legacy)
     const savedSubscriptionEvent = await saveToSubscriptionEvents(eventData, attribution);
     if (savedSubscriptionEvent) {
       console.log(`Subscription event saved: ${eventData.rawPayload.transaction?.transaction_id}`);
+    }
+
+    // Save to events_v2 (new denormalized table)
+    const savedEventV2 = await saveToEventsV2(eventData, attribution);
+    if (savedEventV2) {
+      console.log(`Event V2 saved: ${eventData.rawPayload.transaction?.transaction_id}`);
     }
 
     res.status(200).json({
@@ -290,6 +386,7 @@ router.post('/', async (req, res) => {
       event_id: eventData.eventId,
       saved: !!savedEvent,
       subscription_event_saved: !!savedSubscriptionEvent,
+      event_v2_saved: !!savedEventV2,
     });
 
   } catch (error) {
