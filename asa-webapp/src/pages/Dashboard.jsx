@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { StatusBadge } from '../components/Badge';
 import { HealthScoreWidget } from '../components/HealthScoreWidget';
-import { getCampaigns, getRules, getHistory } from '../lib/api';
+import ConversionFunnelChart from '../components/ConversionFunnelChart';
+import { getCampaigns, getRules, getHistory, getTrends } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useState } from 'react';
 import {
   TrendingUp,
   DollarSign,
@@ -41,6 +43,7 @@ function MetricCard({ title, value, icon: Icon, prefix = '', suffix = '', color 
 
 export default function Dashboard() {
   const { queryParams, label: dateLabel } = useDateRange();
+  const [showConversionChart, setShowConversionChart] = useState(false);
 
   const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -55,6 +58,12 @@ export default function Dashboard() {
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['history', { limit: 10 }],
     queryFn: () => getHistory({ limit: 10 }),
+  });
+
+  const { data: trendsData } = useQuery({
+    queryKey: ['trends', queryParams],
+    queryFn: () => getTrends(queryParams),
+    enabled: showConversionChart,
   });
 
   // Helper to get performance value
@@ -166,6 +175,36 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Conversion Funnel Chart */}
+      <Card>
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <CardTitle>Analytics</CardTitle>
+            <button
+              onClick={() => setShowConversionChart(!showConversionChart)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb',
+                background: showConversionChart ? '#3b82f6' : '#fff',
+                color: showConversionChart ? '#fff' : '#374151',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {showConversionChart ? 'Hide' : 'Show'} Conversion Funnel
+            </button>
+          </div>
+        </CardHeader>
+        {showConversionChart && (
+          <CardContent>
+            <ConversionFunnelChart data={trendsData} />
+          </CardContent>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Campaigns by Revenue */}

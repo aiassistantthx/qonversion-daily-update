@@ -1611,4 +1611,356 @@ router.post('/sync/incremental', async (req, res) => {
   }
 });
 
+// ================================================
+// TRENDS / ANALYTICS
+// ================================================
+
+/**
+ * GET /asa/trends
+ * Get daily trends for Spend, Revenue, ROAS, and Conversion Funnel
+ *
+ * Query params:
+ * - from: start date (YYYY-MM-DD) (required)
+ * - to: end date (YYYY-MM-DD) (required)
+ */
+router.get('/trends', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to dates are required (YYYY-MM-DD)' });
+    }
+
+    const query = `
+      WITH daily_spend AS (
+        SELECT
+          date,
+          SUM(spend) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= $1 AND date <= $2
+        GROUP BY date
+      ),
+      daily_revenue AS (
+        SELECT
+          DATE(install_date) as date,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
+        FROM events_v2
+        WHERE install_date >= $1 AND install_date <= $2
+          AND campaign_id IS NOT NULL
+        GROUP BY DATE(install_date)
+      ),
+      daily_installs AS (
+        SELECT
+          date,
+          SUM(installs) as installs
+        FROM apple_ads_campaigns
+        WHERE date >= $1 AND date <= $2
+          AND campaign_id IS NOT NULL
+        GROUP BY date
+      ),
+      daily_trials AS (
+        SELECT
+          DATE(install_date) as date,
+          COUNT(DISTINCT q_user_id) as trials
+        FROM events_v2
+        WHERE install_date >= $1 AND install_date <= $2
+          AND campaign_id IS NOT NULL
+          AND event_name = 'Trial Started'
+        GROUP BY DATE(install_date)
+      ),
+      daily_paid AS (
+        SELECT
+          DATE(install_date) as date,
+          COUNT(DISTINCT q_user_id) as paid_users
+        FROM events_v2
+        WHERE install_date >= $1 AND install_date <= $2
+          AND campaign_id IS NOT NULL
+          AND event_name IN ('Subscription Started', 'Trial Converted')
+        GROUP BY DATE(install_date)
+      )
+      SELECT
+        s.date,
+        COALESCE(s.spend, 0) as spend,
+        COALESCE(r.revenue, 0) as revenue,
+        CASE
+          WHEN COALESCE(s.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / s.spend
+          ELSE 0
+        END as roas,
+        COALESCE(i.installs, 0) as installs,
+        COALESCE(t.trials, 0) as trials,
+        COALESCE(p.paid_users, 0) as paid_users,
+        CASE WHEN i.installs > 0 THEN (COALESCE(t.trials, 0)::float / i.installs) * 100 ELSE 0 END as install_to_trial_rate,
+        CASE WHEN t.trials > 0 THEN (COALESCE(p.paid_users, 0)::float / t.trials) * 100 ELSE 0 END as trial_to_paid_rate
+      FROM daily_spend s
+      LEFT JOIN daily_revenue r ON s.date = r.date
+      LEFT JOIN daily_installs i ON s.date = i.date
+      LEFT JOIN daily_trials t ON s.date = t.date
+      LEFT JOIN daily_paid p ON s.date = p.date
+      ORDER BY s.date ASC
+    `;
+
+    const result = await db.query(query, [from, to]);
+
+    const totalsQuery = await db.query(`
+      SELECT
+        SUM(spend) as total_spend,
+        SUM(installs) as total_installs
+      FROM apple_ads_campaigns
+      WHERE date >= $1 AND date <= $2
+    `, [from, to]);
+
+    const revenueQuery = await db.query(`
+      SELECT
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+      FROM events_v2
+      WHERE install_date >= $1 AND install_date <= $2
+        AND campaign_id IS NOT NULL
+    `, [from, to]);
+
+    const trialsQuery = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as total_trials
+      FROM events_v2
+      WHERE install_date >= $1 AND install_date <= $2
+        AND campaign_id IS NOT NULL
+        AND event_name = 'Trial Started'
+    `, [from, to]);
+
+    const paidQuery = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as total_paid_users
+      FROM events_v2
+      WHERE install_date >= $1 AND install_date <= $2
+        AND campaign_id IS NOT NULL
+        AND event_name IN ('Subscription Started', 'Trial Converted')
+    `, [from, to]);
+
+    const totalSpend = parseFloat(totalsQuery.rows[0]?.total_spend) || 0;
+    const totalRevenue = parseFloat(revenueQuery.rows[0]?.total_revenue) || 0;
+    const totalInstalls = parseInt(totalsQuery.rows[0]?.total_installs) || 0;
+    const totalTrials = parseInt(trialsQuery.rows[0]?.total_trials) || 0;
+    const totalPaidUsers = parseInt(paidQuery.rows[0]?.total_paid_users) || 0;
+
+    res.json({
+      from,
+      to,
+      totals: {
+        spend: totalSpend,
+        revenue: totalRevenue,
+        roas: totalSpend > 0 ? totalRevenue / totalSpend : 0,
+        installs: totalInstalls,
+        trials: totalTrials,
+        paid_users: totalPaidUsers,
+        install_to_trial_rate: totalInstalls > 0 ? (totalTrials / totalInstalls) * 100 : 0,
+        trial_to_paid_rate: totalTrials > 0 ? (totalPaidUsers / totalTrials) * 100 : 0,
+        install_to_paid_rate: totalInstalls > 0 ? (totalPaidUsers / totalInstalls) * 100 : 0
+      },
+      data: result.rows.map(row => ({
+        date: row.date,
+        spend: parseFloat(row.spend) || 0,
+        revenue: parseFloat(row.revenue) || 0,
+        roas: parseFloat(row.roas) || 0,
+        installs: parseInt(row.installs) || 0,
+        trials: parseInt(row.trials) || 0,
+        paid_users: parseInt(row.paid_users) || 0,
+        install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
+        trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /asa/cohorts
+ * Get cohort ROAS data by install date
+ *
+ * Query params:
+ * - campaign_id: filter by campaign (optional)
+ * - period: 'week' or 'month' (default: 'week')
+ * - limit: number of cohorts (default: 12)
+ */
+router.get('/cohorts', async (req, res) => {
+  try {
+    const { campaign_id, period = 'week', limit = 12 } = req.query;
+
+    // Build date grouping based on period
+    const dateGroup = period === 'month'
+      ? "TO_CHAR(install_date, 'YYYY-MM')"
+      : "TO_CHAR(DATE_TRUNC('week', install_date), 'YYYY-MM-DD')";
+
+    // Campaign filter
+    let campaignFilter = '';
+    const params = [parseInt(limit) || 12];
+    if (campaign_id) {
+      campaignFilter = 'AND campaign_id = $2';
+      params.push(campaign_id);
+    }
+
+    // Get cohort data with ROAS by different time windows
+    const query = `
+      WITH cohort_spend AS (
+        SELECT
+          ${dateGroup} as cohort,
+          COALESCE(SUM(spend), 0) as spend
+        FROM apple_ads_campaigns
+        WHERE install_date IS NOT NULL
+          ${campaignFilter}
+        GROUP BY 1
+      ),
+      cohort_revenue AS (
+        SELECT
+          ${dateGroup} as cohort,
+          install_date,
+          -- Revenue by age windows (days since install)
+          SUM(CASE WHEN event_date - install_date <= 0 THEN price_usd ELSE 0 END) as revenue_d0,
+          SUM(CASE WHEN event_date - install_date <= 3 THEN price_usd ELSE 0 END) as revenue_d3,
+          SUM(CASE WHEN event_date - install_date <= 7 THEN price_usd ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 14 THEN price_usd ELSE 0 END) as revenue_d14,
+          SUM(CASE WHEN event_date - install_date <= 30 THEN price_usd ELSE 0 END) as revenue_d30,
+          SUM(CASE WHEN event_date - install_date <= 60 THEN price_usd ELSE 0 END) as revenue_d60,
+          SUM(CASE WHEN event_date - install_date <= 90 THEN price_usd ELSE 0 END) as revenue_d90,
+          SUM(price_usd) as revenue_total,
+          COUNT(DISTINCT q_user_id) as users
+        FROM events_v2
+        WHERE refund = false
+          AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+          AND install_date IS NOT NULL
+          ${campaignFilter}
+        GROUP BY 1, 2
+      ),
+      cohort_agg AS (
+        SELECT
+          r.cohort,
+          MIN(r.install_date) as cohort_start,
+          CURRENT_DATE - MIN(r.install_date)::date as cohort_age,
+          COALESCE(s.spend, 0) as spend,
+          SUM(r.revenue_d0) as revenue_d0,
+          SUM(r.revenue_d3) as revenue_d3,
+          SUM(r.revenue_d7) as revenue_d7,
+          SUM(r.revenue_d14) as revenue_d14,
+          SUM(r.revenue_d30) as revenue_d30,
+          SUM(r.revenue_d60) as revenue_d60,
+          SUM(r.revenue_d90) as revenue_d90,
+          SUM(r.revenue_total) as revenue_total,
+          SUM(r.users) as users
+        FROM cohort_revenue r
+        LEFT JOIN cohort_spend s ON r.cohort = s.cohort
+        GROUP BY r.cohort, s.spend
+      )
+      SELECT
+        cohort,
+        cohort_start,
+        cohort_age,
+        spend,
+        revenue_d0,
+        revenue_d3,
+        revenue_d7,
+        revenue_d14,
+        revenue_d30,
+        revenue_d60,
+        revenue_d90,
+        revenue_total,
+        users,
+        CASE WHEN spend > 0 THEN revenue_d0 / spend ELSE 0 END as roas_d0,
+        CASE WHEN spend > 0 THEN revenue_d3 / spend ELSE 0 END as roas_d3,
+        CASE WHEN spend > 0 THEN revenue_d7 / spend ELSE 0 END as roas_d7,
+        CASE WHEN spend > 0 THEN revenue_d14 / spend ELSE 0 END as roas_d14,
+        CASE WHEN spend > 0 THEN revenue_d30 / spend ELSE 0 END as roas_d30,
+        CASE WHEN spend > 0 THEN revenue_d60 / spend ELSE 0 END as roas_d60,
+        CASE WHEN spend > 0 THEN revenue_d90 / spend ELSE 0 END as roas_d90,
+        CASE WHEN spend > 0 THEN revenue_total / spend ELSE 0 END as roas_total
+      FROM cohort_agg
+      WHERE spend > 0
+      ORDER BY cohort DESC
+      LIMIT $1
+    `;
+
+    const result = await db.query(query, params);
+
+    // Calculate totals
+    const totals = result.rows.reduce((acc, row) => ({
+      spend: acc.spend + parseFloat(row.spend || 0),
+      revenue_d0: acc.revenue_d0 + parseFloat(row.revenue_d0 || 0),
+      revenue_d3: acc.revenue_d3 + parseFloat(row.revenue_d3 || 0),
+      revenue_d7: acc.revenue_d7 + parseFloat(row.revenue_d7 || 0),
+      revenue_d14: acc.revenue_d14 + parseFloat(row.revenue_d14 || 0),
+      revenue_d30: acc.revenue_d30 + parseFloat(row.revenue_d30 || 0),
+      revenue_d60: acc.revenue_d60 + parseFloat(row.revenue_d60 || 0),
+      revenue_d90: acc.revenue_d90 + parseFloat(row.revenue_d90 || 0),
+      revenue_total: acc.revenue_total + parseFloat(row.revenue_total || 0),
+      users: acc.users + parseInt(row.users || 0),
+    }), {
+      spend: 0,
+      revenue_d0: 0,
+      revenue_d3: 0,
+      revenue_d7: 0,
+      revenue_d14: 0,
+      revenue_d30: 0,
+      revenue_d60: 0,
+      revenue_d90: 0,
+      revenue_total: 0,
+      users: 0,
+    });
+
+    res.json({
+      period,
+      total: result.rows.length,
+      cohorts: result.rows.map(row => ({
+        cohort: row.cohort,
+        cohortStart: row.cohort_start,
+        cohortAge: parseInt(row.cohort_age || 0),
+        spend: parseFloat(row.spend || 0),
+        users: parseInt(row.users || 0),
+        roas: {
+          d0: parseFloat(row.roas_d0 || 0),
+          d3: parseFloat(row.roas_d3 || 0),
+          d7: parseFloat(row.roas_d7 || 0),
+          d14: parseFloat(row.roas_d14 || 0),
+          d30: parseFloat(row.roas_d30 || 0),
+          d60: parseFloat(row.roas_d60 || 0),
+          d90: parseFloat(row.roas_d90 || 0),
+          total: parseFloat(row.roas_total || 0),
+        },
+        revenue: {
+          d0: parseFloat(row.revenue_d0 || 0),
+          d3: parseFloat(row.revenue_d3 || 0),
+          d7: parseFloat(row.revenue_d7 || 0),
+          d14: parseFloat(row.revenue_d14 || 0),
+          d30: parseFloat(row.revenue_d30 || 0),
+          d60: parseFloat(row.revenue_d60 || 0),
+          d90: parseFloat(row.revenue_d90 || 0),
+          total: parseFloat(row.revenue_total || 0),
+        }
+      })),
+      totals: {
+        spend: totals.spend,
+        users: totals.users,
+        roas: {
+          d0: totals.spend > 0 ? totals.revenue_d0 / totals.spend : 0,
+          d3: totals.spend > 0 ? totals.revenue_d3 / totals.spend : 0,
+          d7: totals.spend > 0 ? totals.revenue_d7 / totals.spend : 0,
+          d14: totals.spend > 0 ? totals.revenue_d14 / totals.spend : 0,
+          d30: totals.spend > 0 ? totals.revenue_d30 / totals.spend : 0,
+          d60: totals.spend > 0 ? totals.revenue_d60 / totals.spend : 0,
+          d90: totals.spend > 0 ? totals.revenue_d90 / totals.spend : 0,
+          total: totals.spend > 0 ? totals.revenue_total / totals.spend : 0,
+        },
+        revenue: {
+          d0: totals.revenue_d0,
+          d3: totals.revenue_d3,
+          d7: totals.revenue_d7,
+          d14: totals.revenue_d14,
+          d30: totals.revenue_d30,
+          d60: totals.revenue_d60,
+          d90: totals.revenue_d90,
+          total: totals.revenue_total,
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Cohorts endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

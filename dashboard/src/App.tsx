@@ -11,6 +11,7 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   RevenueByDayChart,
   TRoasChart,
+  TrendChart,
   SubscriptionBreakdown,
   RetentionChart,
   WeeklyChurnChart,
@@ -19,7 +20,7 @@ import {
 } from './components';
 import type {
   DateRange, DateScale, TrafficSource,
-  RevenueByDayData, TRoasData, SubscriptionBreakdownData,
+  RevenueByDayData, TRoasData, TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
   CountriesData
 } from './components';
@@ -288,10 +289,20 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/funnel?${buildParams({ days: 30 })}`).then(r => r.json()),
   });
 
-  // Disabled - endpoints don't exist yet
-  const revenueByDayData = undefined as RevenueByDayData | undefined;
-  const tRoasData = undefined as TRoasData | undefined;
-  const subscriptionBreakdownData = undefined as SubscriptionBreakdownData | undefined;
+  const { data: subscriptionBreakdownData } = useQuery<SubscriptionBreakdownData>({
+    queryKey: ['subscription-breakdown'],
+    queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?months=12`).then(r => r.json()),
+  });
+
+  const { data: revenueByDayData } = useQuery<RevenueByDayData>({
+    queryKey: ['revenue-by-day'],
+    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?months=12`).then(r => r.json()),
+  });
+
+  const { data: tRoasData } = useQuery<TRoasData>({
+    queryKey: ['troas'],
+    queryFn: () => fetch(`${API_URL}/dashboard/troas?months=12`).then(r => r.json()),
+  });
 
   const { data: retentionData } = useQuery<RetentionData>({
     queryKey: ['retention', dateRange],
@@ -303,9 +314,20 @@ function Dashboard() {
     queryFn: () => fetch(`${API_URL}/dashboard/weekly-churn?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
-  // Disabled - endpoints don't exist yet
-  const renewalRatesData = undefined as RenewalRatesData | undefined;
-  const countriesData = undefined as CountriesData | undefined;
+  const { data: renewalRatesData } = useQuery<RenewalRatesData>({
+    queryKey: ['renewal-rates'],
+    queryFn: () => fetch(`${API_URL}/dashboard/renewal-rates`).then(r => r.json()),
+  });
+
+  const { data: countriesData } = useQuery<CountriesData>({
+    queryKey: ['countries', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams({ limit: 20 })}`).then(r => r.json()),
+  });
+
+  const { data: trendChartData } = useQuery<TrendChartData>({
+    queryKey: ['asa-trends', dateRange],
+    queryFn: () => fetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`).then(r => r.json()),
+  });
 
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
@@ -425,6 +447,9 @@ function Dashboard() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Trend Chart - Spend/Revenue/ROAS */}
+      <TrendChart data={trendChartData} />
 
       {/* Subscription Breakdown */}
       <SubscriptionBreakdown data={subscriptionBreakdownData} />

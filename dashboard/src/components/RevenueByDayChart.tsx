@@ -36,8 +36,9 @@ interface RevenueByDayChartProps {
 export function RevenueByDayChart({ data, selectedCohorts }: RevenueByDayChartProps) {
   if (!data) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
-        Loading revenue data...
+      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
+        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Cumulative Revenue per User by Day</div>
+        <div style={{ fontSize: 13, color: '#d1d5db' }}>API endpoint coming soon</div>
       </div>
     );
   }

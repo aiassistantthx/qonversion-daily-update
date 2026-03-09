@@ -28,4 +28,10 @@ export type { RenewalRatesData } from './RenewalRatesTable';
 export { CountriesTable } from './CountriesTable';
 export type { CountriesData } from './CountriesTable';
 
+export { CohortTable } from './CohortTable';
+export type { CohortsData, CohortData } from './CohortTable';
+
+export { TrendChart } from './TrendChart';
+export type { TrendChartData } from './TrendChart';
+
 export { YoYComparisonCards } from './YoYComparisonCards';
