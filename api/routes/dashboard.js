@@ -2118,7 +2118,68 @@ router.get('/cohort-analysis', async (req, res) => {
       ORDER BY month
     `);
 
-    // 6. Aggregate pre-2024 cohorts
+    // 6. Weekly subscriptions analysis
+    const weeklyAnalysis = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        event_name,
+        COUNT(*) as events,
+        COUNT(DISTINCT q_user_id) as users,
+        ROUND(SUM(price_usd)::numeric, 2) as revenue,
+        ROUND(AVG(price_usd)::numeric, 2) as avg_price
+      FROM events_v2
+      WHERE product_id LIKE '%weekly%'
+        AND refund = false
+        AND price_usd > 0
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM'), event_name
+      ORDER BY month, event_name
+    `);
+
+    // 7. Monthly subscriptions analysis
+    const monthlySubsAnalysis = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        event_name,
+        COUNT(*) as events,
+        COUNT(DISTINCT q_user_id) as users,
+        ROUND(SUM(price_usd)::numeric, 2) as revenue,
+        ROUND(AVG(price_usd)::numeric, 2) as avg_price
+      FROM events_v2
+      WHERE product_id LIKE '%monthly%'
+        AND refund = false
+        AND price_usd > 0
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM'), event_name
+      ORDER BY month, event_name
+    `);
+
+    // 8. Revenue breakdown by product type per month
+    const revenueByProductType = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        CASE
+          WHEN product_id LIKE '%yearly%' THEN 'yearly'
+          WHEN product_id LIKE '%weekly%' THEN 'weekly'
+          WHEN product_id LIKE '%monthly%' THEN 'monthly'
+          ELSE 'other'
+        END as product_type,
+        COUNT(*) as events,
+        COUNT(DISTINCT q_user_id) as users,
+        ROUND(SUM(price_usd)::numeric, 2) as revenue
+      FROM events_v2
+      WHERE event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND refund = false
+        AND price_usd > 0
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM'),
+        CASE
+          WHEN product_id LIKE '%yearly%' THEN 'yearly'
+          WHEN product_id LIKE '%weekly%' THEN 'weekly'
+          WHEN product_id LIKE '%monthly%' THEN 'monthly'
+          ELSE 'other'
+        END
+      ORDER BY month, product_type
+    `);
+
+    // 9. Aggregate pre-2024 cohorts
     const pre2024Cohorts = cohortsResult.rows.filter(c => c.cohort_month < '2024-01');
     const post2024Cohorts = cohortsResult.rows.filter(c => c.cohort_month >= '2024-01');
 
@@ -2139,6 +2200,9 @@ router.get('/cohort-analysis', async (req, res) => {
       currentMonthByCohorts: currentMonthByCohortsResult.rows,
       renewalRates: renewalRatesResult.rows,
       monthlyTotals: totalRevenueResult.rows,
+      weeklyAnalysis: weeklyAnalysis.rows,
+      monthlySubsAnalysis: monthlySubsAnalysis.rows,
+      revenueByProductType: revenueByProductType.rows,
       summary: {
         totalCohorts: cohortsResult.rows.length,
         totalSubscribers: cohortsResult.rows.reduce((s, c) => s + parseInt(c.subscribers), 0),
