@@ -7,10 +7,9 @@ import {
   Cog,
   FileText,
   History,
-  RefreshCw,
-  Calendar,
 } from 'lucide-react';
 import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
+import { SyncStatus } from './SyncStatus';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -106,10 +105,7 @@ export default function Layout({ children }) {
         </nav>
 
         <div className="p-4 border-t border-gray-800">
-          <button className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-sm">
-            <RefreshCw size={16} />
-            Sync Data
-          </button>
+          <SyncStatus />
         </div>
       </aside>
 

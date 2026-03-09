@@ -57,6 +57,7 @@ export const getHistory = (params) => api.get('/history', { params }).then(res =
 export const getEntityHistory = (type, id) => api.get(`/history/entity/${type}/${id}`).then(res => res.data);
 
 // Sync
+export const getSyncStatus = () => api.get('/sync/status').then(res => res.data);
 export const triggerSync = (days = 7) => api.post(`/sync?days=${days}`).then(res => res.data);
 export const triggerIncrementalSync = () => api.post('/sync/incremental').then(res => res.data);
 
