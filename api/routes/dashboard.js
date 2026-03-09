@@ -2515,4 +2515,96 @@ router.get('/weekly-churn', async (req, res) => {
   }
 });
 
+// ============================================
+// COUNTRIES BREAKDOWN
+// ============================================
+router.get('/countries', async (req, res) => {
+  try {
+    const { from, to, source, limit = 20 } = req.query;
+
+    // Date filter
+    let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
+    if (from && to) {
+      dateCondition = `install_date >= '${from}' AND install_date <= '${to}'`;
+    }
+
+    // Source filter
+    let sourceCondition = '1=1';
+    if (source === 'apple_ads') {
+      sourceCondition = `media_source = 'Apple AdServices'`;
+    } else if (source === 'organic') {
+      sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
+    }
+
+    const result = await db.query(`
+      WITH user_countries AS (
+        SELECT
+          q_user_id,
+          COALESCE(country, 'Unknown') as country,
+          media_source,
+          install_date
+        FROM events_v2
+        WHERE ${dateCondition}
+        GROUP BY q_user_id, country, media_source, install_date
+      ),
+      country_metrics AS (
+        SELECT
+          uc.country,
+          CASE
+            WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads'
+            ELSE 'Organic'
+          END as source,
+          COUNT(DISTINCT uc.q_user_id) as users,
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.q_user_id END) as trials,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted')
+            AND e.product_id LIKE '%yearly%' AND e.refund = false THEN e.q_user_id END) as subscribers,
+          COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue
+        FROM user_countries uc
+        LEFT JOIN events_v2 e ON uc.q_user_id = e.q_user_id
+        WHERE ${sourceCondition.replace('media_source', 'uc.media_source')}
+        GROUP BY uc.country,
+          CASE WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END
+      ),
+      country_spend AS (
+        SELECT
+          COALESCE(country, 'Unknown') as country,
+          SUM(local_spend) as spend
+        FROM apple_ads_keywords
+        WHERE ${dateCondition.replace('install_date', 'date')}
+        GROUP BY country
+      )
+      SELECT
+        cm.country,
+        cm.source,
+        cm.users,
+        cm.trials,
+        cm.subscribers,
+        ROUND(cm.revenue::numeric, 2) as revenue,
+        COALESCE(cs.spend, 0) as spend,
+        CASE
+          WHEN cm.subscribers > 0 AND COALESCE(cs.spend, 0) > 0
+          THEN ROUND((COALESCE(cs.spend, 0) / cm.subscribers)::numeric, 2)
+          ELSE NULL
+        END as cop,
+        CASE
+          WHEN COALESCE(cs.spend, 0) > 0
+          THEN ROUND((cm.revenue / COALESCE(cs.spend, 0))::numeric, 2)
+          ELSE NULL
+        END as roas
+      FROM country_metrics cm
+      LEFT JOIN country_spend cs ON cm.country = cs.country AND cm.source = 'Apple Ads'
+      ORDER BY cm.revenue DESC
+      LIMIT ${parseInt(limit)}
+    `);
+
+    res.json({
+      countries: result.rows,
+      filters: { from, to, source, limit: parseInt(limit) }
+    });
+  } catch (error) {
+    console.error('Countries error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
