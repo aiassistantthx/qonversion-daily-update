@@ -196,9 +196,41 @@ router.get('/campaigns', async (req, res) => {
       }
     });
 
+    // Get totals from DB (includes all campaigns, not just those from API)
+    const totalsQuery = await db.query(`
+      SELECT
+        SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as total_spend,
+        SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as total_impressions,
+        SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as total_taps,
+        SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as total_installs
+      FROM apple_ads_campaigns
+    `);
+
+    const revenueQuery = await db.query(`
+      SELECT
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue,
+        COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as total_paid_users
+      FROM events_v2
+      WHERE ${revenueCondition}
+        AND campaign_id IS NOT NULL
+    `);
+
+    const totals = {
+      spend: parseFloat(totalsQuery.rows[0]?.total_spend) || 0,
+      impressions: parseInt(totalsQuery.rows[0]?.total_impressions) || 0,
+      taps: parseInt(totalsQuery.rows[0]?.total_taps) || 0,
+      installs: parseInt(totalsQuery.rows[0]?.total_installs) || 0,
+      revenue: parseFloat(revenueQuery.rows[0]?.total_revenue) || 0,
+      paidUsers: parseInt(revenueQuery.rows[0]?.total_paid_users) || 0,
+    };
+    totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
+    totals.cpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
+    totals.cop = totals.paidUsers > 0 ? totals.spend / totals.paidUsers : 0;
+
     res.json({
       total: enriched.length,
       dateRange: dateFilter,
+      totals,
       data: enriched.slice(offset, offset + parseInt(limit))
     });
   } catch (error) {

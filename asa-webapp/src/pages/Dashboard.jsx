@@ -64,18 +64,19 @@ export default function Dashboard() {
     return parseFloat(p[field] || p[`${field}_7d`] || 0);
   };
 
-  // Calculate totals from campaign performance
+  // Use totals from API (includes all campaigns from DB, not just active ones)
   const campaigns = campaignsData?.data || [];
-  const totalSpend = campaigns.reduce((sum, c) => sum + getPerf(c, 'spend'), 0);
-  const totalImpressions = campaigns.reduce((sum, c) => sum + getPerf(c, 'impressions'), 0);
-  const totalTaps = campaigns.reduce((sum, c) => sum + getPerf(c, 'taps'), 0);
-  const totalInstalls = campaigns.reduce((sum, c) => sum + getPerf(c, 'installs'), 0);
-  const totalRevenue = campaigns.reduce((sum, c) => sum + getPerf(c, 'revenue'), 0);
-  const totalPaidUsers = campaigns.reduce((sum, c) => sum + getPerf(c, 'paid_users'), 0);
+  const totals = campaignsData?.totals || {};
+  const totalSpend = totals.spend || 0;
+  const totalImpressions = totals.impressions || 0;
+  const totalTaps = totals.taps || 0;
+  const totalInstalls = totals.installs || 0;
+  const totalRevenue = totals.revenue || 0;
+  const totalPaidUsers = totals.paidUsers || 0;
 
-  const avgCpa = totalInstalls > 0 ? totalSpend / totalInstalls : 0;
-  const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  const cop = totalPaidUsers > 0 ? totalSpend / totalPaidUsers : 0;
+  const avgCpa = totals.cpa || 0;
+  const roas = totals.roas || 0;
+  const cop = totals.cop || 0;
 
   // Sort campaigns by revenue for top performers
   const topCampaigns = [...campaigns]
