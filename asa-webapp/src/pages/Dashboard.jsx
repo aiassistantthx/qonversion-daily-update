@@ -4,6 +4,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { StatusBadge } from '../components/Badge';
 import { HealthScoreWidget } from '../components/HealthScoreWidget';
 import ConversionFunnelChart from '../components/ConversionFunnelChart';
+import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
 import { getCampaigns, getRules, getHistory, getTrends } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useState } from 'react';
@@ -109,6 +110,14 @@ export default function Dashboard() {
     .sort((a, b) => getPerf(b, 'revenue') - getPerf(a, 'revenue'))
     .slice(0, 5);
 
+  // Calculate traffic light status counts
+  const trafficLightCounts = campaigns.reduce((acc, campaign) => {
+    const predictedRoas = campaign.performance?.predicted_roas_365;
+    const status = getTrafficLightStatus(predictedRoas);
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-6">
       <div>
@@ -198,6 +207,47 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Campaign Health Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Campaign Health Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {['ok', 'risk', 'bad', 'loss', 'unknown'].map(status => {
+              const count = trafficLightCounts[status] || 0;
+              const color = getTrafficLightColor(status);
+              const label = getTrafficLightLabel(status);
+              const total = campaigns.length || 1;
+              const percentage = ((count / total) * 100).toFixed(0);
+
+              return (
+                <div key={status} className="text-center p-4 border rounded-lg">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <div
+                      className="rounded-full"
+                      style={{
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: color,
+                      }}
+                    />
+                    <span className="text-sm font-medium" style={{ color }}>
+                      {label}
+                    </span>
+                  </div>
+                  <p className="text-2xl font-bold">{count}</p>
+                  <p className="text-xs text-gray-400">{percentage}%</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-xs text-gray-500">
+            <p><strong>OK:</strong> Predicted ROAS ≥ 1.5x | <strong>Risk:</strong> 1.0-1.5x | <strong>Bad:</strong> 0.5-1.0x | <strong>Loss:</strong> &lt; 0.5x</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Conversion Funnel Chart */}
       <Card>

@@ -138,6 +138,7 @@ router.get('/campaigns', async (req, res) => {
         c.installs,
         c.cpa,
         c.last_data_date,
+        c.cohort_age,
         COALESCE(r.revenue, 0) as revenue,
         COALESCE(r.paid_users, 0) as paid_users,
         CASE WHEN c.spend > 0 THEN COALESCE(r.revenue, 0) / c.spend ELSE 0 END as roas,
@@ -157,8 +158,10 @@ router.get('/campaigns', async (req, res) => {
                     SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END)
                ELSE NULL
           END as cpa,
-          MAX(date) as last_data_date
+          MAX(date) as last_data_date,
+          ROUND(AVG(CURRENT_DATE - date)) as cohort_age
         FROM apple_ads_campaigns
+        WHERE ${dateCondition}
         GROUP BY campaign_id
       ) c
       LEFT JOIN (
@@ -196,9 +199,23 @@ router.get('/campaigns', async (req, res) => {
         budgetUsedPct = Math.round((parseFloat(perf.spend) / parseFloat(perf.daily_budget)) * 100);
       }
 
+      // Calculate predicted ROAS
+      let predictedRoas365 = null;
+      if (perf) {
+        const currentRoas = parseFloat(perf.roas) || 0;
+        const cohortAge = parseInt(perf.cohort_age) || 0;
+        if (currentRoas > 0 && cohortAge > 0) {
+          const predictions = predictRoas(currentRoas, cohortAge);
+          predictedRoas365 = predictions.predicted_roas_365;
+        }
+      }
+
       return {
         ...campaign,
-        performance: perf || null,
+        performance: perf ? {
+          ...perf,
+          predicted_roas_365: predictedRoas365
+        } : null,
         budgetAlert: alert ? {
           level: alert.alert_level,
           message: alert.message

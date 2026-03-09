@@ -6,6 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { StatusBadge } from '../components/Badge';
 import { Input } from '../components/Input';
+import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { getCampaigns, updateCampaignStatus } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
@@ -19,6 +20,7 @@ export default function Campaigns() {
   const { queryParams, label: dateLabel } = useDateRange();
 
   const [statusFilter, setStatusFilter] = useState('');
+  const [healthFilter, setHealthFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
@@ -48,6 +50,15 @@ export default function Campaigns() {
     // Status filter
     if (statusFilter) {
       result = result.filter(c => c.status === statusFilter);
+    }
+
+    // Health filter
+    if (healthFilter) {
+      result = result.filter(c => {
+        const predictedRoas = c.performance?.predicted_roas_365;
+        const status = getTrafficLightStatus(predictedRoas);
+        return status === healthFilter;
+      });
     }
 
     // Search filter
@@ -104,7 +115,7 @@ export default function Campaigns() {
     });
 
     return result;
-  }, [data, statusFilter, searchQuery, sortField, sortDirection]);
+  }, [data, statusFilter, healthFilter, searchQuery, sortField, sortDirection]);
 
   const handleSort = (field) => {
     console.log('Sort clicked:', field, 'current:', sortField, sortDirection);
@@ -213,6 +224,18 @@ export default function Campaigns() {
             <option value="ENABLED">Enabled</option>
             <option value="PAUSED">Paused</option>
           </select>
+
+          <select
+            value={healthFilter}
+            onChange={(e) => setHealthFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="">All Health</option>
+            <option value="ok">OK (≥1.5x)</option>
+            <option value="risk">Risk (1.0-1.5x)</option>
+            <option value="bad">Bad (0.5-1.0x)</option>
+            <option value="loss">Loss (&lt;0.5x)</option>
+          </select>
         </div>
 
         {selectedIds.size > 0 && (
@@ -243,6 +266,7 @@ export default function Campaigns() {
               </TableHeader>
               <SortHeader field="name">Campaign</SortHeader>
               <SortHeader field="status">Status</SortHeader>
+              <TableHeader>Health</TableHeader>
               <SortHeader field="spend" className="text-right">Spend</SortHeader>
               <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
               <SortHeader field="roas" className="text-right">ROAS</SortHeader>
@@ -254,71 +278,77 @@ export default function Campaigns() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8">Loading campaigns...</TableCell>
+                <TableCell colSpan={10} className="text-center py-8">Loading campaigns...</TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
               </TableRow>
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
               </TableRow>
             ) : (
-              campaigns.map((campaign) => (
-                <TableRow key={campaign.id} className="hover:bg-gray-50">
-                  <TableCell>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(campaign.id)}
-                      onChange={() => toggleSelect(campaign.id)}
-                      className="rounded border-gray-300"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => navigate(`/adgroups?campaigns=${campaign.id}`)}
-                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                    >
-                      {campaign.name}
-                      <ArrowRight size={14} />
-                    </button>
-                    {campaign.countriesOrRegions && (
-                      <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={campaign.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right font-medium text-green-600">
-                    ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                      {getPerf(campaign, 'roas').toFixed(2)}x
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(campaign, 'installs').toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
-                      onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
-                      loading={statusMutation.isPending}
-                    >
-                      {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              campaigns.map((campaign) => {
+                const predictedRoas = campaign.performance?.predicted_roas_365;
+                return (
+                  <TableRow key={campaign.id} className="hover:bg-gray-50">
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(campaign.id)}
+                        onChange={() => toggleSelect(campaign.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => navigate(`/adgroups?campaigns=${campaign.id}`)}
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                      >
+                        {campaign.name}
+                        <ArrowRight size={14} />
+                      </button>
+                      {campaign.countriesOrRegions && (
+                        <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={campaign.status} />
+                    </TableCell>
+                    <TableCell>
+                      <TrafficLight predictedRoas={predictedRoas} size="sm" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      ${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-green-600">
+                      ${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                        {getPerf(campaign, 'roas').toFixed(2)}x
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {getPerf(campaign, 'installs').toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
+                        onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
+                        loading={statusMutation.isPending}
+                      >
+                        {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
