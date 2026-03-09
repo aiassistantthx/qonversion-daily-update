@@ -139,6 +139,28 @@ app.get('/apple-ads/campaigns', async (req, res) => {
 // Debug endpoint to check subscription_events data
 app.get('/debug/subscription-events', async (req, res) => {
   try {
+    // Date range
+    const dateRange = await db.query(`
+      SELECT
+        MIN(event_date) as min_date,
+        MAX(event_date) as max_date,
+        COUNT(*) as total
+      FROM subscription_events
+    `);
+
+    // Daily revenue for last 10 days
+    const dailyRevenue = await db.query(`
+      SELECT
+        DATE(event_date) as day,
+        COUNT(*) as events,
+        SUM(CASE WHEN event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed') AND refund = false THEN price_usd ELSE 0 END) as revenue,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Subscription Started', 'Trial Converted')) as subscribers
+      FROM subscription_events
+      WHERE event_date >= CURRENT_DATE - INTERVAL '10 days'
+      GROUP BY DATE(event_date)
+      ORDER BY day DESC
+    `);
+
     const stats = await db.query(`
       SELECT
         COUNT(*) as total_events,
@@ -174,6 +196,8 @@ app.get('/debug/subscription-events', async (req, res) => {
     `);
 
     res.json({
+      dateRange: dateRange.rows[0],
+      dailyRevenue: dailyRevenue.rows,
       stats: stats.rows[0],
       attributed: attributed.rows[0],
       sample_user_attributions: sample_ua.rows,

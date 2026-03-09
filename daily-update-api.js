@@ -87,9 +87,13 @@ function columnIndexToLetter(index) {
   return result;
 }
 
-function findColumnForDate(targetDate) {
+function findColumnIndexForDate(targetDate) {
   const diffDays = Math.floor((targetDate - CONFIG.baseDate) / (1000 * 60 * 60 * 24));
-  const colIndex = CONFIG.baseColumnIndex + diffDays;
+  return CONFIG.baseColumnIndex + diffDays;
+}
+
+function findColumnForDate(targetDate) {
+  const colIndex = findColumnIndexForDate(targetDate);
   return columnIndexToLetter(colIndex);
 }
 
@@ -103,6 +107,9 @@ function formatDate(date) {
 }
 
 // ============ API FETCHERS ============
+
+const QONVERSION_API_KEY = 'bfGiq4khkfuQNe-Dxmvuspxtboqmcuy-';
+const QONVERSION_API_URL = `https://api.qonversion.io/v1/analytics/${QONVERSION_API_KEY}`;
 
 async function fetchDashboardMain() {
   log('Fetching /dashboard/main...');
@@ -120,6 +127,49 @@ async function fetchWebhookStats() {
     throw new Error(`Webhook stats API error: ${response.status}`);
   }
   return response.json();
+}
+
+// Получить daily trials и yearly subscribers из webhook events
+async function fetchWebhookDaily(days = 14) {
+  log('Fetching /webhook/daily...');
+  const response = await fetch(`${CONFIG.apiUrl}/webhook/daily?days=${days}`);
+  if (!response.ok) {
+    throw new Error(`Webhook daily API error: ${response.status}`);
+  }
+  const data = await response.json();
+
+  // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers } }
+  const result = {};
+  for (const day of data.daily || []) {
+    result[day.date] = {
+      trials: day.trials || 0,
+      yearlySubscribers: day.yearlySubscribers || 0,
+    };
+  }
+  log(`Got webhook daily data for ${Object.keys(result).length} days`);
+  return result;
+}
+
+// Получить proceeds (revenue) напрямую из Qonversion API
+async function fetchQonversionProceeds() {
+  log('Fetching Qonversion proceeds...');
+  const response = await fetch(`${QONVERSION_API_URL}/chart/proceeds?environment=1&unit=day`);
+  if (!response.ok) {
+    throw new Error(`Qonversion API error: ${response.status}`);
+  }
+  const data = await response.json();
+
+  // Преобразуем в удобный формат { 'YYYY-MM-DD': value }
+  const result = {};
+  const series = data.data?.series?.find(s => s.label === 'After refunds');
+  if (series?.data) {
+    for (const item of series.data) {
+      const date = new Date(item.start_time * 1000).toISOString().split('T')[0];
+      result[date] = item.value;
+    }
+  }
+  log(`Got proceeds for ${Object.keys(result).length} days`);
+  return result;
 }
 
 // ============ UNIT ECONOMICS CALCULATIONS ============
@@ -221,7 +271,65 @@ function generateReport(metrics, options) {
 
 // ============ GOOGLE SHEETS UPDATE ============
 
-async function updateGoogleSheets(dashboardData, options) {
+async function ensureSheetHasEnoughColumns(updater, maxDate, options) {
+  // Определяем нужную колонку для максимальной даты
+  const requiredColumnIndex = findColumnIndexForDate(maxDate);
+
+  // Получаем информацию о листе
+  const info = await updater.getSheetInfo(CONFIG.sheet);
+
+  if (info.columnCount >= requiredColumnIndex) {
+    if (options.verbose) {
+      log(`Sheet has enough columns: ${info.columnCount} >= ${requiredColumnIndex}`);
+    }
+    return { added: 0, copied: 0 };
+  }
+
+  // Нужно добавить колонки
+  const columnsToAdd = requiredColumnIndex - info.columnCount;
+  log(`Expanding sheet: adding ${columnsToAdd} columns (current: ${info.columnCount}, required: ${requiredColumnIndex})`);
+
+  // Добавляем колонки
+  await updater.appendColumns(info.sheetId, columnsToAdd);
+
+  // Копируем последнюю заполненную колонку во все новые
+  // Последняя заполненная = info.columnCount - 1 (0-based)
+  const lastFilledColumn = info.columnCount - 1;
+  const newColumnsStart = info.columnCount;
+
+  log(`Copying column ${columnIndexToLetter(lastFilledColumn + 1)} to ${columnsToAdd} new columns...`);
+
+  for (let i = 0; i < columnsToAdd; i++) {
+    await updater.copyColumn(info.sheetId, lastFilledColumn, newColumnsStart + i);
+  }
+
+  // Обновляем заголовки дат для новых колонок (строка 1)
+  const headerUpdates = [];
+  for (let i = 0; i < columnsToAdd; i++) {
+    const colIndex = info.columnCount + i + 1; // 1-based для columnIndexToLetter
+    const colLetter = columnIndexToLetter(colIndex);
+
+    // Вычисляем дату для этой колонки
+    const daysFromBase = colIndex - CONFIG.baseColumnIndex;
+    const date = new Date(CONFIG.baseDate);
+    date.setDate(date.getDate() + daysFromBase);
+    const dateStr = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+    headerUpdates.push({
+      range: `${CONFIG.sheet}!${colLetter}1`,
+      value: dateStr
+    });
+  }
+
+  if (headerUpdates.length > 0) {
+    await updater.batchUpdate(headerUpdates);
+    log(`Updated ${headerUpdates.length} date headers`);
+  }
+
+  return { added: columnsToAdd, copied: columnsToAdd };
+}
+
+async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, options) {
   if (options.dryRun) {
     log('DRY RUN: Skipping Google Sheets update');
     return [];
@@ -247,6 +355,21 @@ async function updateGoogleSheets(dashboardData, options) {
 
   log(`Updating range: ${formatDate(fromDate)} to ${formatDate(toDate)}`);
 
+  // Определяем максимальную дату из данных
+  let maxDataDate = fromDate;
+  for (const day of dashboardData.daily) {
+    const date = parseApiDate(day.date);
+    if (date >= fromDate && date <= toDate && date > maxDataDate) {
+      maxDataDate = date;
+    }
+  }
+
+  // Расширяем таблицу если нужно (с копированием формул)
+  const expansion = await ensureSheetHasEnoughColumns(updater, maxDataDate, options);
+  if (expansion.added > 0) {
+    log(`Sheet expanded: added ${expansion.added} columns, copied formatting to ${expansion.copied} columns`);
+  }
+
   // ========== ДНЕВНЫЕ ДАННЫЕ ==========
   for (const day of dashboardData.daily) {
     const date = parseApiDate(day.date);
@@ -266,19 +389,29 @@ async function updateGoogleSheets(dashboardData, options) {
       if (options.verbose) log(`  SKIP: Spend для ${day.date} = 0`);
     }
 
-    // Sales (row 19)
-    if (day.revenue > 0) {
+    // Sales (row 19) - берём из Qonversion API
+    const revenue = qonversionProceeds[day.date] || 0;
+    if (revenue > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.sales}`,
-        value: Math.round(day.revenue)
+        value: Math.round(revenue)
       });
     }
 
-    // Subscribers → Yearly Subscribers (row 58)
-    if (day.subscribers > 0) {
+    // Yearly Subscribers (row 58) - берём из webhook events
+    const webhookData = webhookDaily[day.date];
+    if (webhookData?.yearlySubscribers > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.newYearlySubscribers}`,
-        value: day.subscribers
+        value: webhookData.yearlySubscribers
+      });
+    }
+
+    // New Trials (row 55) - берём из webhook events
+    if (webhookData?.trials > 0) {
+      updates.push({
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.newTrials}`,
+        value: webhookData.trials
       });
     }
   }
@@ -321,15 +454,19 @@ async function main() {
   try {
     // Получаем данные из API
     const dashboardData = await fetchDashboardMain();
+    const qonversionProceeds = await fetchQonversionProceeds();
+    const webhookDaily = await fetchWebhookDaily(options.days + 7); // +7 для буфера
 
     log(`Got ${dashboardData.daily.length} daily records`);
     log(`Got ${dashboardData.monthly.length} monthly records`);
+    log(`Got proceeds for ${Object.keys(qonversionProceeds).length} days from Qonversion`);
+    log(`Got trials/subscribers for ${Object.keys(webhookDaily).length} days from webhook`);
 
     // Вычисляем unit economics
     const metrics = calculateUnitEconomics(dashboardData);
 
     // Обновляем Google Sheets
-    const updates = await updateGoogleSheets(dashboardData, options);
+    const updates = await updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, options);
 
     // Генерируем отчёт
     const report = generateReport(metrics, options);
