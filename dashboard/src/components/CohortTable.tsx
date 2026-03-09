@@ -28,6 +28,26 @@ export interface CohortData {
     d90: number;
     total: number;
   };
+  cop: {
+    d0: number | null;
+    d3: number | null;
+    d7: number | null;
+    d14: number | null;
+    d30: number | null;
+    d60: number | null;
+    d90: number | null;
+    total: number | null;
+  };
+  paidUsers: {
+    d0: number;
+    d3: number;
+    d7: number;
+    d14: number;
+    d30: number;
+    d60: number;
+    d90: number;
+    total: number;
+  };
 }
 
 export interface CohortsData {
@@ -48,6 +68,26 @@ export interface CohortsData {
       total: number;
     };
     revenue: {
+      d0: number;
+      d3: number;
+      d7: number;
+      d14: number;
+      d30: number;
+      d60: number;
+      d90: number;
+      total: number;
+    };
+    cop: {
+      d0: number | null;
+      d3: number | null;
+      d7: number | null;
+      d14: number | null;
+      d30: number | null;
+      d60: number | null;
+      d90: number | null;
+      total: number | null;
+    };
+    paidUsers: {
       d0: number;
       d3: number;
       d7: number;
@@ -86,13 +126,36 @@ function getRoasColor(roas: number, maxRoas: number): string {
   }
 }
 
+// Get color for COP value (inverted heatmap - lower is better)
+function getCopColor(cop: number | null, maxCop: number): string {
+  if (cop === null || cop <= 0) return '#f3f4f6';
+
+  // Normalize to 0-1 scale based on max
+  const normalized = Math.min(cop / Math.max(maxCop, 1), 1);
+
+  // Inverted: lower COP = green, higher COP = red
+  if (normalized < 0.33) {
+    // Green to yellow (low COP)
+    const intensity = normalized / 0.33;
+    return `rgb(${16 + (245 - 16) * intensity}, ${185 + (158 - 185) * intensity}, ${129 + (11 - 129) * intensity})`;
+  } else if (normalized < 0.67) {
+    // Yellow to orange (medium COP)
+    const intensity = (normalized - 0.33) / 0.34;
+    return `rgb(${245 - (245 - 239) * intensity}, ${158 - (158 - 68) * intensity}, ${11 + (68 - 11) * intensity})`;
+  } else {
+    // Orange to red (high COP)
+    const intensity = (normalized - 0.67) / 0.33;
+    return `rgb(239, ${68 + (68 - 68) * intensity}, ${68 + (68 - 68) * intensity})`;
+  }
+}
+
 // Get text color based on background
 function getTextColor(roas: number): string {
   return roas > 0.7 ? '#000' : '#fff';
 }
 
 export function CohortTable({ data }: CohortTableProps) {
-  const [showRevenue, setShowRevenue] = useState(false);
+  const [viewMode, setViewMode] = useState<'roas' | 'revenue' | 'cop'>('roas');
 
   if (!data) {
     return (
@@ -109,23 +172,64 @@ export function CohortTable({ data }: CohortTableProps) {
     2 // minimum scale
   );
 
+  // Find max COP for heatmap scaling
+  const maxCop = Math.max(
+    ...data.cohorts.flatMap(c => [c.cop.d0, c.cop.d3, c.cop.d7, c.cop.d14, c.cop.d30, c.cop.d60, c.cop.d90, c.cop.total].filter(v => v !== null) as number[]),
+    50 // minimum scale
+  );
+
   const handleExport = () => {
     const headers = ['Cohort', 'Age (days)', 'Spend', 'Users', 'D0', 'D3', 'D7', 'D14', 'D30', 'D60', 'D90', 'Total'];
-    const rows = data.cohorts.map(c => [
-      c.cohort,
-      c.cohortAge,
-      c.spend.toFixed(2),
-      c.users,
-      (c.roas.d0 * 100).toFixed(1) + '%',
-      (c.roas.d3 * 100).toFixed(1) + '%',
-      (c.roas.d7 * 100).toFixed(1) + '%',
-      (c.roas.d14 * 100).toFixed(1) + '%',
-      (c.roas.d30 * 100).toFixed(1) + '%',
-      (c.roas.d60 * 100).toFixed(1) + '%',
-      (c.roas.d90 * 100).toFixed(1) + '%',
-      (c.roas.total * 100).toFixed(1) + '%',
-    ]);
-    exportToCSV('cohort-roas', headers, rows);
+    const rows = data.cohorts.map(c => {
+      if (viewMode === 'roas') {
+        return [
+          c.cohort,
+          c.cohortAge,
+          c.spend.toFixed(2),
+          c.users,
+          (c.roas.d0 * 100).toFixed(1) + '%',
+          (c.roas.d3 * 100).toFixed(1) + '%',
+          (c.roas.d7 * 100).toFixed(1) + '%',
+          (c.roas.d14 * 100).toFixed(1) + '%',
+          (c.roas.d30 * 100).toFixed(1) + '%',
+          (c.roas.d60 * 100).toFixed(1) + '%',
+          (c.roas.d90 * 100).toFixed(1) + '%',
+          (c.roas.total * 100).toFixed(1) + '%',
+        ];
+      } else if (viewMode === 'cop') {
+        return [
+          c.cohort,
+          c.cohortAge,
+          c.spend.toFixed(2),
+          c.users,
+          c.cop.d0 !== null ? '$' + c.cop.d0.toFixed(2) : 'N/A',
+          c.cop.d3 !== null ? '$' + c.cop.d3.toFixed(2) : 'N/A',
+          c.cop.d7 !== null ? '$' + c.cop.d7.toFixed(2) : 'N/A',
+          c.cop.d14 !== null ? '$' + c.cop.d14.toFixed(2) : 'N/A',
+          c.cop.d30 !== null ? '$' + c.cop.d30.toFixed(2) : 'N/A',
+          c.cop.d60 !== null ? '$' + c.cop.d60.toFixed(2) : 'N/A',
+          c.cop.d90 !== null ? '$' + c.cop.d90.toFixed(2) : 'N/A',
+          c.cop.total !== null ? '$' + c.cop.total.toFixed(2) : 'N/A',
+        ];
+      } else {
+        return [
+          c.cohort,
+          c.cohortAge,
+          c.spend.toFixed(2),
+          c.users,
+          '$' + c.revenue.d0.toFixed(0),
+          '$' + c.revenue.d3.toFixed(0),
+          '$' + c.revenue.d7.toFixed(0),
+          '$' + c.revenue.d14.toFixed(0),
+          '$' + c.revenue.d30.toFixed(0),
+          '$' + c.revenue.d60.toFixed(0),
+          '$' + c.revenue.d90.toFixed(0),
+          '$' + c.revenue.total.toFixed(0),
+        ];
+      }
+    });
+    const filename = viewMode === 'roas' ? 'cohort-roas' : viewMode === 'cop' ? 'cohort-cop' : 'cohort-revenue';
+    exportToCSV(filename, headers, rows);
   };
 
   return (
@@ -142,11 +246,41 @@ export function CohortTable({ data }: CohortTableProps) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
-            onClick={() => setShowRevenue(!showRevenue)}
+            onClick={() => setViewMode('roas')}
             style={{
               padding: '6px 12px',
-              background: showRevenue ? '#3b82f6' : '#f3f4f6',
-              color: showRevenue ? '#fff' : '#374151',
+              background: viewMode === 'roas' ? '#3b82f6' : '#f3f4f6',
+              color: viewMode === 'roas' ? '#fff' : '#374151',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            ROAS
+          </button>
+          <button
+            onClick={() => setViewMode('cop')}
+            style={{
+              padding: '6px 12px',
+              background: viewMode === 'cop' ? '#3b82f6' : '#f3f4f6',
+              color: viewMode === 'cop' ? '#fff' : '#374151',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            COP
+          </button>
+          <button
+            onClick={() => setViewMode('revenue')}
+            style={{
+              padding: '6px 12px',
+              background: viewMode === 'revenue' ? '#3b82f6' : '#f3f4f6',
+              color: viewMode === 'revenue' ? '#fff' : '#374151',
               border: 'none',
               borderRadius: 6,
               fontSize: 12,
@@ -158,7 +292,7 @@ export function CohortTable({ data }: CohortTableProps) {
             }}
           >
             <TrendingUp size={14} />
-            {showRevenue ? 'Show ROAS' : 'Show Revenue'}
+            Revenue
           </button>
           <button
             onClick={handleExport}
@@ -203,7 +337,6 @@ export function CohortTable({ data }: CohortTableProps) {
           </thead>
           <tbody>
             {data.cohorts.map((cohort) => {
-              const values = showRevenue ? cohort.revenue : cohort.roas;
               return (
                 <tr key={cohort.cohort} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={tdStyle}>
@@ -223,17 +356,84 @@ export function CohortTable({ data }: CohortTableProps) {
                   </td>
                   <td style={tdRightStyle}>${cohort.spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                   <td style={tdRightStyle}>{cohort.users}</td>
-                  {showRevenue ? (
+                  {viewMode === 'revenue' ? (
                     <>
-                      <td style={tdRightStyle}>${values.d0.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d3.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d7.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d14.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d30.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d60.toFixed(0)}</td>
-                      <td style={tdRightStyle}>${values.d90.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d0.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d3.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d7.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d14.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d30.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d60.toFixed(0)}</td>
+                      <td style={tdRightStyle}>${cohort.revenue.d90.toFixed(0)}</td>
                       <td style={{ ...tdRightStyle, background: '#f0fdf4', fontWeight: 600 }}>
-                        ${values.total.toFixed(0)}
+                        ${cohort.revenue.total.toFixed(0)}
+                      </td>
+                    </>
+                  ) : viewMode === 'cop' ? (
+                    <>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d0 !== null ? getCopColor(cohort.cop.d0, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d0 !== null && cohort.cop.d0 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d0 !== null ? `$${cohort.cop.d0.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d3 !== null ? getCopColor(cohort.cop.d3, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d3 !== null && cohort.cop.d3 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d3 !== null ? `$${cohort.cop.d3.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d7 !== null ? getCopColor(cohort.cop.d7, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d7 !== null && cohort.cop.d7 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d7 !== null ? `$${cohort.cop.d7.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d14 !== null ? getCopColor(cohort.cop.d14, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d14 !== null && cohort.cop.d14 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d14 !== null ? `$${cohort.cop.d14.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d30 !== null ? getCopColor(cohort.cop.d30, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d30 !== null && cohort.cop.d30 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d30 !== null ? `$${cohort.cop.d30.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d60 !== null ? getCopColor(cohort.cop.d60, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d60 !== null && cohort.cop.d60 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d60 !== null ? `$${cohort.cop.d60.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.d90 !== null ? getCopColor(cohort.cop.d90, maxCop) : '#f3f4f6',
+                        color: cohort.cop.d90 !== null && cohort.cop.d90 < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 500,
+                      }}>
+                        {cohort.cop.d90 !== null ? `$${cohort.cop.d90.toFixed(2)}` : 'N/A'}
+                      </td>
+                      <td style={{
+                        ...tdRightStyle,
+                        background: cohort.cop.total !== null ? getCopColor(cohort.cop.total, maxCop) : '#f3f4f6',
+                        color: cohort.cop.total !== null && cohort.cop.total < maxCop * 0.5 ? '#000' : '#fff',
+                        fontWeight: 600,
+                      }}>
+                        {cohort.cop.total !== null ? `$${cohort.cop.total.toFixed(2)}` : 'N/A'}
                       </td>
                     </>
                   ) : (
@@ -314,7 +514,7 @@ export function CohortTable({ data }: CohortTableProps) {
               <td style={tdRightStyle}></td>
               <td style={tdRightStyle}>${data.totals.spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
               <td style={tdRightStyle}>{data.totals.users}</td>
-              {showRevenue ? (
+              {viewMode === 'revenue' ? (
                 <>
                   <td style={tdRightStyle}>${data.totals.revenue.d0.toFixed(0)}</td>
                   <td style={tdRightStyle}>${data.totals.revenue.d3.toFixed(0)}</td>
@@ -325,6 +525,19 @@ export function CohortTable({ data }: CohortTableProps) {
                   <td style={tdRightStyle}>${data.totals.revenue.d90.toFixed(0)}</td>
                   <td style={{ ...tdRightStyle, background: '#f0fdf4' }}>
                     ${data.totals.revenue.total.toFixed(0)}
+                  </td>
+                </>
+              ) : viewMode === 'cop' ? (
+                <>
+                  <td style={tdRightStyle}>{data.totals.cop.d0 !== null ? `$${data.totals.cop.d0.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d3 !== null ? `$${data.totals.cop.d3.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d7 !== null ? `$${data.totals.cop.d7.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d14 !== null ? `$${data.totals.cop.d14.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d30 !== null ? `$${data.totals.cop.d30.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d60 !== null ? `$${data.totals.cop.d60.toFixed(2)}` : 'N/A'}</td>
+                  <td style={tdRightStyle}>{data.totals.cop.d90 !== null ? `$${data.totals.cop.d90.toFixed(2)}` : 'N/A'}</td>
+                  <td style={{ ...tdRightStyle, background: '#f0fdf4' }}>
+                    {data.totals.cop.total !== null ? `$${data.totals.cop.total.toFixed(2)}` : 'N/A'}
                   </td>
                 </>
               ) : (
@@ -348,10 +561,17 @@ export function CohortTable({ data }: CohortTableProps) {
 
       <div style={{ marginTop: 16, padding: 12, background: '#f9fafb', borderRadius: 8, fontSize: 12, color: '#6b7280' }}>
         <strong>How to read:</strong> Each row is a cohort (users who installed in that {data.period}).
-        Columns show ROAS at different ages (D0 = day 0, D3 = day 3, etc.).
-        Colors indicate performance: <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (low),
-        <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (medium),
-        <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (high).
+        Columns show {viewMode === 'roas' ? 'ROAS' : viewMode === 'cop' ? 'COP (Cost of Payment)' : 'Revenue'} at different ages (D0 = day 0, D3 = day 3, etc.).
+        {viewMode === 'roas' && (
+          <> Colors indicate ROAS: <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (low),
+          <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (medium),
+          <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (high).</>
+        )}
+        {viewMode === 'cop' && (
+          <> Colors indicate COP: <span style={{ color: '#10b981', fontWeight: 500 }}>green</span> (low/good),
+          <span style={{ color: '#f59e0b', fontWeight: 500 }}>orange</span> (medium),
+          <span style={{ color: '#ef4444', fontWeight: 500 }}>red</span> (high/bad).</>
+        )}
       </div>
     </div>
   );

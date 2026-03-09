@@ -1820,7 +1820,16 @@ router.get('/cohorts', async (req, res) => {
           SUM(CASE WHEN event_date - install_date <= 60 THEN price_usd ELSE 0 END) as revenue_d60,
           SUM(CASE WHEN event_date - install_date <= 90 THEN price_usd ELSE 0 END) as revenue_d90,
           SUM(price_usd) as revenue_total,
-          COUNT(DISTINCT q_user_id) as users
+          COUNT(DISTINCT q_user_id) as users,
+          -- Paid users by age windows
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 0 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d0,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 3 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d3,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 7 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d7,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 14 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d14,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 30 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d30,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 60 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d60,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 90 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d90,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_total
         FROM events_v2
         WHERE refund = false
           AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
@@ -1842,7 +1851,15 @@ router.get('/cohorts', async (req, res) => {
           SUM(r.revenue_d60) as revenue_d60,
           SUM(r.revenue_d90) as revenue_d90,
           SUM(r.revenue_total) as revenue_total,
-          SUM(r.users) as users
+          SUM(r.users) as users,
+          SUM(r.paid_users_d0) as paid_users_d0,
+          SUM(r.paid_users_d3) as paid_users_d3,
+          SUM(r.paid_users_d7) as paid_users_d7,
+          SUM(r.paid_users_d14) as paid_users_d14,
+          SUM(r.paid_users_d30) as paid_users_d30,
+          SUM(r.paid_users_d60) as paid_users_d60,
+          SUM(r.paid_users_d90) as paid_users_d90,
+          SUM(r.paid_users_total) as paid_users_total
         FROM cohort_revenue r
         LEFT JOIN cohort_spend s ON r.cohort = s.cohort
         GROUP BY r.cohort, s.spend
@@ -1861,6 +1878,14 @@ router.get('/cohorts', async (req, res) => {
         revenue_d90,
         revenue_total,
         users,
+        paid_users_d0,
+        paid_users_d3,
+        paid_users_d7,
+        paid_users_d14,
+        paid_users_d30,
+        paid_users_d60,
+        paid_users_d90,
+        paid_users_total,
         CASE WHEN spend > 0 THEN revenue_d0 / spend ELSE 0 END as roas_d0,
         CASE WHEN spend > 0 THEN revenue_d3 / spend ELSE 0 END as roas_d3,
         CASE WHEN spend > 0 THEN revenue_d7 / spend ELSE 0 END as roas_d7,
@@ -1868,7 +1893,15 @@ router.get('/cohorts', async (req, res) => {
         CASE WHEN spend > 0 THEN revenue_d30 / spend ELSE 0 END as roas_d30,
         CASE WHEN spend > 0 THEN revenue_d60 / spend ELSE 0 END as roas_d60,
         CASE WHEN spend > 0 THEN revenue_d90 / spend ELSE 0 END as roas_d90,
-        CASE WHEN spend > 0 THEN revenue_total / spend ELSE 0 END as roas_total
+        CASE WHEN spend > 0 THEN revenue_total / spend ELSE 0 END as roas_total,
+        CASE WHEN paid_users_d0 > 0 THEN spend / paid_users_d0 ELSE NULL END as cop_d0,
+        CASE WHEN paid_users_d3 > 0 THEN spend / paid_users_d3 ELSE NULL END as cop_d3,
+        CASE WHEN paid_users_d7 > 0 THEN spend / paid_users_d7 ELSE NULL END as cop_d7,
+        CASE WHEN paid_users_d14 > 0 THEN spend / paid_users_d14 ELSE NULL END as cop_d14,
+        CASE WHEN paid_users_d30 > 0 THEN spend / paid_users_d30 ELSE NULL END as cop_d30,
+        CASE WHEN paid_users_d60 > 0 THEN spend / paid_users_d60 ELSE NULL END as cop_d60,
+        CASE WHEN paid_users_d90 > 0 THEN spend / paid_users_d90 ELSE NULL END as cop_d90,
+        CASE WHEN paid_users_total > 0 THEN spend / paid_users_total ELSE NULL END as cop_total
       FROM cohort_agg
       WHERE spend > 0
       ORDER BY cohort DESC
@@ -1889,6 +1922,14 @@ router.get('/cohorts', async (req, res) => {
       revenue_d90: acc.revenue_d90 + parseFloat(row.revenue_d90 || 0),
       revenue_total: acc.revenue_total + parseFloat(row.revenue_total || 0),
       users: acc.users + parseInt(row.users || 0),
+      paid_users_d0: acc.paid_users_d0 + parseInt(row.paid_users_d0 || 0),
+      paid_users_d3: acc.paid_users_d3 + parseInt(row.paid_users_d3 || 0),
+      paid_users_d7: acc.paid_users_d7 + parseInt(row.paid_users_d7 || 0),
+      paid_users_d14: acc.paid_users_d14 + parseInt(row.paid_users_d14 || 0),
+      paid_users_d30: acc.paid_users_d30 + parseInt(row.paid_users_d30 || 0),
+      paid_users_d60: acc.paid_users_d60 + parseInt(row.paid_users_d60 || 0),
+      paid_users_d90: acc.paid_users_d90 + parseInt(row.paid_users_d90 || 0),
+      paid_users_total: acc.paid_users_total + parseInt(row.paid_users_total || 0),
     }), {
       spend: 0,
       revenue_d0: 0,
@@ -1900,6 +1941,14 @@ router.get('/cohorts', async (req, res) => {
       revenue_d90: 0,
       revenue_total: 0,
       users: 0,
+      paid_users_d0: 0,
+      paid_users_d3: 0,
+      paid_users_d7: 0,
+      paid_users_d14: 0,
+      paid_users_d30: 0,
+      paid_users_d60: 0,
+      paid_users_d90: 0,
+      paid_users_total: 0,
     });
 
     res.json({
@@ -1930,6 +1979,26 @@ router.get('/cohorts', async (req, res) => {
           d60: parseFloat(row.revenue_d60 || 0),
           d90: parseFloat(row.revenue_d90 || 0),
           total: parseFloat(row.revenue_total || 0),
+        },
+        cop: {
+          d0: row.cop_d0 !== null ? parseFloat(row.cop_d0) : null,
+          d3: row.cop_d3 !== null ? parseFloat(row.cop_d3) : null,
+          d7: row.cop_d7 !== null ? parseFloat(row.cop_d7) : null,
+          d14: row.cop_d14 !== null ? parseFloat(row.cop_d14) : null,
+          d30: row.cop_d30 !== null ? parseFloat(row.cop_d30) : null,
+          d60: row.cop_d60 !== null ? parseFloat(row.cop_d60) : null,
+          d90: row.cop_d90 !== null ? parseFloat(row.cop_d90) : null,
+          total: row.cop_total !== null ? parseFloat(row.cop_total) : null,
+        },
+        paidUsers: {
+          d0: parseInt(row.paid_users_d0 || 0),
+          d3: parseInt(row.paid_users_d3 || 0),
+          d7: parseInt(row.paid_users_d7 || 0),
+          d14: parseInt(row.paid_users_d14 || 0),
+          d30: parseInt(row.paid_users_d30 || 0),
+          d60: parseInt(row.paid_users_d60 || 0),
+          d90: parseInt(row.paid_users_d90 || 0),
+          total: parseInt(row.paid_users_total || 0),
         }
       })),
       totals: {
@@ -1954,6 +2023,26 @@ router.get('/cohorts', async (req, res) => {
           d60: totals.revenue_d60,
           d90: totals.revenue_d90,
           total: totals.revenue_total,
+        },
+        cop: {
+          d0: totals.paid_users_d0 > 0 ? totals.spend / totals.paid_users_d0 : null,
+          d3: totals.paid_users_d3 > 0 ? totals.spend / totals.paid_users_d3 : null,
+          d7: totals.paid_users_d7 > 0 ? totals.spend / totals.paid_users_d7 : null,
+          d14: totals.paid_users_d14 > 0 ? totals.spend / totals.paid_users_d14 : null,
+          d30: totals.paid_users_d30 > 0 ? totals.spend / totals.paid_users_d30 : null,
+          d60: totals.paid_users_d60 > 0 ? totals.spend / totals.paid_users_d60 : null,
+          d90: totals.paid_users_d90 > 0 ? totals.spend / totals.paid_users_d90 : null,
+          total: totals.paid_users_total > 0 ? totals.spend / totals.paid_users_total : null,
+        },
+        paidUsers: {
+          d0: totals.paid_users_d0,
+          d3: totals.paid_users_d3,
+          d7: totals.paid_users_d7,
+          d14: totals.paid_users_d14,
+          d30: totals.paid_users_d30,
+          d60: totals.paid_users_d60,
+          d90: totals.paid_users_d90,
+          total: totals.paid_users_total,
         }
       }
     });
