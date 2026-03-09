@@ -289,6 +289,65 @@ router.post('/', async (req, res) => {
   }
 });
 
+// GET /webhook/daily - daily statistics for trials and subscriptions
+router.get('/daily', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 14;
+
+    // Get daily trials (Trial Started events)
+    const trials = await db.query(`
+      SELECT
+        DATE(event_date) as date,
+        COUNT(*) as trials
+      FROM subscription_events
+      WHERE event_name = 'Trial Started'
+        AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
+      GROUP BY DATE(event_date)
+      ORDER BY date DESC
+    `);
+
+    // Get daily yearly subscribers (Trial Converted + Subscription Started for yearly products)
+    // Yearly products typically have 'year' or '1y' in product_id
+    const yearlySubscribers = await db.query(`
+      SELECT
+        DATE(event_date) as date,
+        COUNT(*) as subscribers
+      FROM subscription_events
+      WHERE event_name IN ('Trial Converted', 'Subscription Started')
+        AND (product_id ILIKE '%year%' OR product_id ILIKE '%1y%' OR product_id ILIKE '%annual%')
+        AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
+      GROUP BY DATE(event_date)
+      ORDER BY date DESC
+    `);
+
+    // Build daily map
+    const dailyMap = {};
+    for (const row of trials.rows) {
+      const dateStr = row.date.toISOString().split('T')[0];
+      dailyMap[dateStr] = { date: dateStr, trials: parseInt(row.trials), yearlySubscribers: 0 };
+    }
+    for (const row of yearlySubscribers.rows) {
+      const dateStr = row.date.toISOString().split('T')[0];
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, trials: 0, yearlySubscribers: 0 };
+      }
+      dailyMap[dateStr].yearlySubscribers = parseInt(row.subscribers);
+    }
+
+    // Sort by date descending
+    const daily = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json({
+      days,
+      daily,
+    });
+
+  } catch (error) {
+    console.error('Daily stats query error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /webhook/stats - show webhook statistics
 router.get('/stats', async (req, res) => {
   try {
