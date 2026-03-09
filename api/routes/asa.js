@@ -684,6 +684,12 @@ router.get('/keywords', async (req, res) => {
         WHERE campaign_id = $1
         GROUP BY keyword_id
       ),
+      total_impressions AS (
+        SELECT
+          SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as total_impr
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+      ),
       keyword_revenue AS (
         SELECT
           keyword_id,
@@ -718,10 +724,12 @@ router.get('/keywords', async (req, res) => {
         CASE WHEN COALESCE(p.installs, 0) > 0 THEN COALESCE(p.spend, 0) / p.installs ELSE NULL END as cpa_7d,
         CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / p.spend ELSE 0 END as roas_7d,
         CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(p.spend, 0) / r.paid_users ELSE NULL END as cop_7d,
-        CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d
+        CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d,
+        CASE WHEN ti.total_impr > 0 THEN (COALESCE(p.impressions, 0)::float / ti.total_impr) * 100 ELSE 0 END as sov
       FROM keyword_base k
       LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id
       LEFT JOIN keyword_revenue r ON k.keyword_id::TEXT = r.keyword_id::TEXT
+      CROSS JOIN total_impressions ti
       WHERE 1=1
     `;
     const params = [campaign_id];
@@ -1986,6 +1994,81 @@ router.get('/trends', async (req, res) => {
     }
 
     res.json(responseData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /asa/keywords/sov-trend
+ * Get Share of Voice trend over time
+ *
+ * Query params:
+ * - campaign_id: campaign ID (required)
+ * - from: start date (YYYY-MM-DD) (required)
+ * - to: end date (YYYY-MM-DD) (required)
+ */
+router.get('/keywords/sov-trend', async (req, res) => {
+  try {
+    const { campaign_id, from, to } = req.query;
+
+    if (!campaign_id || !from || !to) {
+      return res.status(400).json({ error: 'campaign_id, from, and to dates are required' });
+    }
+
+    const query = `
+      WITH daily_impressions AS (
+        SELECT
+          date,
+          keyword_id,
+          keyword_text,
+          SUM(impressions) as impressions
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+          AND date >= $2
+          AND date <= $3
+        GROUP BY date, keyword_id, keyword_text
+      ),
+      daily_totals AS (
+        SELECT
+          date,
+          SUM(impressions) as total_impressions
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+          AND date >= $2
+          AND date <= $3
+        GROUP BY date
+      )
+      SELECT
+        di.date,
+        di.keyword_id,
+        di.keyword_text,
+        di.impressions,
+        dt.total_impressions,
+        CASE WHEN dt.total_impressions > 0
+          THEN (di.impressions::float / dt.total_impressions) * 100
+          ELSE 0
+        END as sov
+      FROM daily_impressions di
+      JOIN daily_totals dt ON di.date = dt.date
+      ORDER BY di.date ASC, di.impressions DESC
+    `;
+
+    const result = await db.query(query, [campaign_id, from, to]);
+
+    res.json({
+      campaign_id,
+      from,
+      to,
+      data: result.rows.map(row => ({
+        date: row.date,
+        keyword_id: row.keyword_id,
+        keyword_text: row.keyword_text,
+        impressions: parseInt(row.impressions) || 0,
+        total_impressions: parseInt(row.total_impressions) || 0,
+        sov: parseFloat(row.sov) || 0
+      }))
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

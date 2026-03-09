@@ -170,6 +170,10 @@ export default function Keywords() {
           aVal = parseFloat(a.cop_7d || 999999);
           bVal = parseFloat(b.cop_7d || 999999);
           break;
+        case 'sov':
+          aVal = parseFloat(a.sov || 0);
+          bVal = parseFloat(b.sov || 0);
+          break;
         default:
           aVal = a.keyword_text || '';
           bVal = b.keyword_text || '';
@@ -319,7 +323,7 @@ export default function Keywords() {
   };
 
   const exportCSV = () => {
-    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
+    const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
       const spend = parseFloat(k.spend_7d || 0);
       const revenue = parseFloat(k.revenue_7d || 0);
@@ -331,6 +335,7 @@ export default function Keywords() {
         k.current_bid || k.bid_amount || '',
         spend.toFixed(2),
         k.impressions_7d || 0,
+        parseFloat(k.sov || 0).toFixed(2),
         k.taps_7d || 0,
         k.installs_7d || 0,
         k.cpa_7d || '',
@@ -372,7 +377,8 @@ export default function Keywords() {
       installs: acc.installs + parseInt(k.installs_7d || 0),
       revenue: acc.revenue + parseFloat(k.revenue_7d || 0),
       paidUsers: acc.paidUsers + parseInt(k.paid_users_7d || 0),
-    }), { spend: 0, impressions: 0, taps: 0, installs: 0, revenue: 0, paidUsers: 0 });
+      sov: acc.sov + parseFloat(k.sov || 0),
+    }), { spend: 0, impressions: 0, taps: 0, installs: 0, revenue: 0, paidUsers: 0, sov: 0 });
   }, [keywords]);
 
   const avgCpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
@@ -434,11 +440,17 @@ export default function Keywords() {
 
       {/* Totals */}
       {keywords.length > 0 && (
-        <div className="grid grid-cols-6 gap-4">
+        <div className="grid grid-cols-7 gap-4">
           <Card>
             <div className="p-4">
               <p className="text-sm text-gray-500">Spend</p>
               <p className="text-xl font-bold">${totals.spend.toFixed(2)}</p>
+            </div>
+          </Card>
+          <Card>
+            <div className="p-4">
+              <p className="text-sm text-gray-500">SOV</p>
+              <p className="text-xl font-bold text-blue-600">{totals.sov.toFixed(2)}%</p>
             </div>
           </Card>
           <Card>
@@ -612,6 +624,8 @@ export default function Keywords() {
                 <SortHeader field="matchType">Match</SortHeader>
                 <SortHeader field="bid" className="text-right">Bid</SortHeader>
                 <SortHeader field="spend" className="text-right">Spend</SortHeader>
+                <SortHeader field="impressions" className="text-right">Impressions</SortHeader>
+                <SortHeader field="sov" className="text-right">SOV %</SortHeader>
                 <SortHeader field="taps" className="text-right">Taps</SortHeader>
                 <SortHeader field="installs" className="text-right">Installs</SortHeader>
                 <SortHeader field="cpa" className="text-right">CPA</SortHeader>
@@ -623,11 +637,11 @@ export default function Keywords() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={13} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                     No keywords found. Select a campaign from the Campaigns page.
                   </TableCell>
                 </TableRow>
@@ -705,6 +719,12 @@ export default function Keywords() {
                       </TableCell>
                       <TableCell className="text-right">
                         ${spend.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {parseInt(kw.impressions_7d || 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-blue-600">
+                        {parseFloat(kw.sov || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
                         {parseInt(kw.taps_7d || 0).toLocaleString()}
