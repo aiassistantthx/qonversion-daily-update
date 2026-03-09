@@ -1526,11 +1526,25 @@ router.get('/debug', async (req, res) => {
       ORDER BY users DESC
     `);
 
+    // Check price_usd vs proceeds_usd
+    const revenueCheck = await db.query(`
+      SELECT
+        COUNT(*) as total_events,
+        COUNT(price_usd) as with_price,
+        COUNT(proceeds_usd) as with_proceeds,
+        SUM(price_usd) as total_sales,
+        SUM(proceeds_usd) as total_proceeds,
+        CASE WHEN SUM(price_usd) > 0 THEN SUM(proceeds_usd) / SUM(price_usd) ELSE 0 END as proceeds_ratio
+      FROM events_v2
+      WHERE event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+    `);
+
     res.json({
       events: events.rows,
       dateRange: dateRange.rows[0],
       products: products.rows,
       mediaSources: mediaSources.rows,
+      revenueCheck: revenueCheck.rows[0],
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
