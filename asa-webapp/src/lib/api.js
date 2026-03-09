@@ -27,6 +27,7 @@ export const getKeywordsForAdGroup = (campaignId, adGroupId) =>
 export const updateKeywordBid = (keywordId, data) => api.patch(`/keywords/${keywordId}/bid`, data).then(res => res.data);
 export const updateKeywordStatus = (keywordId, data) => api.patch(`/keywords/${keywordId}/status`, data).then(res => res.data);
 export const bulkUpdateKeywordBids = (data) => api.patch('/keywords/bulk/bid', data).then(res => res.data);
+export const bulkUpdateKeywordStatus = (data) => api.patch('/keywords/bulk/status', data).then(res => res.data);
 export const createKeywords = (data) => api.post('/keywords/bulk', data).then(res => res.data);
 
 // Rules

@@ -840,6 +840,70 @@ router.patch('/keywords/bulk/bid', async (req, res) => {
   }
 });
 
+/**
+ * PATCH /asa/keywords/bulk/status
+ * Bulk update keyword status (ACTIVE/PAUSED)
+ */
+router.patch('/keywords/bulk/status', async (req, res) => {
+  try {
+    const { campaignId, adGroupId, keywordIds, status, dryRun = false } = req.body;
+
+    if (!campaignId || !adGroupId || !keywordIds || !Array.isArray(keywordIds) || !status) {
+      return res.status(400).json({ error: 'campaignId, adGroupId, keywordIds array, and status required' });
+    }
+
+    if (!['ACTIVE', 'PAUSED'].includes(status)) {
+      return res.status(400).json({ error: 'status must be ACTIVE or PAUSED' });
+    }
+
+    const results = [];
+
+    for (const keywordId of keywordIds) {
+      try {
+        const current = await appleAds.getKeyword(campaignId, adGroupId, keywordId);
+
+        if (dryRun) {
+          results.push({
+            keywordId,
+            keyword: current.text,
+            currentStatus: current.status,
+            newStatus: status,
+            status: 'dry_run'
+          });
+        } else {
+          await appleAds.updateKeywordStatus(campaignId, adGroupId, keywordId, status);
+          await recordChange('keyword', keywordId, 'status_update', 'status', current.status, status, 'api', null, req);
+
+          results.push({
+            keywordId,
+            keyword: current.text,
+            currentStatus: current.status,
+            newStatus: status,
+            status: 'updated'
+          });
+        }
+      } catch (error) {
+        results.push({
+          keywordId,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      dryRun,
+      total: keywordIds.length,
+      updated: results.filter(r => r.status === 'updated').length,
+      errors: results.filter(r => r.status === 'error').length,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================
 // AUTOMATION RULES
 // ================================================

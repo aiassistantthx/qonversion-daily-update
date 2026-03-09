@@ -77,6 +77,16 @@ export default function Keywords() {
       queryClient.invalidateQueries(['keywords']);
       setSelectedIds(new Set());
       setBulkBidAmount('');
+      setConfirmModal({ open: false, action: null, message: '' });
+    },
+  });
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: (data) => bulkUpdateKeywordStatus(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['keywords']);
+      setSelectedIds(new Set());
+      setConfirmModal({ open: false, action: null, message: '' });
     },
   });
 
@@ -241,21 +251,69 @@ export default function Keywords() {
   };
 
   const handleBulkBidUpdate = () => {
-    const bid = parseFloat(bulkBidAmount);
-    if (isNaN(bid) || bid <= 0 || selectedIds.size === 0) return;
+    const value = parseFloat(bulkBidAmount);
+    if (isNaN(value) || selectedIds.size === 0) return;
 
     const selectedKeywords = keywords.filter(k => selectedIds.has(k.keyword_id));
     const firstKeyword = selectedKeywords[0];
 
-    const updates = selectedKeywords.map(kw => ({
-      keywordId: kw.keyword_id,
-      bidAmount: bid,
+    const updates = selectedKeywords.map(kw => {
+      const currentBid = parseFloat(kw.bid_amount || 0);
+      let newBidValue;
+
+      if (bulkBidMode === 'percent') {
+        // Percentage change: +10 means increase by 10%, -10 means decrease by 10%
+        newBidValue = Math.max(0.01, currentBid * (1 + value / 100));
+      } else {
+        // Absolute value
+        newBidValue = value;
+      }
+
+      return {
+        keywordId: kw.keyword_id,
+        bidAmount: Math.round(newBidValue * 100) / 100,
     }));
 
     bulkBidMutation.mutate({
       campaignId: firstKeyword.campaign_id,
       adGroupId: firstKeyword.adgroup_id,
       updates,
+    });
+  };
+
+  const handleBulkPause = () => {
+    const selectedKeywords = keywords.filter(k => selectedIds.has(k.keyword_id));
+    setConfirmModal({
+      open: true,
+      action: 'pause',
+      message: `Pause ${selectedKeywords.length} keywords?`,
+      onConfirm: () => {
+        const firstKeyword = selectedKeywords[0];
+        bulkStatusMutation.mutate({
+          campaignId: firstKeyword.campaign_id,
+          adGroupId: firstKeyword.adgroup_id,
+          keywordIds: selectedKeywords.map(k => k.keyword_id),
+          status: 'PAUSED',
+        });
+      },
+    });
+  };
+
+  const handleBulkEnable = () => {
+    const selectedKeywords = keywords.filter(k => selectedIds.has(k.keyword_id));
+    setConfirmModal({
+      open: true,
+      action: 'enable',
+      message: `Enable ${selectedKeywords.length} keywords?`,
+      onConfirm: () => {
+        const firstKeyword = selectedKeywords[0];
+        bulkStatusMutation.mutate({
+          campaignId: firstKeyword.campaign_id,
+          adGroupId: firstKeyword.adgroup_id,
+          keywordIds: selectedKeywords.map(k => k.keyword_id),
+          status: 'ACTIVE',
+        });
+      },
     });
   };
 
@@ -420,29 +478,89 @@ export default function Keywords() {
       {/* Bulk Actions */}
       {selectedIds.size > 0 && (
         <Card className="border-blue-200 bg-blue-50">
-          <div className="p-4 flex items-center gap-4">
+          <div className="p-4 flex items-center gap-4 flex-wrap">
             <span className="text-sm font-medium text-blue-900">
               {selectedIds.size} keywords selected
             </span>
-            <Input
-              type="number"
-              placeholder="New bid"
-              value={bulkBidAmount}
-              onChange={(e) => setBulkBidAmount(e.target.value)}
-              className="w-32"
-            />
-            <Button
-              onClick={handleBulkBidUpdate}
-              loading={bulkBidMutation.isPending}
-              disabled={!bulkBidAmount}
-            >
-              Update Bids
-            </Button>
-            <Button variant="ghost" onClick={() => setSelectedIds(new Set())}>
-              Clear Selection
+
+            {/* Bid Update Section */}
+            <div className="flex items-center gap-2 border-l pl-4 border-blue-300">
+              <select
+                value={bulkBidMode}
+                onChange={(e) => setBulkBidMode(e.target.value)}
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm"
+              >
+                <option value="absolute">$ Absolute</option>
+                <option value="percent">% Change</option>
+              </select>
+              <Input
+                type="number"
+                placeholder={bulkBidMode === 'percent' ? '+10 or -10' : 'New bid'}
+                value={bulkBidAmount}
+                onChange={(e) => setBulkBidAmount(e.target.value)}
+                className="w-28"
+              />
+              <Button
+                size="sm"
+                onClick={handleBulkBidUpdate}
+                loading={bulkBidMutation.isPending}
+                disabled={!bulkBidAmount}
+              >
+                {bulkBidMode === 'percent' ? <Percent size={14} /> : null}
+                Update Bids
+              </Button>
+            </div>
+
+            {/* Status Actions */}
+            <div className="flex items-center gap-2 border-l pl-4 border-blue-300">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleBulkPause}
+                loading={bulkStatusMutation.isPending}
+              >
+                <Pause size={14} /> Pause
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleBulkEnable}
+                loading={bulkStatusMutation.isPending}
+              >
+                <Play size={14} /> Enable
+              </Button>
+            </div>
+
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              <X size={14} /> Clear
             </Button>
           </div>
         </Card>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.open && (
+        <Modal
+          open={confirmModal.open}
+          onClose={() => setConfirmModal({ open: false, action: null, message: '' })}
+          title="Confirm Action"
+        >
+          <p className="text-gray-600 mb-4">{confirmModal.message}</p>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmModal({ open: false, action: null, message: '' })}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmModal.onConfirm}
+              loading={bulkStatusMutation.isPending}
+            >
+              Confirm
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {/* Filters */}
