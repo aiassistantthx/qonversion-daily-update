@@ -59,4 +59,6 @@ export type { PayerShareData } from './PayerShareChart';
 export { ActiveSubscribersWidget } from './ActiveSubscribersWidget';
 export type { ActiveSubscribersData } from './ActiveSubscribersWidget';
 
+export { PaybackGauge } from './PaybackGauge';
+
 export { useSortableData, SortIcon } from './SortableTable';

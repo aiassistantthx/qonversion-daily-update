@@ -25,6 +25,7 @@ import {
   MetricSelector,
   PayerShareChart,
   ActiveSubscribersWidget,
+  PaybackGauge,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
@@ -534,6 +535,18 @@ export function Overview() {
         <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} sparklineData={copSparkline} invertChange />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
+
+      {/* Payback Gauge */}
+      {marketing.length > 0 && marketing[0].roas.total !== null && (
+        <div style={{ marginBottom: 16 }}>
+          <PaybackGauge
+            currentPercent={(marketing[0].roas.total || 0) * 100}
+            breakEvenDay={marketing[0].paybackMonths ? marketing[0].paybackMonths * 30 : null}
+            targetDays={60}
+            cohortStartDate={marketing[0].month}
+          />
+        </div>
+      )}
 
       {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>

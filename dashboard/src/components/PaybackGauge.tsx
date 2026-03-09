@@ -15,17 +15,17 @@ export function PaybackGauge({
   const cappedPercent = Math.min(currentPercent, 100);
 
   const getStatusColor = () => {
-    if (isBreakEven) return 'text-terminal-green';
-    if (currentPercent >= 75) return 'text-terminal-cyan';
-    if (currentPercent >= 50) return 'text-terminal-yellow';
-    return 'text-terminal-red';
+    if (isBreakEven) return '#10b981';
+    if (currentPercent >= 75) return '#06b6d4';
+    if (currentPercent >= 50) return '#f59e0b';
+    return '#ef4444';
   };
 
   const getBarColor = () => {
-    if (isBreakEven) return 'bg-terminal-green';
-    if (currentPercent >= 75) return 'bg-terminal-cyan';
-    if (currentPercent >= 50) return 'bg-terminal-yellow';
-    return 'bg-terminal-red';
+    if (isBreakEven) return '#10b981';
+    if (currentPercent >= 75) return '#06b6d4';
+    if (currentPercent >= 50) return '#f59e0b';
+    return '#ef4444';
   };
 
   const calculateBreakEvenDate = () => {
@@ -70,64 +70,67 @@ export function PaybackGauge({
   const filledSegments = Math.round((cappedPercent / 100) * segments);
 
   return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-      <div className="text-sm text-terminal-muted mb-3">Payback Progress</div>
+    <div style={styles.container}>
+      <div style={styles.label}>Payback Progress</div>
 
-      <div className="flex items-center gap-4 mb-4">
-        <div className={`text-4xl font-bold font-mono ${getStatusColor()}`}>
+      <div style={styles.percentContainer}>
+        <div style={{ ...styles.percentValue, color: getStatusColor() }}>
           {cappedPercent.toFixed(0)}%
         </div>
         {isBreakEven && (
-          <div className="text-sm text-terminal-green">✓ Paid back</div>
+          <div style={styles.paidBackBadge}>✓ Paid back</div>
         )}
       </div>
 
-      <div className="flex gap-0.5 mb-4">
+      <div style={styles.progressBar}>
         {Array.from({ length: segments }).map((_, i) => (
           <div
             key={i}
-            className={`h-3 flex-1 rounded-sm ${
-              i < filledSegments ? getBarColor() : 'bg-terminal-border'
-            }`}
-            style={{ opacity: i < filledSegments ? 1 - (i * 0.02) : 0.3 }}
+            style={{
+              ...styles.segment,
+              backgroundColor: i < filledSegments ? getBarColor() : '#e5e7eb',
+              opacity: i < filledSegments ? 1 - (i * 0.02) : 0.3,
+            }}
           />
         ))}
       </div>
 
-      <div className="space-y-2 text-sm">
+      <div style={styles.detailsContainer}>
         {isBreakEven && breakEvenDate && (
-          <div className="flex justify-between text-terminal-muted">
-            <span>Break-even achieved:</span>
-            <span className="text-terminal-green font-mono">{breakEvenDate}</span>
+          <div style={styles.detailRow}>
+            <span style={styles.detailLabel}>Break-even achieved:</span>
+            <span style={{ ...styles.detailValue, color: '#10b981' }}>{breakEvenDate}</span>
           </div>
         )}
 
         {!isBreakEven && projectedBreakEven && (
-          <div className="flex justify-between text-terminal-muted">
-            <span>Estimated break-even:</span>
-            <span className="text-terminal-text font-mono">
+          <div style={styles.detailRow}>
+            <span style={styles.detailLabel}>Estimated break-even:</span>
+            <span style={styles.detailValue}>
               {projectedBreakEven.date} (~{projectedBreakEven.days}d)
             </span>
           </div>
         )}
 
         {breakEvenDay && (
-          <div className="flex justify-between text-terminal-muted">
-            <span>Payback period:</span>
-            <span className={`font-mono ${
-              breakEvenDay <= targetDays ? 'text-terminal-green' : 'text-terminal-yellow'
-            }`}>
+          <div style={styles.detailRow}>
+            <span style={styles.detailLabel}>Payback period:</span>
+            <span style={{
+              ...styles.detailValue,
+              color: breakEvenDay <= targetDays ? '#10b981' : '#f59e0b'
+            }}>
               {breakEvenDay} days
             </span>
           </div>
         )}
 
         {vsTarget !== null && (
-          <div className="flex justify-between text-terminal-muted">
-            <span>vs Target ({targetDays}d):</span>
-            <span className={`font-mono ${
-              vsTarget >= 0 ? 'text-terminal-green' : 'text-terminal-red'
-            }`}>
+          <div style={styles.detailRow}>
+            <span style={styles.detailLabel}>vs Target ({targetDays}d):</span>
+            <span style={{
+              ...styles.detailValue,
+              color: vsTarget >= 0 ? '#10b981' : '#ef4444'
+            }}>
               {vsTarget >= 0 ? '-' : '+'}{Math.abs(vsTarget).toFixed(0)}%
             </span>
           </div>
@@ -136,3 +139,63 @@ export function PaybackGauge({
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  },
+  label: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 12,
+    fontWeight: 500,
+  },
+  percentContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 16,
+  },
+  percentValue: {
+    fontSize: 36,
+    fontWeight: 700,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  paidBackBadge: {
+    fontSize: 13,
+    color: '#10b981',
+    fontWeight: 500,
+  },
+  progressBar: {
+    display: 'flex',
+    gap: 2,
+    marginBottom: 16,
+  },
+  segment: {
+    height: 12,
+    flex: 1,
+    borderRadius: 2,
+  },
+  detailsContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  detailRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 13,
+  },
+  detailLabel: {
+    color: '#6b7280',
+  },
+  detailValue: {
+    color: '#111827',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 500,
+  },
+};
