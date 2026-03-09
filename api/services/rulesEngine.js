@@ -696,6 +696,68 @@ class RulesEngine {
   async previewRule(ruleId) {
     return this.executeRule(ruleId, true);
   }
+
+  /**
+   * Simulate rule execution with what-if analysis
+   * Returns detailed information about affected entities and predicted changes
+   */
+  async simulateRule(ruleId) {
+    const result = await this.executeRule(ruleId, true);
+
+    // Get rule to access scope
+    const ruleResult = await db.query('SELECT * FROM asa_automation_rules WHERE id = $1', [ruleId]);
+    const rule = ruleResult.rows[0];
+
+    // Get entities with names
+    const entities = await this.getEntitiesForRule(rule);
+    const entityMap = new Map();
+
+    entities.forEach(entity => {
+      const name = entity.keyword_text || entity.adgroup_name || entity.campaign_name || `${result.scope}_${entity.entity_id}`;
+      entityMap.set(entity.entity_id.toString(), name);
+    });
+
+    // Transform results for UI display
+    const affectedEntities = result.results
+      .filter(r => !r.skipped)
+      .map(r => ({
+        entityId: r.entityId,
+        entityType: result.scope,
+        entityName: entityMap.get(r.entityId.toString()) || `${result.scope}_${r.entityId}`,
+        currentMetrics: r.evaluation?.conditions[0]?.metrics || {},
+        conditionsMet: r.evaluation?.allMet || false,
+        conditions: r.evaluation?.conditions || [],
+        action: {
+          type: result.actionType,
+          oldValue: r.actionResult?.previousValue,
+          newValue: r.actionResult?.newValue,
+        }
+      }));
+
+    const skippedEntities = result.results
+      .filter(r => r.skipped)
+      .map(r => ({
+        entityId: r.entityId,
+        entityType: result.scope,
+        entityName: entityMap.get(r.entityId.toString()) || `${result.scope}_${r.entityId}`,
+        reason: r.reason,
+        evaluation: r.evaluation
+      }));
+
+    return {
+      ruleId: result.ruleId,
+      ruleName: result.ruleName,
+      scope: result.scope,
+      actionType: result.actionType,
+      summary: {
+        totalEntities: result.totalEntities,
+        affected: affectedEntities.length,
+        skipped: skippedEntities.length
+      },
+      affectedEntities,
+      skippedEntities
+    };
+  }
 }
 
 module.exports = new RulesEngine();

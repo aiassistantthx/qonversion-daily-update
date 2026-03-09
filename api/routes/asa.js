@@ -1776,6 +1776,25 @@ router.get('/rules/:id/preview', async (req, res) => {
 });
 
 /**
+ * POST /asa/rules/:id/simulate
+ * Simulate rule execution with detailed what-if analysis
+ */
+router.post('/rules/:id/simulate', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await rulesEngine.simulateRule(parseInt(id));
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /asa/rules/execute-all
  * Execute all enabled rules
  */

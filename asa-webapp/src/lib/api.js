@@ -46,6 +46,7 @@ export const deleteRule = (id) => api.delete(`/rules/${id}`).then(res => res.dat
 export const executeRule = (id, dryRun = false) =>
   api.post(`/rules/${id}/execute?dry_run=${dryRun}`).then(res => res.data);
 export const previewRule = (id) => api.get(`/rules/${id}/preview`).then(res => res.data);
+export const simulateRule = (id) => api.post(`/rules/${id}/simulate`).then(res => res.data);
 export const executeAllRules = (dryRun = false, frequency = null) => {
   const params = { dry_run: dryRun };
   if (frequency) params.frequency = frequency;
