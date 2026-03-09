@@ -315,17 +315,92 @@ router.patch('/campaigns/:id/budget', async (req, res) => {
 
 /**
  * GET /asa/campaigns/:campaignId/adgroups
- * List ad groups for a campaign
+ * List ad groups for a campaign with performance data
  */
 router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
   try {
     const { campaignId } = req.params;
+    let { days = 7, from, to } = req.query;
+
+    // Parse date range
+    let dateFilter;
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
+    }
+
     const adGroups = await appleAds.getAdGroups(campaignId);
+
+    // Build date conditions for performance query
+    const dateCondition = dateFilter.days
+      ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+
+    const revenueCondition = dateFilter.days
+      ? `event_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
+      : `event_date >= '${dateFilter.from}' AND event_date <= '${dateFilter.to}'`;
+
+    // Get performance data aggregated by adgroup
+    const performanceQuery = await db.query(`
+      SELECT
+        k.adgroup_id,
+        SUM(CASE WHEN ${dateCondition} THEN k.spend ELSE 0 END) as spend,
+        SUM(CASE WHEN ${dateCondition} THEN k.impressions ELSE 0 END) as impressions,
+        SUM(CASE WHEN ${dateCondition} THEN k.taps ELSE 0 END) as taps,
+        SUM(CASE WHEN ${dateCondition} THEN k.installs ELSE 0 END) as installs,
+        COALESCE(r.revenue, 0) as revenue,
+        COALESCE(r.paid_users, 0) as paid_users
+      FROM apple_ads_keywords k
+      LEFT JOIN (
+        SELECT
+          adgroup_id,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND adgroup_id IS NOT NULL
+        GROUP BY adgroup_id
+      ) r ON k.adgroup_id::TEXT = r.adgroup_id::TEXT
+      WHERE k.campaign_id = $1
+      GROUP BY k.adgroup_id, r.revenue, r.paid_users
+    `, [campaignId]);
+
+    const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.adgroup_id), p]));
+
+    // Enrich ad groups with performance
+    const enriched = adGroups.map(ag => {
+      const perf = performanceMap.get(String(ag.id)) || {};
+      const spend = parseFloat(perf.spend || 0);
+      const installs = parseInt(perf.installs || 0);
+      const revenue = parseFloat(perf.revenue || 0);
+      const paidUsers = parseInt(perf.paid_users || 0);
+
+      return {
+        ...ag,
+        performance: {
+          spend,
+          impressions: parseInt(perf.impressions || 0),
+          taps: parseInt(perf.taps || 0),
+          installs,
+          revenue,
+          paid_users: paidUsers,
+          cpa: installs > 0 ? spend / installs : null,
+          roas: spend > 0 ? revenue / spend : 0,
+          cop: paidUsers > 0 ? spend / paidUsers : null,
+        }
+      };
+    });
+
+    // Sort by revenue descending
+    enriched.sort((a, b) => (b.performance?.revenue || 0) - (a.performance?.revenue || 0));
 
     res.json({
       campaignId,
-      total: adGroups.length,
-      data: adGroups
+      total: enriched.length,
+      dateRange: dateFilter,
+      data: enriched
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

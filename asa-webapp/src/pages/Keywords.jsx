@@ -35,8 +35,8 @@ export default function Keywords() {
 
   // Get campaigns for names
   const { data: campaignsData } = useQuery({
-    queryKey: ['campaigns'],
-    queryFn: getCampaigns,
+    queryKey: ['campaigns', queryParams],
+    queryFn: () => getCampaigns(queryParams),
   });
 
   const campaignMap = useMemo(() => {
@@ -47,11 +47,12 @@ export default function Keywords() {
 
   // Get keywords with filters
   const { data: keywordsData, isLoading } = useQuery({
-    queryKey: ['keywords', { campaignIds, adGroupIds }],
+    queryKey: ['keywords', { campaignIds, adGroupIds, queryParams }],
     queryFn: () => getKeywords({
       campaign_id: campaignIds.length === 1 ? campaignIds[0] : undefined,
       adgroup_id: adGroupIds.length === 1 ? adGroupIds[0] : undefined,
       limit: 500,
+      ...queryParams,
     }),
   });
 
@@ -304,7 +305,7 @@ export default function Keywords() {
             </Button>
             <h1 className="text-2xl font-bold text-gray-900">Keywords</h1>
           </div>
-          <p className="text-gray-500 ml-9">Performance metrics and bid management</p>
+          <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
 
         <Button variant="secondary" onClick={exportCSV}>

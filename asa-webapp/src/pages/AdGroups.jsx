@@ -22,7 +22,7 @@ export default function AdGroups() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortField, setSortField] = useState('spend');
+  const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
@@ -38,7 +38,7 @@ export default function AdGroups() {
     return map;
   }, [campaignsData]);
 
-  // Get ad groups for selected campaigns
+  // Get ad groups for selected campaigns with performance
   const { data: adGroupsData, isLoading } = useQuery({
     queryKey: ['adgroups', campaignIds, queryParams],
     queryFn: async () => {
@@ -49,13 +49,11 @@ export default function AdGroups() {
       const allAdGroups = [];
       for (const campaign of targetCampaigns) {
         try {
-          const result = await getAdGroups(campaign.id);
+          const result = await getAdGroups(campaign.id, queryParams);
           const adGroups = (result?.data || []).map(ag => ({
             ...ag,
             campaignId: campaign.id,
             campaignName: campaign.name,
-            // Ad group level performance would need separate API
-            // For now, we don't have per-adgroup metrics from API
           }));
           allAdGroups.push(...adGroups);
         } catch (e) {
@@ -67,10 +65,11 @@ export default function AdGroups() {
     enabled: !!campaignsData,
   });
 
-  // Helper to get value
-  const getVal = (ag, field) => {
-    if (field === 'bid') return parseFloat(ag.defaultBidAmount?.amount || 0);
-    return 0; // No performance data for ad groups yet
+  // Helper to get performance value
+  const getPerf = (ag, field) => {
+    const p = ag.performance;
+    if (!p) return 0;
+    return parseFloat(p[field] || 0);
   };
 
   // Filter and sort
@@ -104,9 +103,25 @@ export default function AdGroups() {
           aVal = a.status || '';
           bVal = b.status || '';
           break;
-        case 'bid':
-          aVal = getVal(a, 'bid');
-          bVal = getVal(b, 'bid');
+        case 'spend':
+          aVal = getPerf(a, 'spend');
+          bVal = getPerf(b, 'spend');
+          break;
+        case 'revenue':
+          aVal = getPerf(a, 'revenue');
+          bVal = getPerf(b, 'revenue');
+          break;
+        case 'roas':
+          aVal = getPerf(a, 'roas');
+          bVal = getPerf(b, 'roas');
+          break;
+        case 'installs':
+          aVal = getPerf(a, 'installs');
+          bVal = getPerf(b, 'installs');
+          break;
+        case 'cpa':
+          aVal = getPerf(a, 'cpa') || 999999;
+          bVal = getPerf(b, 'cpa') || 999999;
           break;
         default:
           aVal = (a.name || '').toLowerCase();
@@ -269,18 +284,22 @@ export default function AdGroups() {
               <SortHeader field="name">Ad Group</SortHeader>
               <SortHeader field="campaign">Campaign</SortHeader>
               <SortHeader field="status">Status</SortHeader>
-              <SortHeader field="bid" className="text-right">Default Bid</SortHeader>
+              <SortHeader field="spend" className="text-right">Spend</SortHeader>
+              <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
+              <SortHeader field="roas" className="text-right">ROAS</SortHeader>
+              <SortHeader field="installs" className="text-right">Installs</SortHeader>
+              <SortHeader field="cpa" className="text-right">CPA</SortHeader>
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">Loading ad groups...</TableCell>
+                <TableCell colSpan={10} className="text-center py-8">Loading ad groups...</TableCell>
               </TableRow>
             ) : adGroups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                   No ad groups found
                 </TableCell>
               </TableRow>
@@ -309,7 +328,21 @@ export default function AdGroups() {
                     <StatusBadge status={ag.status} />
                   </TableCell>
                   <TableCell className="text-right">
-                    ${parseFloat(ag.defaultBidAmount?.amount || 0).toFixed(2)}
+                    ${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-medium text-green-600">
+                    ${getPerf(ag, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className={getPerf(ag, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
+                      {getPerf(ag, 'roas').toFixed(2)}x
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'installs').toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}
                   </TableCell>
                   <TableCell>
                     <Button

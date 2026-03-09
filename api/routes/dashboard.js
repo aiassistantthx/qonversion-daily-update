@@ -716,6 +716,7 @@ router.get('/marketing', async (req, res) => {
         .sort((a, b) => a[0] - b[0]);
 
       let paybackDays = null;
+      let predictedPaybackDays = null;
       const isPaidBack = roasTotal && roasTotal >= 1;
 
       if (isPaidBack) {
@@ -734,18 +735,30 @@ router.get('/marketing', async (req, res) => {
             break;
           }
         }
-      } else if (roasPredicted && roasPredicted >= 1) {
-        // Will pay back eventually - interpolate to find when
-        const lastPoint = roasPoints[roasPoints.length - 1];
-        if (lastPoint && lastPoint[1] < 1) {
-          // Interpolate between last known point and predicted
+      } else if (roasPredicted && roasPredicted > 0) {
+        // Not paid back yet - calculate predicted payback based on ROAS growth rate
+        // Use the growth from current ROAS to predicted ROAS to extrapolate when it might reach 1.0
+        const lastPoint = roasPoints.filter(p => p[1] != null).pop();
+        if (lastPoint) {
           const [lastDays, lastRoas] = lastPoint;
-          const t = (1 - lastRoas) / (roasPredicted - lastRoas);
-          paybackDays = Math.round(lastDays + t * (365 - lastDays));
+          if (lastRoas > 0 && roasPredicted > lastRoas) {
+            // Calculate daily ROAS growth rate
+            const daysToPredict = 365 - lastDays;
+            const roasGrowth = roasPredicted - lastRoas;
+            const dailyGrowth = roasGrowth / daysToPredict;
+
+            // Calculate days needed to reach 1.0 from current position
+            const roasNeeded = 1 - lastRoas;
+            if (dailyGrowth > 0) {
+              const daysToPayback = roasNeeded / dailyGrowth;
+              predictedPaybackDays = Math.round(lastDays + daysToPayback);
+            }
+          }
         }
       }
 
       const paybackMonths = paybackDays ? Math.round(paybackDays / 30) : null;
+      const predictedPaybackMonths = predictedPaybackDays ? Math.round(predictedPaybackDays / 30) : null;
 
       return {
         month: row.month,
@@ -756,6 +769,7 @@ router.get('/marketing', async (req, res) => {
         subs: { d4: parseInt(row.subs_4d), d7: parseInt(row.subs_7d), d30: parseInt(row.subs_30d), d60: parseInt(row.subs_60d), d180: parseInt(row.subs_180d), total: parseInt(row.subs_total) },
         revenue: { d4: parseFloat(row.rev_4d), d7: parseFloat(row.rev_7d), d30: parseFloat(row.rev_30d), d60: parseFloat(row.rev_60d), d180: parseFloat(row.rev_180d), total: parseFloat(row.rev_total) },
         paybackMonths,
+        predictedPaybackMonths,
         isPaidBack,
       };
     });

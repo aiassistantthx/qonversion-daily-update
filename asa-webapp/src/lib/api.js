@@ -14,7 +14,7 @@ export const updateCampaignStatus = (id, status) => api.patch(`/campaigns/${id}/
 export const updateCampaignBudget = (id, dailyBudget) => api.patch(`/campaigns/${id}/budget`, { dailyBudget }).then(res => res.data);
 
 // Ad Groups
-export const getAdGroups = (campaignId) => api.get(`/campaigns/${campaignId}/adgroups`).then(res => res.data);
+export const getAdGroups = (campaignId, params = {}) => api.get(`/campaigns/${campaignId}/adgroups`, { params }).then(res => res.data);
 export const updateAdGroupStatus = (campaignId, adGroupId, status) =>
   api.patch(`/campaigns/${campaignId}/adgroups/${adGroupId}/status`, { status }).then(res => res.data);
 export const updateAdGroupBid = (campaignId, adGroupId, bidAmount) =>

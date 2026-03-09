@@ -81,6 +81,7 @@ interface MarketingData {
     subs: { d4: number; d7: number; d30: number; d60: number; d180: number; total: number };
     revenue: { d4: number; d7: number; d30: number; d60: number; d180: number; total: number };
     paybackMonths: number | null;
+    predictedPaybackMonths: number | null;
     isPaidBack: boolean;
   }>;
 }
@@ -522,7 +523,10 @@ function Dashboard() {
                   <td style={{ ...styles.tdRight, background: '#fef3c7', fontWeight: 500 }}>
                     {row.roas.predicted ? `${row.roas.predicted.toFixed(2)}x` : '—'}
                   </td>
-                  <td style={styles.tdRight}>{row.paybackMonths ? `${row.paybackMonths}mo` : '—'}</td>
+                  <td style={{ ...styles.tdRight, color: row.isPaidBack ? '#10b981' : (row.predictedPaybackMonths ? '#f59e0b' : '#9ca3af') }}>
+                    {row.paybackMonths ? `${row.paybackMonths}mo` :
+                     row.predictedPaybackMonths ? `~${row.predictedPaybackMonths}mo` : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>
