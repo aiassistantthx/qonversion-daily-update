@@ -1102,7 +1102,7 @@ router.get('/forecast', async (req, res) => {
       ORDER BY sub_month
     `);
 
-    // Get monthly revenue trend
+    // Get monthly revenue trend (exclude current incomplete month)
     const monthlyRevenueResult = await db.query(`
       SELECT
         TO_CHAR(event_date, 'YYYY-MM') as month,
@@ -1115,17 +1115,19 @@ router.get('/forecast', async (req, res) => {
         ) as renewals
       FROM events_v2
       WHERE event_date >= CURRENT_DATE - INTERVAL '12 months'
+        AND event_date < DATE_TRUNC('month', CURRENT_DATE)
         AND event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
       GROUP BY TO_CHAR(event_date, 'YYYY-MM')
       ORDER BY month
     `);
 
-    // Calculate expected renewals for next 12 months
+    // Calculate expected renewals for current month + next 12 months
     // Subscribers from X months ago should renew in (12 - X) months
     const today = new Date();
     const renewalForecast = [];
 
-    for (let i = 1; i <= 12; i++) {
+    // Start from current month (i=0) since historical excludes current month
+    for (let i = 0; i <= 12; i++) {
       const forecastMonth = new Date(today.getFullYear(), today.getMonth() + i, 1);
       const forecastMonthStr = `${forecastMonth.getFullYear()}-${String(forecastMonth.getMonth() + 1).padStart(2, '0')}`;
 
