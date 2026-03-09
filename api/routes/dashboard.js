@@ -1980,4 +1980,178 @@ router.get('/compare', async (req, res) => {
   }
 });
 
+// ============================================
+// COHORT ANALYSIS - Deep cohort revenue analysis
+// ============================================
+router.get('/cohort-analysis', async (req, res) => {
+  try {
+    // 1. Get all cohorts by first subscription month
+    const cohortsResult = await db.query(`
+      WITH first_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date,
+          MIN(price_usd) as first_price
+        FROM events_v2
+        WHERE event_name IN ('Subscription Started', 'Trial Converted')
+          AND product_id LIKE '%yearly%'
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        TO_CHAR(first_sub_date, 'YYYY-MM') as cohort_month,
+        COUNT(*) as subscribers,
+        ROUND(AVG(first_price)::numeric, 2) as avg_price,
+        ROUND(SUM(first_price)::numeric, 2) as initial_revenue
+      FROM first_subs
+      GROUP BY TO_CHAR(first_sub_date, 'YYYY-MM')
+      ORDER BY cohort_month
+    `);
+
+    // 2. Get revenue by cohort and revenue month (when revenue was earned)
+    const revenueByMonthResult = await db.query(`
+      WITH first_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE event_name IN ('Subscription Started', 'Trial Converted')
+          AND product_id LIKE '%yearly%'
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        TO_CHAR(fs.first_sub_date, 'YYYY-MM') as cohort_month,
+        TO_CHAR(e.event_date, 'YYYY-MM') as revenue_month,
+        e.event_name,
+        COUNT(DISTINCT e.q_user_id) as users,
+        ROUND(SUM(e.price_usd)::numeric, 2) as revenue
+      FROM first_subs fs
+      JOIN events_v2 e ON fs.q_user_id = e.q_user_id
+      WHERE e.event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND e.refund = false
+        AND e.price_usd > 0
+      GROUP BY TO_CHAR(fs.first_sub_date, 'YYYY-MM'), TO_CHAR(e.event_date, 'YYYY-MM'), e.event_name
+      ORDER BY cohort_month, revenue_month
+    `);
+
+    // 3. Get current month revenue breakdown by cohort
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const currentMonthByCohortsResult = await db.query(`
+      WITH first_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE event_name IN ('Subscription Started', 'Trial Converted')
+          AND product_id LIKE '%yearly%'
+          AND refund = false
+        GROUP BY q_user_id
+      )
+      SELECT
+        TO_CHAR(fs.first_sub_date, 'YYYY-MM') as cohort_month,
+        e.event_name,
+        COUNT(DISTINCT e.q_user_id) as users,
+        ROUND(SUM(e.price_usd)::numeric, 2) as revenue
+      FROM first_subs fs
+      JOIN events_v2 e ON fs.q_user_id = e.q_user_id
+      WHERE e.event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND e.refund = false
+        AND e.price_usd > 0
+        AND TO_CHAR(e.event_date, 'YYYY-MM') = $1
+      GROUP BY TO_CHAR(fs.first_sub_date, 'YYYY-MM'), e.event_name
+      ORDER BY cohort_month
+    `, [currentMonthStr]);
+
+    // 4. Calculate retention/renewal rates by cohort age
+    const renewalRatesResult = await db.query(`
+      WITH first_subs AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date
+        FROM events_v2
+        WHERE event_name IN ('Subscription Started', 'Trial Converted')
+          AND product_id LIKE '%yearly%'
+          AND refund = false
+        GROUP BY q_user_id
+      ),
+      cohort_sizes AS (
+        SELECT
+          TO_CHAR(first_sub_date, 'YYYY-MM') as cohort_month,
+          COUNT(*) as initial_size
+        FROM first_subs
+        GROUP BY TO_CHAR(first_sub_date, 'YYYY-MM')
+      ),
+      renewals AS (
+        SELECT
+          TO_CHAR(fs.first_sub_date, 'YYYY-MM') as cohort_month,
+          COUNT(DISTINCT e.q_user_id) as renewed_users
+        FROM first_subs fs
+        JOIN events_v2 e ON fs.q_user_id = e.q_user_id
+        WHERE e.event_name = 'Subscription Renewed'
+          AND e.refund = false
+          AND e.event_date >= fs.first_sub_date + INTERVAL '11 months'
+        GROUP BY TO_CHAR(fs.first_sub_date, 'YYYY-MM')
+      )
+      SELECT
+        cs.cohort_month,
+        cs.initial_size,
+        COALESCE(r.renewed_users, 0) as renewed_users,
+        ROUND((COALESCE(r.renewed_users, 0)::numeric / cs.initial_size) * 100, 1) as renewal_rate,
+        EXTRACT(DAYS FROM (CURRENT_DATE - (cs.cohort_month || '-01')::date)) as cohort_age_days
+      FROM cohort_sizes cs
+      LEFT JOIN renewals r ON cs.cohort_month = r.cohort_month
+      ORDER BY cs.cohort_month
+    `);
+
+    // 5. Get total revenue for validation
+    const totalRevenueResult = await db.query(`
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        ROUND(SUM(price_usd)::numeric, 2) as total_revenue,
+        COUNT(DISTINCT q_user_id) as unique_users
+      FROM events_v2
+      WHERE event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND refund = false
+        AND price_usd > 0
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM')
+      ORDER BY month
+    `);
+
+    // 6. Aggregate pre-2024 cohorts
+    const pre2024Cohorts = cohortsResult.rows.filter(c => c.cohort_month < '2024-01');
+    const post2024Cohorts = cohortsResult.rows.filter(c => c.cohort_month >= '2024-01');
+
+    let aggregatedCohorts = [...post2024Cohorts];
+    if (pre2024Cohorts.length > 0) {
+      const pre2024Aggregate = {
+        cohort_month: 'pre-2024',
+        subscribers: pre2024Cohorts.reduce((s, c) => s + parseInt(c.subscribers), 0),
+        avg_price: pre2024Cohorts.reduce((s, c) => s + parseFloat(c.avg_price), 0) / pre2024Cohorts.length,
+        initial_revenue: pre2024Cohorts.reduce((s, c) => s + parseFloat(c.initial_revenue), 0),
+      };
+      aggregatedCohorts = [pre2024Aggregate, ...aggregatedCohorts];
+    }
+
+    res.json({
+      cohorts: aggregatedCohorts,
+      revenueByMonth: revenueByMonthResult.rows,
+      currentMonthByCohorts: currentMonthByCohortsResult.rows,
+      renewalRates: renewalRatesResult.rows,
+      monthlyTotals: totalRevenueResult.rows,
+      summary: {
+        totalCohorts: cohortsResult.rows.length,
+        totalSubscribers: cohortsResult.rows.reduce((s, c) => s + parseInt(c.subscribers), 0),
+        dataRange: {
+          from: cohortsResult.rows[0]?.cohort_month,
+          to: cohortsResult.rows[cohortsResult.rows.length - 1]?.cohort_month,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Cohort analysis error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
