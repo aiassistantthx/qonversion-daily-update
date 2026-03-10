@@ -162,14 +162,18 @@ router.get('/main', async (req, res) => {
   try {
     // Get date range from query params (defaults to last 30 days)
     const from = req.query.from || daysAgo(30);
-    const to = req.query.to || formatDate(new Date());
+    // Default 'to' excludes current day (incomplete data)
+    const yesterday = daysAgo(1);
+    const to = req.query.to || yesterday;
     const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
     const { campaigns } = req.query;
 
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const currentDay = today.getDate();
+    // Use yesterday for metrics (current day is incomplete)
+    // On day 1, use 1 to avoid division by zero (metrics will be from previous month end)
+    const currentDay = Math.max(1, today.getDate() - 1);
 
     // Previous month for comparison
     const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -186,35 +190,38 @@ router.get('/main', async (req, res) => {
       }
     }
 
-    // ---- CURRENT MONTH METRICS ----
+    // ---- CURRENT MONTH METRICS (excluding today - incomplete data) ----
 
-    // Spend this month (from apple_ads_campaigns)
+    // Spend this month (from apple_ads_campaigns), excluding today
     const spendQuery = `
       SELECT COALESCE(SUM(spend), 0) as spend
       FROM apple_ads_campaigns
       WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND date < CURRENT_DATE
         AND ${campaignCondition}
     `;
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
-    // Revenue this month (only actual revenue events) - total revenue
+    // Revenue this month (only actual revenue events) - total revenue, excluding today
     const revenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND DATE(event_date) < CURRENT_DATE
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
     const revenueResult = await db.query(revenueQuery, [currentMonth]);
     const monthRevenue = parseFloat(revenueResult.rows[0]?.revenue) || 0;
 
-    // Cohort revenue from Apple Ads users (for ROAS calculation)
+    // Cohort revenue from Apple Ads users (for ROAS calculation), excluding today
     // Revenue from users who installed THIS month AND came from Apple Ads
     const cohortRevenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+        AND DATE(event_date) < CURRENT_DATE
         AND media_source = 'Apple AdServices'
         AND ${campaignCondition}
         AND refund = false
@@ -223,11 +230,12 @@ router.get('/main', async (req, res) => {
     const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
     const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
-    // New subscribers this month (trial_converted + subscription_started for yearly)
+    // New subscribers this month (trial_converted + subscription_started for yearly), excluding today
     const subscribersQuery = `
       SELECT COUNT(DISTINCT q_user_id) as subscribers
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND DATE(event_date) < CURRENT_DATE
         AND (
           event_name = 'Trial Converted'
           OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
