@@ -5,6 +5,7 @@ import { Overview } from './pages/Overview';
 import { MarketingDashboard } from './pages/MarketingDashboard';
 import { CohortsDashboard } from './pages/CohortsDashboard';
 import { ForecastDashboard } from './pages/ForecastDashboard';
+import { Planning } from './pages/Planning';
 import { ThemeContext, useThemeProvider, themes } from './styles/themes';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ShortcutsHelpModal } from './components';
@@ -28,6 +29,7 @@ function DashboardLayout() {
     { path: '/dashboard/marketing', label: 'Marketing' },
     { path: '/dashboard/cohorts', label: 'Cohorts' },
     { path: '/dashboard/forecast', label: 'Forecast' },
+    { path: '/dashboard/planning', label: 'Planning' },
   ];
 
   return (
@@ -83,6 +85,7 @@ function DashboardLayout() {
           <Route path="/marketing" element={<MarketingDashboard />} />
           <Route path="/cohorts" element={<CohortsDashboard />} />
           <Route path="/forecast" element={<ForecastDashboard />} />
+          <Route path="/planning" element={<Planning />} />
           <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
         </Routes>
 

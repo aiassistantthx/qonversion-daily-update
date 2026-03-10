@@ -4032,4 +4032,116 @@ router.get('/active-subscribers', async (req, res) => {
   }
 });
 
+// ============================================================================
+// PLANNING TOOL - Historical cohort data and forecasting
+// ============================================================================
+
+const { calculateCopBreakdown } = require('../lib/forecast');
+
+router.get('/planning-data', async (req, res) => {
+  try {
+    const today = new Date();
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    // Get all historical cohorts (last 12 months)
+    const cohortsQuery = `
+      WITH cohort_data AS (
+        SELECT
+          DATE(install_date) as cohort_date,
+          media_source,
+          COUNT(DISTINCT q_user_id) as subscribers,
+          COALESCE(SUM(price_usd), 0) as revenue,
+          DATE_PART('day', CURRENT_DATE - DATE(install_date)) as age_days
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
+          AND (
+            event_name = 'Trial Converted'
+            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+          )
+        GROUP BY DATE(install_date), media_source
+      ),
+      spend_data AS (
+        SELECT
+          date as cohort_date,
+          COALESCE(SUM(spend), 0) as spend
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '12 months'
+        GROUP BY date
+      )
+      SELECT
+        cd.cohort_date,
+        cd.media_source,
+        cd.subscribers,
+        cd.revenue,
+        cd.age_days,
+        COALESCE(sd.spend, 0) as spend
+      FROM cohort_data cd
+      LEFT JOIN spend_data sd ON cd.cohort_date = sd.cohort_date
+      ORDER BY cd.cohort_date
+    `;
+
+    const cohortsResult = await db.query(cohortsQuery);
+
+    const cohorts = cohortsResult.rows.map(row => ({
+      installDate: row.cohort_date,
+      cohortDate: row.cohort_date,
+      source: row.media_source === 'Apple AdServices' ? 'apple_ads' : 'organic',
+      subscribers: parseInt(row.subscribers),
+      revenue: parseFloat(row.revenue),
+      spend: parseFloat(row.spend),
+      age: parseInt(row.age_days),
+    }));
+
+    // Get historical revenue by source for chart
+    const historicalQuery = `
+      SELECT
+        TO_CHAR(event_date, 'YYYY-MM') as month,
+        CASE
+          WHEN media_source = 'Apple AdServices' THEN 'apple_ads'
+          ELSE 'organic'
+        END as source,
+        COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE event_date >= CURRENT_DATE - INTERVAL '6 months'
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM'), source
+      ORDER BY month
+    `;
+
+    const historicalResult = await db.query(historicalQuery);
+
+    // Group by month
+    const historicalByMonth = {};
+    historicalResult.rows.forEach(row => {
+      if (!historicalByMonth[row.month]) {
+        historicalByMonth[row.month] = {
+          date: row.month,
+          appleAdsRevenue: 0,
+          organicRevenue: 0,
+        };
+      }
+      if (row.source === 'apple_ads') {
+        historicalByMonth[row.month].appleAdsRevenue = parseFloat(row.revenue);
+      } else {
+        historicalByMonth[row.month].organicRevenue = parseFloat(row.revenue);
+      }
+    });
+
+    const historical = Object.values(historicalByMonth);
+
+    // Get COP breakdown
+    const copBreakdown = await calculateCopBreakdown(db, currentMonth);
+
+    res.json({
+      cohorts,
+      historical,
+      copBreakdown,
+    });
+  } catch (error) {
+    console.error('Planning data error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
