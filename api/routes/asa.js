@@ -3284,11 +3284,11 @@ router.get('/kpi/cohort-cac', async (req, res) => {
           install_date::date as cohort_date,
           CURRENT_DATE - install_date::date as cohort_age,
           -- Paid users by age windows (D1, D4, D7, D14, D30)
-          COUNT(DISTINCT CASE WHEN event_date - install_date <= 1 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d1,
-          COUNT(DISTINCT CASE WHEN event_date - install_date <= 4 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d4,
-          COUNT(DISTINCT CASE WHEN event_date - install_date <= 7 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d7,
-          COUNT(DISTINCT CASE WHEN event_date - install_date <= 14 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d14,
-          COUNT(DISTINCT CASE WHEN event_date - install_date <= 30 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d30
+          COUNT(DISTINCT CASE WHEN event_date::date - install_date::date <= 1 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d1,
+          COUNT(DISTINCT CASE WHEN event_date::date - install_date::date <= 4 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d4,
+          COUNT(DISTINCT CASE WHEN event_date::date - install_date::date <= 7 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d7,
+          COUNT(DISTINCT CASE WHEN event_date::date - install_date::date <= 14 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d14,
+          COUNT(DISTINCT CASE WHEN event_date::date - install_date::date <= 30 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d30
         FROM events_v2
         WHERE refund = false
           AND install_date IS NOT NULL
