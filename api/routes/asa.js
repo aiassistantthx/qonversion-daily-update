@@ -2472,6 +2472,7 @@ router.get('/trends', async (req, res) => {
         COALESCE(i.installs, 0) as installs,
         COALESCE(t.trials, 0) as trials,
         COALESCE(p.paid_users, 0) as paid_users,
+        CASE WHEN p.paid_users > 0 THEN COALESCE(s.spend, 0) / p.paid_users ELSE NULL END as cop,
         CASE WHEN i.installs > 0 THEN (COALESCE(t.trials, 0)::float / i.installs) * 100 ELSE 0 END as install_to_trial_rate,
         CASE WHEN t.trials > 0 THEN (COALESCE(p.paid_users, 0)::float / t.trials) * 100 ELSE 0 END as trial_to_paid_rate
       FROM daily_spend s
@@ -2564,6 +2565,7 @@ router.get('/trends', async (req, res) => {
         installs: parseInt(row.installs) || 0,
         trials: parseInt(row.trials) || 0,
         paid_users: parseInt(row.paid_users) || 0,
+        cop: row.cop != null ? parseFloat(row.cop) : null,
         install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
         trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
       }))
@@ -2580,6 +2582,7 @@ router.get('/trends', async (req, res) => {
         installs: parseInt(row.installs) || 0,
         trials: parseInt(row.trials) || 0,
         paid_users: parseInt(row.paid_users) || 0,
+        cop: row.cop != null ? parseFloat(row.cop) : null,
         install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
         trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
       }));

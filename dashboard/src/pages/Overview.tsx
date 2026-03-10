@@ -16,10 +16,12 @@ import {
   MonthlyComparisonTable,
   useSortableData,
   SortIcon,
+  TrendChart,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  ActiveSubscribersData
+  ActiveSubscribersData,
+  TrendChartData
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
