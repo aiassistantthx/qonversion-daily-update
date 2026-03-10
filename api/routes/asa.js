@@ -2235,43 +2235,15 @@ router.get('/countries', async (req, res) => {
     const query = `
       WITH campaign_totals AS (
         SELECT
-          campaign_id,
           SUM(spend) as total_spend,
           SUM(installs) as total_installs
         FROM apple_ads_campaigns
         WHERE ${dateCondition}
-        GROUP BY campaign_id
       ),
-      country_attribution AS (
+      country_users AS (
         SELECT
           country,
-          campaign_id,
-          COUNT(DISTINCT q_user_id) as installs
-        FROM events_v2
-        WHERE ${revenueCondition}
-          AND country IS NOT NULL
-          AND campaign_id IS NOT NULL
-          AND event_name = 'First Session'
-        GROUP BY country, campaign_id
-      ),
-      country_spend AS (
-        SELECT
-          ca.country,
-          SUM(
-            CASE
-              WHEN ct.total_installs > 0
-              THEN (ca.installs::DECIMAL / ct.total_installs) * ct.total_spend
-              ELSE 0
-            END
-          ) as spend,
-          SUM(ca.installs) as installs
-        FROM country_attribution ca
-        JOIN campaign_totals ct ON ca.campaign_id = ct.campaign_id
-        GROUP BY ca.country
-      ),
-      country_revenue AS (
-        SELECT
-          country,
+          COUNT(DISTINCT q_user_id) as installs,
           SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
         FROM events_v2
@@ -2281,17 +2253,32 @@ router.get('/countries', async (req, res) => {
         GROUP BY country
       )
       SELECT
-        COALESCE(s.country, r.country) as country,
-        COALESCE(s.spend, 0) as spend,
-        COALESCE(s.installs, 0) as installs,
-        COALESCE(r.revenue, 0) as revenue,
-        COALESCE(r.paid_users, 0) as paid_users,
-        CASE WHEN COALESCE(s.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / s.spend ELSE 0 END as roas,
-        CASE WHEN COALESCE(s.installs, 0) > 0 THEN COALESCE(s.spend, 0) / s.installs ELSE NULL END as cpa,
-        CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(s.spend, 0) / r.paid_users ELSE NULL END as cop
-      FROM country_spend s
-      FULL OUTER JOIN country_revenue r ON s.country = r.country
-      WHERE COALESCE(s.country, r.country) IS NOT NULL
+        cu.country,
+        CASE
+          WHEN ct.total_installs > 0 THEN (cu.installs::DECIMAL / ct.total_installs) * ct.total_spend
+          ELSE 0
+        END as spend,
+        cu.installs,
+        cu.revenue,
+        cu.paid_users,
+        CASE
+          WHEN ct.total_installs > 0 AND (cu.installs::DECIMAL / ct.total_installs) * ct.total_spend > 0
+          THEN cu.revenue / ((cu.installs::DECIMAL / ct.total_installs) * ct.total_spend)
+          ELSE 0
+        END as roas,
+        CASE
+          WHEN cu.installs > 0 AND ct.total_installs > 0
+          THEN ((cu.installs::DECIMAL / ct.total_installs) * ct.total_spend) / cu.installs
+          ELSE NULL
+        END as cpa,
+        CASE
+          WHEN cu.paid_users > 0 AND ct.total_installs > 0
+          THEN ((cu.installs::DECIMAL / ct.total_installs) * ct.total_spend) / cu.paid_users
+          ELSE NULL
+        END as cop
+      FROM country_users cu
+      CROSS JOIN campaign_totals ct
+      WHERE cu.country IS NOT NULL
       ORDER BY spend DESC
     `;
 
