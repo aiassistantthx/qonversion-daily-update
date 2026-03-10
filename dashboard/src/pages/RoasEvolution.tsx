@@ -62,11 +62,14 @@ export function RoasEvolution() {
     const currentRoas = cohort.roas.total;
     const isPaidBack = currentRoas >= 1.0;
 
+    // Validate ROAS - cap at 10x (1000%) to prevent display of anomalous values
+    const validRoas = Math.min(currentRoas, 10);
+
     return {
       month: cohort.month,
       spend: cohort.spend,
       maxAge: cohort.maxAge,
-      currentRoas,
+      currentRoas: validRoas,
       isPaidBack,
       color: COHORT_COLORS[i % COHORT_COLORS.length],
     };
@@ -138,7 +141,7 @@ export function RoasEvolution() {
               <YAxis
                 tick={{ fill: '#6b7280', fontSize: 11 }}
                 tickFormatter={v => `${(v * 100).toFixed(0)}%`}
-                domain={[0, 'auto']}
+                domain={[0, 10]}
                 label={{ value: 'ROAS', angle: -90, position: 'insideLeft', fill: '#6b7280', fontSize: 12 }}
               />
               <ReferenceLine

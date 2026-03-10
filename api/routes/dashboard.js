@@ -913,6 +913,7 @@ router.get('/marketing', async (req, res) => {
 router.get('/roas-evolution', async (req, res) => {
   try {
     const monthsBack = parseInt(req.query.months) || 12;
+    const minSpend = 100; // Minimum spend threshold to filter out anomalous cohorts
 
     // Get ROAS at different ages for each cohort month
     const result = await db.query(`
@@ -935,6 +936,11 @@ router.get('/roas-evolution', async (req, res) => {
         WHERE date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       ),
+      cohort_users AS (
+        SELECT cohort_month, COUNT(DISTINCT q_user_id) as user_count
+        FROM cohort_data
+        GROUP BY cohort_month
+      ),
       roas_by_age AS (
         SELECT
           cohort_month,
@@ -954,6 +960,7 @@ router.get('/roas-evolution', async (req, res) => {
       SELECT
         ra.cohort_month,
         ms.spend,
+        cu.user_count,
         ra.max_age,
         COALESCE(ra.rev_7d, 0) as rev_7d,
         COALESCE(ra.rev_14d, 0) as rev_14d,
@@ -966,12 +973,14 @@ router.get('/roas-evolution', async (req, res) => {
         COALESCE(ra.rev_total, 0) as rev_total
       FROM roas_by_age ra
       JOIN monthly_spend ms ON ra.cohort_month = ms.month
+      JOIN cohort_users cu ON ra.cohort_month = cu.cohort_month
+      WHERE ms.spend >= ${minSpend} AND cu.user_count > 0
       ORDER BY ra.cohort_month
     `);
 
     // Transform to chart-friendly format
     const cohorts = result.rows.map(row => {
-      const spend = parseFloat(row.spend) || 1;
+      const spend = parseFloat(row.spend);
       const maxAge = parseInt(row.max_age) || 0;
 
       return {
