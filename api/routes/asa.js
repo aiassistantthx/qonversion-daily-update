@@ -982,9 +982,9 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           SUM(CASE WHEN e.refund = false THEN COALESCE(e.price_usd, 0) ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted') THEN e.q_user_id END) as paid_users
         FROM events_v2 e
-        LEFT JOIN apple_ads_keywords kw ON e.keyword_id::TEXT = kw.keyword_id::TEXT
+        LEFT JOIN apple_ads_keywords kw ON e.keyword_id::TEXT = kw.keyword_id::TEXT AND kw.campaign_id = $1
         WHERE ${revenueCondition.replace(/([^.])event_date/g, '$1e.event_date')}
-          AND e.campaign_id = $1
+          AND (e.campaign_id = $1 OR kw.campaign_id = $1)
           AND (e.adgroup_id IS NOT NULL OR kw.adgroup_id IS NOT NULL)
         GROUP BY COALESCE(e.adgroup_id, kw.adgroup_id)
       ) r ON k.adgroup_id::TEXT = r.adgroup_id::TEXT
