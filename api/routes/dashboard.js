@@ -4489,12 +4489,11 @@ router.get('/payer-share', async (req, res) => {
 router.get('/active-subscribers', async (req, res) => {
   try {
     // Current active subscribers by type
-    // Logic: Find users with active subscriptions, excluding those who canceled/refunded
-    // Weekly subs: active if last event was within 10 days (7 days subscription + 3 days grace)
-    // Monthly subs: active if last event was within 33 days (30 days subscription + 3 days grace)
-    // Yearly subs: active if last event was within 372 days (365 days subscription + 7 days grace)
-    // IMPORTANT: Exclude users who have Subscription Canceled/Expired/Refunded after their last purchase
-    // Grace periods aligned with Apple App Store billing retry periods
+    // Logic: Subscription is active if: event_date + subscription_period + grace > today
+    // Weekly: 7 days + 10 days grace = active if event_date + 17 days > today
+    // Monthly: 30 days + 10 days grace = active if event_date + 40 days > today
+    // Yearly: 365 days + 10 days grace = active if event_date + 375 days > today
+    // IMPORTANT: Only count if last event was POSITIVE (not cancel/expire/refund)
     const currentQuery = `
       WITH user_last_event AS (
         -- Get the LAST subscription-related event for each user
@@ -4513,7 +4512,7 @@ router.get('/active-subscribers', async (req, res) => {
           'Trial Converted', 'Subscription Started', 'Subscription Renewed',
           'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
         )
-          AND event_date >= CURRENT_DATE - INTERVAL '380 days'
+          AND event_date >= CURRENT_DATE - INTERVAL '400 days'
         ORDER BY q_user_id, event_date DESC
       ),
       active_subscribers AS (
@@ -4522,12 +4521,12 @@ router.get('/active-subscribers', async (req, res) => {
           sub_type,
           event_date
         FROM user_last_event
-        -- Only include if last event was a POSITIVE event (not cancel/expire/refund)
+        -- Only include if last event was POSITIVE and subscription hasn't expired
         WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND (
-            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '10 days')
-            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '33 days')
-            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '372 days')
+            (sub_type = 'weekly' AND event_date + INTERVAL '17 days' > CURRENT_DATE)
+            OR (sub_type = 'monthly' AND event_date + INTERVAL '40 days' > CURRENT_DATE)
+            OR (sub_type = 'yearly' AND event_date + INTERVAL '375 days' > CURRENT_DATE)
           )
       )
       SELECT
@@ -4544,7 +4543,7 @@ router.get('/active-subscribers', async (req, res) => {
     }
     current.total = current.weekly + current.monthly + current.yearly;
 
-    // Previous period (30 days before)
+    // Previous period (30 days before) - same logic but offset by 30 days
     const previousQuery = `
       WITH user_last_event AS (
         -- Get the LAST subscription-related event for each user as of 30 days ago
@@ -4563,7 +4562,7 @@ router.get('/active-subscribers', async (req, res) => {
           'Trial Converted', 'Subscription Started', 'Subscription Renewed',
           'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
         )
-          AND event_date >= CURRENT_DATE - INTERVAL '410 days'
+          AND event_date >= CURRENT_DATE - INTERVAL '430 days'
           AND event_date < CURRENT_DATE - INTERVAL '30 days'
         ORDER BY q_user_id, event_date DESC
       ),
@@ -4575,9 +4574,9 @@ router.get('/active-subscribers', async (req, res) => {
         FROM user_last_event
         WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND (
-            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '44 days')
-            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '67 days')
-            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '410 days')
+            (sub_type = 'weekly' AND event_date + INTERVAL '17 days' > CURRENT_DATE - INTERVAL '30 days')
+            OR (sub_type = 'monthly' AND event_date + INTERVAL '40 days' > CURRENT_DATE - INTERVAL '30 days')
+            OR (sub_type = 'yearly' AND event_date + INTERVAL '375 days' > CURRENT_DATE - INTERVAL '30 days')
           )
       )
       SELECT
