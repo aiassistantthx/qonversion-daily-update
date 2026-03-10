@@ -3225,6 +3225,152 @@ router.get('/cohorts', async (req, res) => {
   }
 });
 
+/**
+ * GET /asa/kpi/cohort-cac
+ * Get aggregated CAC (Cost of Acquisition) by cohort windows
+ * Only includes CLOSED cohorts (where enough time has passed)
+ *
+ * Returns CAC for D1, D4, D7, D14, D30 windows
+ * Each window only includes cohorts where cohort_age >= window days
+ */
+router.get('/kpi/cohort-cac', async (req, res) => {
+  try {
+    const { campaign_id, country, product_type } = req.query;
+
+    // Build filters
+    let campaignFilter = '';
+    let countryFilter = '';
+    let spendCountryFilter = '';
+    let productTypeFilter = '';
+    const params = [];
+    let paramIndex = 1;
+
+    if (campaign_id) {
+      campaignFilter = `AND campaign_id = $${paramIndex}`;
+      params.push(campaign_id);
+      paramIndex++;
+    }
+
+    if (country) {
+      const countries = country.split(',').map(c => c.trim()).filter(Boolean);
+      if (countries.length > 0) {
+        countryFilter = `AND country = ANY($${paramIndex}::text[])`;
+        spendCountryFilter = `AND $${paramIndex}::text[] && countries_or_regions`;
+        params.push(countries);
+        paramIndex++;
+      }
+    }
+
+    if (product_type) {
+      productTypeFilter = `AND product_id LIKE '%${product_type}%'`;
+    }
+
+    // Query to get CAC by cohort windows, only for CLOSED cohorts
+    // Uses events_v2 for paid users by install_date cohort
+    // Joins with apple_ads_campaigns spend by date (approximation)
+    const query = `
+      WITH daily_cohort_spend AS (
+        SELECT
+          date as cohort_date,
+          COALESCE(SUM(spend), 0) as spend
+        FROM apple_ads_campaigns
+        WHERE date IS NOT NULL
+          ${campaignFilter}
+          ${spendCountryFilter}
+        GROUP BY 1
+      ),
+      daily_cohort_revenue AS (
+        SELECT
+          install_date::date as cohort_date,
+          CURRENT_DATE - install_date::date as cohort_age,
+          -- Paid users by age windows (D1, D4, D7, D14, D30)
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 1 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d1,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 4 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d4,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 7 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d7,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 14 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d14,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= 30 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d30
+        FROM events_v2
+        WHERE refund = false
+          AND install_date IS NOT NULL
+          ${campaignFilter}
+          ${countryFilter}
+          ${productTypeFilter}
+        GROUP BY 1, 2
+      ),
+      cohort_metrics AS (
+        SELECT
+          r.cohort_date,
+          r.cohort_age,
+          COALESCE(s.spend, 0) as spend,
+          r.paid_users_d1,
+          r.paid_users_d4,
+          r.paid_users_d7,
+          r.paid_users_d14,
+          r.paid_users_d30
+        FROM daily_cohort_revenue r
+        LEFT JOIN daily_cohort_spend s ON r.cohort_date = s.cohort_date
+        WHERE COALESCE(s.spend, 0) > 0
+      )
+      SELECT
+        -- D1: Only cohorts with age >= 1
+        SUM(CASE WHEN cohort_age >= 1 THEN spend ELSE 0 END) as spend_d1,
+        SUM(CASE WHEN cohort_age >= 1 THEN paid_users_d1 ELSE 0 END) as paid_users_d1,
+        COUNT(CASE WHEN cohort_age >= 1 THEN 1 END) as cohorts_d1,
+
+        -- D4: Only cohorts with age >= 4
+        SUM(CASE WHEN cohort_age >= 4 THEN spend ELSE 0 END) as spend_d4,
+        SUM(CASE WHEN cohort_age >= 4 THEN paid_users_d4 ELSE 0 END) as paid_users_d4,
+        COUNT(CASE WHEN cohort_age >= 4 THEN 1 END) as cohorts_d4,
+
+        -- D7: Only cohorts with age >= 7
+        SUM(CASE WHEN cohort_age >= 7 THEN spend ELSE 0 END) as spend_d7,
+        SUM(CASE WHEN cohort_age >= 7 THEN paid_users_d7 ELSE 0 END) as paid_users_d7,
+        COUNT(CASE WHEN cohort_age >= 7 THEN 1 END) as cohorts_d7,
+
+        -- D14: Only cohorts with age >= 14
+        SUM(CASE WHEN cohort_age >= 14 THEN spend ELSE 0 END) as spend_d14,
+        SUM(CASE WHEN cohort_age >= 14 THEN paid_users_d14 ELSE 0 END) as paid_users_d14,
+        COUNT(CASE WHEN cohort_age >= 14 THEN 1 END) as cohorts_d14,
+
+        -- D30: Only cohorts with age >= 30
+        SUM(CASE WHEN cohort_age >= 30 THEN spend ELSE 0 END) as spend_d30,
+        SUM(CASE WHEN cohort_age >= 30 THEN paid_users_d30 ELSE 0 END) as paid_users_d30,
+        COUNT(CASE WHEN cohort_age >= 30 THEN 1 END) as cohorts_d30
+      FROM cohort_metrics
+    `;
+
+    const result = await db.query(query, params);
+    const row = result.rows[0] || {};
+
+    // Calculate CAC for each window
+    const cac = {
+      d1: row.paid_users_d1 > 0 ? parseFloat(row.spend_d1) / parseInt(row.paid_users_d1) : null,
+      d4: row.paid_users_d4 > 0 ? parseFloat(row.spend_d4) / parseInt(row.paid_users_d4) : null,
+      d7: row.paid_users_d7 > 0 ? parseFloat(row.spend_d7) / parseInt(row.paid_users_d7) : null,
+      d14: row.paid_users_d14 > 0 ? parseFloat(row.spend_d14) / parseInt(row.paid_users_d14) : null,
+      d30: row.paid_users_d30 > 0 ? parseFloat(row.spend_d30) / parseInt(row.paid_users_d30) : null,
+    };
+
+    // Target CAC from yearly payback calculation
+    const TARGET_CAC = 88.75;
+
+    res.json({
+      target: TARGET_CAC,
+      cac,
+      meta: {
+        d1: { spend: parseFloat(row.spend_d1) || 0, paidUsers: parseInt(row.paid_users_d1) || 0, cohorts: parseInt(row.cohorts_d1) || 0 },
+        d4: { spend: parseFloat(row.spend_d4) || 0, paidUsers: parseInt(row.paid_users_d4) || 0, cohorts: parseInt(row.cohorts_d4) || 0 },
+        d7: { spend: parseFloat(row.spend_d7) || 0, paidUsers: parseInt(row.paid_users_d7) || 0, cohorts: parseInt(row.cohorts_d7) || 0 },
+        d14: { spend: parseFloat(row.spend_d14) || 0, paidUsers: parseInt(row.paid_users_d14) || 0, cohorts: parseInt(row.cohorts_d14) || 0 },
+        d30: { spend: parseFloat(row.spend_d30) || 0, paidUsers: parseInt(row.paid_users_d30) || 0, cohorts: parseInt(row.cohorts_d30) || 0 },
+      }
+    });
+  } catch (error) {
+    console.error('KPI cohort CAC endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================
 // SEARCH TERMS
 // ================================================

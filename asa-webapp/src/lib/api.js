@@ -84,4 +84,7 @@ export const getCountries = (params = {}) => api.get('/countries', { params }).t
 // Search Terms
 export const getSearchTerms = (params = {}) => api.get('/search-terms', { params }).then(res => res.data);
 
+// KPI
+export const getCohortCac = (params = {}) => api.get('/kpi/cohort-cac', { params }).then(res => res.data);
+
 export default api;

@@ -6,7 +6,7 @@ import { HealthScoreWidget } from '../components/HealthScoreWidget';
 import ConversionFunnelChart from '../components/ConversionFunnelChart';
 import TrendChart from '../components/TrendChart';
 import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
-import { getCampaigns, getRules, getHistory, getTrends } from '../lib/api';
+import { getCampaigns, getRules, getHistory, getTrends, getCohortCac } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useState } from 'react';
 import {
@@ -18,44 +18,92 @@ import {
   Target,
 } from 'lucide-react';
 
-// Target KPI from yearly payback calculation
-// LTV = average annual revenue per paid user (approx. yearly subscription price)
-const TARGET_CAC = 88.75; // Based on yearly payback calculation
+// Cohort KPI Card - shows CAC by D1, D4, D7, D14, D30 windows (closed cohorts only)
+function CohortKpiCard({ data, isLoading }) {
+  if (isLoading) {
+    return (
+      <Card className="border-2 border-gray-200">
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
+              <Target className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-gray-600">Cohort CAC KPI</p>
+              <p className="text-lg text-gray-400">Loading...</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-function KpiCard({ currentCac, targetCac }) {
-  const kpiDiff = currentCac - targetCac;
-  const isOnTarget = kpiDiff <= 0;
-  const percentDiff = targetCac > 0 ? (kpiDiff / targetCac) * 100 : 0;
+  if (!data) return null;
+
+  const { target, cac, meta } = data;
+  const windows = ['d1', 'd4', 'd7', 'd14', 'd30'];
+  const labels = { d1: 'D1', d4: 'D4', d7: 'D7', d14: 'D14', d30: 'D30' };
 
   return (
-    <Card className={`border-2 ${isOnTarget ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
+    <Card className="border-2 border-blue-200 bg-blue-50/30">
       <CardContent>
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${isOnTarget ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
             <Target className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <p className="text-sm text-gray-600">KPI Target CAC</p>
-            <p className="text-xl font-bold">${targetCac.toFixed(2)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-600">Current CAC</p>
-            <p className={`text-xl font-bold ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
-              ${currentCac.toFixed(2)}
-            </p>
+            <p className="text-sm text-gray-600">Cohort CAC KPI</p>
+            <p className="text-xs text-gray-400">Target: ${target.toFixed(2)} (yearly payback)</p>
           </div>
         </div>
-        <div className={`mt-3 pt-3 border-t ${isOnTarget ? 'border-green-200' : 'border-red-200'}`}>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">KPI Diff:</span>
-            <span className={`text-lg font-bold ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
-              {kpiDiff >= 0 ? '+' : ''}{kpiDiff.toFixed(2)} ({percentDiff >= 0 ? '+' : ''}{percentDiff.toFixed(0)}%)
-            </span>
-          </div>
-          <p className={`text-xs mt-1 ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
-            {isOnTarget ? 'On target for yearly payback' : 'Above target - needs optimization'}
-          </p>
+
+        <div className="grid grid-cols-5 gap-2">
+          {windows.map(window => {
+            const cacValue = cac[window];
+            const metaData = meta[window];
+            const hasData = cacValue !== null && metaData.cohorts > 0;
+            const isOnTarget = hasData && cacValue <= target;
+            const diff = hasData ? cacValue - target : 0;
+            const percentDiff = hasData && target > 0 ? (diff / target) * 100 : 0;
+
+            return (
+              <div
+                key={window}
+                className={`text-center p-3 rounded-lg border ${
+                  !hasData
+                    ? 'border-gray-200 bg-gray-50'
+                    : isOnTarget
+                    ? 'border-green-200 bg-green-50'
+                    : 'border-red-200 bg-red-50'
+                }`}
+              >
+                <p className="text-xs font-medium text-gray-500 mb-1">{labels[window]}</p>
+                {hasData ? (
+                  <>
+                    <p className={`text-lg font-bold ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+                      ${cacValue.toFixed(0)}
+                    </p>
+                    <p className={`text-xs font-medium ${isOnTarget ? 'text-green-500' : 'text-red-500'}`}>
+                      {diff >= 0 ? '+' : ''}{percentDiff.toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {metaData.cohorts} cohorts
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold text-gray-400">—</p>
+                    <p className="text-xs text-gray-400">no data</p>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
+
+        <p className="text-xs text-gray-400 mt-3 text-center">
+          Only closed cohorts are included (age &ge; window days)
+        </p>
       </CardContent>
     </Card>
   );
@@ -118,6 +166,11 @@ export default function Dashboard() {
   const { data: trendsData } = useQuery({
     queryKey: ['trends', queryParams],
     queryFn: () => getTrends(queryParams),
+  });
+
+  const { data: cohortCacData, isLoading: cohortCacLoading } = useQuery({
+    queryKey: ['cohortCac'],
+    queryFn: () => getCohortCac(),
   });
 
   // Helper to get performance value
@@ -224,9 +277,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI Target Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <KpiCard currentCac={cop} targetCac={TARGET_CAC} />
+      {/* Cohort KPI Card */}
+      <div className="grid grid-cols-1 gap-4">
+        <CohortKpiCard data={cohortCacData} isLoading={cohortCacLoading} />
       </div>
 
       {/* Secondary Metrics */}
