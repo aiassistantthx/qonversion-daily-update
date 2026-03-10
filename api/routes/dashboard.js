@@ -2722,73 +2722,114 @@ router.get('/churn-rate', async (req, res) => {
   try {
     const { period = 'week', months = 12 } = req.query;
 
-    // Weekly subscription churn: week-over-week
-    // For each week, calculate: (active at start - renewed) / active at start
-    const weeklyChurnResult = await db.query(`
-      WITH weeks AS (
+    // Daily subscriber movement (matches Qonversion methodology)
+    // New = Trial Converted + Subscription Started
+    // Churned = subscriptions that expired (had renewal 7 days ago but no renewal today)
+    const dailyMovementResult = await db.query(`
+      WITH days AS (
         SELECT generate_series(
-          DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months'),
-          DATE_TRUNC('week', CURRENT_DATE),
-          '1 week'
-        )::date AS week_start
+          CURRENT_DATE - INTERVAL '${months} months',
+          CURRENT_DATE - INTERVAL '1 day',
+          '1 day'
+        )::date AS day
       ),
-      -- Active weekly subs at start of each week (had renewal in prior 7-14 days)
-      weekly_active_at_start AS (
+      -- New subs each day (Trial Converted + Subscription Started)
+      daily_new AS (
         SELECT
-          w.week_start,
-          COUNT(DISTINCT e.q_user_id) as active_subs
-        FROM weeks w
-        JOIN events_v2 e ON
-          e.event_date >= w.week_start - INTERVAL '14 days'
-          AND e.event_date < w.week_start
-          AND e.product_id LIKE '%weekly%'
-          AND e.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
-          AND e.refund = false
-        GROUP BY w.week_start
+          DATE(event_date) as day,
+          COUNT(*) as new_subs
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name IN ('Subscription Started', 'Trial Converted')
+          AND refund = false
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY DATE(event_date)
       ),
-      -- Weekly subs that renewed during each week
-      weekly_renewed AS (
+      -- Churned = users who had a renewal exactly 7 days ago but NOT today
+      -- (their weekly subscription expired)
+      renewals_7d_ago AS (
         SELECT
-          DATE_TRUNC('week', e.event_date)::date as week_start,
-          COUNT(DISTINCT e.q_user_id) as renewed_subs
-        FROM events_v2 e
-        WHERE e.product_id LIKE '%weekly%'
-          AND e.event_name = 'Subscription Renewed'
-          AND e.refund = false
-          AND e.event_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months')
-        GROUP BY DATE_TRUNC('week', e.event_date)::date
+          DATE(event_date) + INTERVAL '7 days' as expected_renewal_day,
+          q_user_id
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+          AND refund = false
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '7 days'
       ),
-      -- New weekly subs each week
-      weekly_new AS (
+      renewals_today AS (
         SELECT
-          DATE_TRUNC('week', e.event_date)::date as week_start,
-          COUNT(DISTINCT e.q_user_id) as new_subs
-        FROM events_v2 e
-        WHERE e.product_id LIKE '%weekly%'
-          AND e.event_name IN ('Subscription Started', 'Trial Converted')
-          AND e.refund = false
-          AND e.event_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months')
-        GROUP BY DATE_TRUNC('week', e.event_date)::date
+          DATE(event_date) as day,
+          q_user_id
+        FROM events_v2
+        WHERE product_id LIKE '%weekly%'
+          AND event_name = 'Subscription Renewed'
+          AND refund = false
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
+      ),
+      daily_churned AS (
+        SELECT
+          r7.expected_renewal_day::date as day,
+          COUNT(DISTINCT r7.q_user_id) as churned
+        FROM renewals_7d_ago r7
+        LEFT JOIN renewals_today rt ON r7.q_user_id = rt.q_user_id
+          AND rt.day = r7.expected_renewal_day::date
+        WHERE rt.q_user_id IS NULL
+          AND r7.expected_renewal_day <= CURRENT_DATE - INTERVAL '1 day'
+        GROUP BY r7.expected_renewal_day::date
+      ),
+      -- Active subs = cumulative (new - churned)
+      daily_active AS (
+        SELECT
+          d.day,
+          COALESCE(n.new_subs, 0) as new_subs,
+          COALESCE(c.churned, 0) as churned
+        FROM days d
+        LEFT JOIN daily_new n ON d.day = n.day
+        LEFT JOIN daily_churned c ON d.day = c.day
       )
       SELECT
-        w.week_start,
-        COALESCE(a.active_subs, 0) as active_at_start,
-        COALESCE(r.renewed_subs, 0) as renewed,
-        COALESCE(n.new_subs, 0) as new_subs,
-        CASE WHEN COALESCE(a.active_subs, 0) > 0
-          THEN ROUND(
-            (COALESCE(a.active_subs, 0) - COALESCE(r.renewed_subs, 0))::numeric
-            / COALESCE(a.active_subs, 1)::numeric * 100, 1
-          )
-          ELSE 0
-        END as churn_rate,
-        COALESCE(a.active_subs, 0) - COALESCE(r.renewed_subs, 0) as churned
-      FROM weeks w
-      LEFT JOIN weekly_active_at_start a ON w.week_start = a.week_start
-      LEFT JOIN weekly_renewed r ON w.week_start = r.week_start
-      LEFT JOIN weekly_new n ON w.week_start = n.week_start
-      WHERE w.week_start < DATE_TRUNC('week', CURRENT_DATE)
-      ORDER BY w.week_start
+        day,
+        new_subs,
+        churned,
+        new_subs - churned as net_change
+      FROM daily_active
+      ORDER BY day
+    `);
+
+    // Aggregate to weekly for the chart
+    const weeklyChurnResult = await db.query(`
+      WITH daily_data AS (
+        SELECT * FROM (${dailyMovementResult.rows.length > 0 ? `
+          SELECT
+            day::date,
+            new_subs::int,
+            churned::int,
+            (new_subs - churned)::int as net_change
+          FROM (VALUES ${dailyMovementResult.rows.map(r =>
+            `('${r.day}'::date, ${r.new_subs}, ${r.churned}, ${r.net_change})`
+          ).join(',')}) AS t(day, new_subs, churned, net_change)
+        ` : `SELECT NULL::date as day, 0 as new_subs, 0 as churned, 0 as net_change WHERE false`}) sub
+      ),
+      weekly_agg AS (
+        SELECT
+          DATE_TRUNC('week', day)::date as week_start,
+          SUM(new_subs) as new_subs,
+          SUM(churned) as churned,
+          SUM(net_change) as net_change
+        FROM daily_data
+        WHERE day IS NOT NULL
+        GROUP BY DATE_TRUNC('week', day)::date
+      )
+      SELECT
+        week_start,
+        new_subs,
+        churned,
+        net_change,
+        -- Active at end of week (running sum of net changes)
+        SUM(net_change) OVER (ORDER BY week_start) as active_subs
+      FROM weekly_agg
+      ORDER BY week_start
     `);
 
     // Yearly subscription churn: month-over-month
@@ -2873,10 +2914,31 @@ router.get('/churn-rate', async (req, res) => {
       ORDER BY m.month_start
     `);
 
+    // Calculate weekly churn rate as churned / (churned + active_end_of_previous_week)
+    // Active subs is running total, so active at start of week = active at end of previous week
+    const weeklyData = weeklyChurnResult.rows.map((r, i, arr) => {
+      const newSubs = parseInt(r.new_subs) || 0;
+      const churned = parseInt(r.churned) || 0;
+      const activeSubs = parseInt(r.active_subs) || 0;
+      // Active at start = active at end of prev week = activeSubs - netChange
+      const activeAtStart = activeSubs - (parseInt(r.net_change) || 0);
+      const churnRate = activeAtStart > 0 ? (churned / activeAtStart * 100) : 0;
+
+      return {
+        period: r.week_start,
+        activeAtStart,
+        churned,
+        newSubs,
+        churnRate: Math.round(churnRate * 10) / 10,
+        netChange: parseInt(r.net_change) || 0,
+        activeSubs,
+      };
+    });
+
     // Calculate summary metrics
-    const recentWeeklyChurn = weeklyChurnResult.rows.slice(-12);
-    const avgWeeklyChurn = recentWeeklyChurn.length > 0
-      ? recentWeeklyChurn.reduce((s, r) => s + parseFloat(r.churn_rate || 0), 0) / recentWeeklyChurn.length
+    const recentWeeklyData = weeklyData.slice(-12);
+    const avgWeeklyChurn = recentWeeklyData.length > 0
+      ? recentWeeklyData.reduce((s, r) => s + r.churnRate, 0) / recentWeeklyData.length
       : 0;
 
     const recentYearlyChurn = yearlyChurnResult.rows.slice(-6);
@@ -2885,24 +2947,26 @@ router.get('/churn-rate', async (req, res) => {
       : 0;
 
     // Net subscriber movement
-    const lastWeek = weeklyChurnResult.rows[weeklyChurnResult.rows.length - 1] || {};
+    const lastWeek = weeklyData[weeklyData.length - 1] || {};
     const lastMonth = yearlyChurnResult.rows[yearlyChurnResult.rows.length - 1] || {};
 
+    // Also include daily data for granular view
+    const dailyData = dailyMovementResult.rows.map(r => ({
+      date: r.day,
+      newSubs: parseInt(r.new_subs) || 0,
+      churned: parseInt(r.churned) || 0,
+      netChange: parseInt(r.net_change) || 0,
+    }));
+
     res.json({
+      daily: dailyData.slice(-90), // Last 90 days
       weekly: {
-        data: weeklyChurnResult.rows.map(r => ({
-          period: r.week_start,
-          activeAtStart: parseInt(r.active_at_start),
-          renewed: parseInt(r.renewed),
-          churned: parseInt(r.churned),
-          newSubs: parseInt(r.new_subs),
-          churnRate: parseFloat(r.churn_rate),
-          netChange: parseInt(r.new_subs) - parseInt(r.churned),
-        })),
+        data: weeklyData,
         avgChurnRate: Math.round(avgWeeklyChurn * 10) / 10,
         currentWeek: {
-          activeAtStart: parseInt(lastWeek.active_at_start || 0),
-          churnRate: parseFloat(lastWeek.churn_rate || 0),
+          activeAtStart: lastWeek.activeAtStart || 0,
+          churnRate: lastWeek.churnRate || 0,
+          activeSubs: lastWeek.activeSubs || 0,
         },
       },
       yearly: {
