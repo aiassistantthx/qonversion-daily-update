@@ -162,9 +162,10 @@ router.get('/main', async (req, res) => {
   try {
     // Get date range from query params (defaults to last 30 days)
     const from = req.query.from || daysAgo(30);
-    // Default 'to' excludes current day (incomplete data)
+    // Always cap 'to' at yesterday (current day data is incomplete)
     const yesterday = daysAgo(1);
-    const to = req.query.to || yesterday;
+    const requestedTo = req.query.to || yesterday;
+    const to = requestedTo > yesterday ? yesterday : requestedTo;
     const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
     const { campaigns } = req.query;
 
