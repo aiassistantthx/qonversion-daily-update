@@ -11,14 +11,6 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
-  SubscriptionBreakdown,
-  RetentionChart,
-  WeeklyChurnChart,
-  ChurnRateChart,
-  RenewalRatesTable,
-  CountriesTable,
-  MRRBreakdown,
-  MetricSelector,
   ActiveSubscribersWidget,
   MonthlyComparisonTable,
   useSortableData,
@@ -26,9 +18,7 @@ import {
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  SubscriptionBreakdownData,
-  RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData, ActiveSubscribersData
+  ActiveSubscribersData
 } from '../components';
 import { api } from '../api';
 import type { YoYData, ChurnRateData } from '../api';
@@ -279,12 +269,7 @@ export function Overview() {
   const [countryFilter, setCountryFilter] = useState<CountrySelection>(() => parseCountryFilterFromURL());
   const [campaignFilter, setCampaignFilter] = useState<CampaignSelection>(() => parseCampaignFilterFromURL());
   const [keywordDays, setKeywordDays] = useState(90);
-  const [roasEvolutionCohorts, setRoasEvolutionCohorts] = useState<string[]>([]);
   const [monthlyChartMetrics, setMonthlyChartMetrics] = useState<string[]>([]);
-
-  const handleRoasEvolutionCohortsChange = useCallback((selected: string[]) => {
-    setRoasEvolutionCohorts(selected);
-  }, []);
 
   const handleMonthlyChartMetricsChange = useCallback((selected: string[]) => {
     setMonthlyChartMetrics(selected);
@@ -344,11 +329,6 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/marketing?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
-  const { data: roasEvolution } = useQuery<RoasEvolutionData>({
-    queryKey: ['roas-evolution', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/roas-evolution?${buildParams({ months: 12 })}`).then(r => r.json()),
-  });
-
   const { data: keywordsData } = useQuery<KeywordsData>({
     queryKey: ['keywords', keywordDays, trafficSource],
     queryFn: () => fetch(`${API_URL}/dashboard/keywords?${buildParams({ days: keywordDays })}`).then(r => r.json()),
@@ -364,37 +344,6 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/funnel?${buildParams({ days: 30 })}`).then(r => r.json()),
   });
 
-  const { data: subscriptionBreakdownData } = useQuery<SubscriptionBreakdownData>({
-    queryKey: ['subscription-breakdown'],
-    queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?months=12`).then(r => r.json()),
-  });
-
-  const { data: retentionData } = useQuery<RetentionData>({
-    queryKey: ['retention', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/retention?${buildParams({ months: 12 })}`).then(r => r.json()),
-  });
-
-  const { data: weeklyChurnData } = useQuery<WeeklyChurnData>({
-    queryKey: ['weekly-churn', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/weekly-churn?${buildParams({ months: 12 })}`).then(r => r.json()),
-  });
-
-  const { data: renewalRatesData } = useQuery<RenewalRatesData>({
-    queryKey: ['renewal-rates'],
-    queryFn: () => fetch(`${API_URL}/dashboard/renewal-rates`).then(r => r.json()),
-  });
-
-  const { data: countriesData } = useQuery<CountriesData>({
-    queryKey: ['countries', dateRange, countryFilter],
-    queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams({ limit: 20 })}`).then(r => r.json()),
-  });
-
-
-  const { data: mrrBreakdownData } = useQuery<MRRBreakdownData>({
-    queryKey: ['mrr-breakdown'],
-    queryFn: () => fetch(`${API_URL}/dashboard/mrr?months=12`).then(r => r.json()),
-  });
-
   const { data: activeSubscribersData } = useQuery<ActiveSubscribersData>({
     queryKey: ['active-subscribers'],
     queryFn: () => fetch(`${API_URL}/dashboard/active-subscribers`).then(r => r.json()),
@@ -403,11 +352,6 @@ export function Overview() {
   const { data: yoyData } = useQuery<YoYData>({
     queryKey: ['yoy'],
     queryFn: api.getYoY,
-  });
-
-  const { data: churnRateData } = useQuery<ChurnRateData>({
-    queryKey: ['churn-rate'],
-    queryFn: () => api.getChurnRate(12),
   });
 
   const cm = data?.currentMonth;
@@ -535,77 +479,30 @@ export function Overview() {
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
 
-      {/* ROAS Evolution Chart */}
-      <div style={styles.chartCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <div>
-            <h3 style={{ ...styles.chartTitle, marginBottom: 4 }}>ROAS Evolution by Cohort Age</h3>
-            <p style={{ fontSize: 12, color: '#6b7280' }}>
-              How ROAS grows as cohorts mature. Each line = one monthly cohort.
-            </p>
-          </div>
-          <MetricSelector
-            options={cohortMonths.slice(-8).map((month, i) => ({
-              key: month,
-              label: month,
-              color: COHORT_COLORS[i % COHORT_COLORS.length],
-            }))}
-            onChange={handleRoasEvolutionCohortsChange}
-            storageKey="roasEvolution-selectedCohorts"
-          />
-        </div>
-        <div style={{ ...styles.chartContainer, height: 350 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={roasChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="age" tick={{ fill: '#6b7280', fontSize: 11 }} label={{ value: 'Days', position: 'bottom', fill: '#6b7280' }} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `${(v * 100).toFixed(0)}%`} domain={[0, 'auto']} />
-              <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Breakeven', fill: '#ef4444', fontSize: 11 }} />
-              <Tooltip
-                contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
-                formatter={(v) => [`${((Number(v) || 0) * 100).toFixed(1)}%`, '']}
-                labelFormatter={(age) => `Day ${age}`}
-              />
-              <Legend />
-              {cohortMonths.slice(-8)
-                .filter(month => roasEvolutionCohorts.length === 0 || roasEvolutionCohorts.includes(month))
-                .map((month) => (
-                  <Line
-                    key={month}
-                    type="monotone"
-                    dataKey={month}
-                    stroke={COHORT_COLORS[cohortMonths.slice(-8).indexOf(month) % COHORT_COLORS.length]}
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    connectNulls
-                    name={month}
-                  />
-                ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      {/* Navigation Cards to Detailed Tabs */}
+      <div style={styles.navCardsGrid}>
+        <a href="/#/roas-evolution" style={styles.navCard}>
+          <div style={styles.navCardIcon}>📈</div>
+          <h3 style={styles.navCardTitle}>ROAS Evolution</h3>
+          <p style={styles.navCardDescription}>
+            Track how ROAS grows as cohorts mature over time
+          </p>
+        </a>
+        <a href="/#/cohorts" style={styles.navCard}>
+          <div style={styles.navCardIcon}>👥</div>
+          <h3 style={styles.navCardTitle}>Cohort Analysis</h3>
+          <p style={styles.navCardDescription}>
+            Detailed cohort ROAS, retention, churn, and renewal rates
+          </p>
+        </a>
+        <a href="/#/marketing" style={styles.navCard}>
+          <div style={styles.navCardIcon}>💰</div>
+          <h3 style={styles.navCardTitle}>Marketing Performance</h3>
+          <p style={styles.navCardDescription}>
+            CPA trends, campaign performance, and revenue sources
+          </p>
+        </a>
       </div>
-
-      {/* Subscription Breakdown */}
-      <SubscriptionBreakdown data={subscriptionBreakdownData} />
-
-      {/* MRR Breakdown */}
-      {mrrBreakdownData?.current && <MRRBreakdown data={mrrBreakdownData} />}
-
-      {/* Retention Chart */}
-      {retentionData?.cohorts && <RetentionChart data={retentionData} />}
-
-      {/* Weekly Churn Analysis */}
-      {weeklyChurnData?.cohorts && <WeeklyChurnChart data={weeklyChurnData} />}
-
-      {/* Streaming Churn Rate */}
-      {churnRateData && <ChurnRateChart data={churnRateData} />}
-
-      {/* Yearly Renewal Rates */}
-      {renewalRatesData?.cohorts && <RenewalRatesTable data={renewalRatesData} />}
-
-      {/* Countries Ranking */}
-      {countriesData?.countries && <CountriesTable data={countriesData} />}
 
       {/* Funnel Comparison */}
       {funnelData && (

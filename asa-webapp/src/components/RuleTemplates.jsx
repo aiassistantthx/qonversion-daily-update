@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from './Card';
 import { Button } from './Button';
 import { Badge } from './Badge';
-import { Input } from './Input';
+import { Input, Select } from './Input';
 import { getRuleTemplates } from '../lib/api';
-import { Zap, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { Zap, ChevronDown, ChevronUp, Settings, Filter } from 'lucide-react';
 
 export default function RuleTemplates({ onSelectTemplate, onClose }) {
   const [expandedId, setExpandedId] = useState(null);
   const [customParams, setCustomParams] = useState({});
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['rule-templates'],
@@ -17,6 +19,31 @@ export default function RuleTemplates({ onSelectTemplate, onClose }) {
   });
 
   const templates = data?.data || [];
+
+  // Group templates by category
+  const categories = useMemo(() => {
+    const cats = new Set(templates.map(t => t.category || 'Other'));
+    return ['all', ...Array.from(cats).sort()];
+  }, [templates]);
+
+  // Filter templates
+  const filteredTemplates = useMemo(() => {
+    let filtered = templates;
+
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(t => (t.category || 'Other') === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(t =>
+        t.name.toLowerCase().includes(query) ||
+        t.description.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [templates, selectedCategory, searchQuery]);
 
   const handleSelectTemplate = (template) => {
     const params = customParams[template.id] || {};
@@ -79,7 +106,9 @@ export default function RuleTemplates({ onSelectTemplate, onClose }) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Rule Templates</CardTitle>
-            <p className="text-sm text-gray-500 mt-1">Choose a template to get started quickly</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {templates.length} pre-built templates from SplitMetrics best practices
+            </p>
           </div>
           {onClose && (
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -89,18 +118,84 @@ export default function RuleTemplates({ onSelectTemplate, onClose }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
-          {templates.map((template) => {
-            const isExpanded = expandedId === template.id;
-            const params = customParams[template.id] || {};
+        {/* Category Summary */}
+        {!isLoading && templates.length > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <div className="flex flex-wrap gap-2">
+              {categories.filter(cat => cat !== 'all').map(cat => {
+                const count = templates.filter(t => (t.category || 'Other') === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      selectedCategory === cat
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white text-gray-700 hover:bg-blue-100'
+                    }`}
+                  >
+                    {cat} ({count})
+                  </button>
+                );
+              })}
+              {selectedCategory !== 'all' && (
+                <button
+                  onClick={() => setSelectedCategory('all')}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
-            return (
-              <div key={template.id} className="border rounded-lg p-4 hover:bg-gray-50">
+        {/* Filters */}
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1">
+            <Input
+              placeholder="Search templates..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div className="w-48">
+            <Select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              options={categories.map(cat => ({ value: cat, label: cat === 'all' ? 'All Categories' : cat }))}
+            />
+          </div>
+        </div>
+
+        {/* Template Count */}
+        <div className="flex items-center gap-2 mb-3 text-sm text-gray-600">
+          <Filter size={14} />
+          <span>Showing {filteredTemplates.length} of {templates.length} templates</span>
+        </div>
+
+        <div className="space-y-3">
+          {filteredTemplates.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-lg mb-2">No templates found</p>
+              <p className="text-sm">Try adjusting your search or filter criteria</p>
+            </div>
+          ) : (
+            filteredTemplates.map((template) => {
+              const isExpanded = expandedId === template.id;
+              const params = customParams[template.id] || {};
+
+              return (
+                <div key={template.id} className="border rounded-lg p-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <Zap size={16} className="text-blue-500" />
                       <h3 className="font-medium">{template.name}</h3>
+                      {template.category && (
+                        <Badge variant="info">{template.category}</Badge>
+                      )}
                       <Badge>{template.scope}</Badge>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">{template.description}</p>
@@ -225,8 +320,9 @@ export default function RuleTemplates({ onSelectTemplate, onClose }) {
                   </div>
                 )}
               </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </CardContent>
     </Card>
