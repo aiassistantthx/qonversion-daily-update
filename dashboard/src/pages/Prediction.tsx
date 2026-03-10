@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Line, Bar
 } from 'recharts';
-import { Download, TrendingUp, DollarSign, Users, Calculator } from 'lucide-react';
+import { Download, TrendingUp, DollarSign, Users, Calculator, RotateCcw } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -20,9 +20,15 @@ interface PredictionParams {
   forecastMonths: number;
 }
 
+interface MonthOverride {
+  spend?: number;
+  cpi?: number;
+}
+
 interface ForecastMonth {
   month: string;
   spend: number;
+  cpi: number;
   installs: number;
   trials: number;
   newWeekly: number;
@@ -35,24 +41,26 @@ interface ForecastMonth {
   cumulativeSpend: number;
   cumulativeRevenue: number;
   roas: number;
+  isOverridden: boolean;
 }
 
 // Real metrics from OpenChat data (March 2026)
 const defaultParams: PredictionParams = {
-  monthlyBudget: 50000,      // Avg monthly spend
-  cpi: 1.83,                 // Cost per install (from keywords data)
-  trialRate: 32,             // Install → Trial rate (31.5% from data)
-  conversionRate: 22,        // Trial → Paid rate (21.7% Apple Ads)
-  weeklyPrice: 6.99,         // Weekly subscription price
-  yearlyPrice: 49.99,        // Yearly subscription price
-  weeklyChurnMonthly: 51,    // Weekly subs monthly churn (5.9%/week → ~51%/mo)
-  yearlyChurnAnnual: 65,     // Yearly subs annual churn
-  weeklyShare: 75,           // % of new subs choosing weekly (from product breakdown)
+  monthlyBudget: 50000,
+  cpi: 1.83,
+  trialRate: 32,
+  conversionRate: 22,
+  weeklyPrice: 6.99,
+  yearlyPrice: 49.99,
+  weeklyChurnMonthly: 51,
+  yearlyChurnAnnual: 65,
+  weeklyShare: 75,
   forecastMonths: 12,
 };
 
 export function Prediction() {
   const [params, setParams] = useState<PredictionParams>(defaultParams);
+  const [monthOverrides, setMonthOverrides] = useState<Record<string, MonthOverride>>({});
 
   // Fetch current base from API
   const { data: activeData } = useQuery({
@@ -60,17 +68,21 @@ export function Prediction() {
     queryFn: () => fetch(`${API_BASE}/dashboard/active-subscribers`).then(r => r.json()),
   });
 
-  // Historical data for reference (can be used for validation)
-  useQuery({
-    queryKey: ['main-data'],
-    queryFn: () => fetch(`${API_BASE}/dashboard/main?scale=month`).then(r => r.json()),
-  });
+  // Generate month keys for the forecast period
+  const monthKeys = useMemo(() => {
+    const keys: string[] = [];
+    const today = new Date();
+    for (let i = 0; i < params.forecastMonths; i++) {
+      const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      keys.push(forecastDate.toISOString().slice(0, 7));
+    }
+    return keys;
+  }, [params.forecastMonths]);
 
-  // Calculate forecast
+  // Calculate forecast with per-month overrides
   const forecast = useMemo(() => {
     const results: ForecastMonth[] = [];
 
-    // Start with current base from API (real data)
     let activeWeekly = activeData?.current?.weekly || 2800;
     let activeYearly = activeData?.current?.yearly || 4900;
     let cumulativeSpend = 0;
@@ -79,14 +91,14 @@ export function Prediction() {
     const monthlyWeeklyRetention = 1 - (params.weeklyChurnMonthly / 100);
     const monthlyYearlyRetention = Math.pow(1 - (params.yearlyChurnAnnual / 100), 1/12);
 
-    const today = new Date();
-
-    for (let i = 0; i < params.forecastMonths; i++) {
-      const forecastDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
-      const monthStr = forecastDate.toISOString().slice(0, 7);
+    for (const monthStr of monthKeys) {
+      const override = monthOverrides[monthStr] || {};
+      const monthSpend = override.spend ?? params.monthlyBudget;
+      const monthCpi = override.cpi ?? params.cpi;
+      const isOverridden = override.spend !== undefined || override.cpi !== undefined;
 
       // New users from spend
-      const installs = params.monthlyBudget / params.cpi;
+      const installs = monthCpi > 0 ? monthSpend / monthCpi : 0;
       const trials = installs * (params.trialRate / 100);
       const conversions = trials * (params.conversionRate / 100);
 
@@ -98,16 +110,17 @@ export function Prediction() {
       activeYearly = activeYearly * monthlyYearlyRetention + newYearly;
 
       // Revenue
-      const weeklyRevenue = activeWeekly * params.weeklyPrice * 4.33; // 4.33 weeks per month
+      const weeklyRevenue = activeWeekly * params.weeklyPrice * 4.33;
       const yearlyRevenue = activeYearly * params.yearlyPrice / 12;
       const totalRevenue = weeklyRevenue + yearlyRevenue;
 
-      cumulativeSpend += params.monthlyBudget;
+      cumulativeSpend += monthSpend;
       cumulativeRevenue += totalRevenue;
 
       results.push({
         month: monthStr,
-        spend: params.monthlyBudget,
+        spend: monthSpend,
+        cpi: monthCpi,
         installs: Math.round(installs),
         trials: Math.round(trials),
         newWeekly: Math.round(newWeekly),
@@ -120,11 +133,36 @@ export function Prediction() {
         cumulativeSpend,
         cumulativeRevenue,
         roas: cumulativeSpend > 0 ? cumulativeRevenue / cumulativeSpend : 0,
+        isOverridden,
       });
     }
 
     return results;
-  }, [params, activeData]);
+  }, [params, activeData, monthOverrides, monthKeys]);
+
+  const handleMonthOverride = useCallback((month: string, field: 'spend' | 'cpi', value: number) => {
+    setMonthOverrides(prev => ({
+      ...prev,
+      [month]: {
+        ...prev[month],
+        [field]: value,
+      },
+    }));
+  }, []);
+
+  const resetMonthOverride = useCallback((month: string) => {
+    setMonthOverrides(prev => {
+      const next = { ...prev };
+      delete next[month];
+      return next;
+    });
+  }, []);
+
+  const resetAllOverrides = useCallback(() => {
+    setMonthOverrides({});
+  }, []);
+
+  const hasOverrides = Object.keys(monthOverrides).length > 0;
 
   const chartData = forecast.map(f => ({
     month: f.month.slice(5),
@@ -140,15 +178,16 @@ export function Prediction() {
   const totalSpend = forecast.reduce((s, f) => s + f.spend, 0);
 
   const handleExport = () => {
-    const headers = ['Month', 'Spend', 'Revenue', 'ROAS', 'Active Weekly', 'Active Yearly', 'New Subs'];
+    const headers = ['Month', 'Spend', 'CPI', 'Installs', 'Revenue', 'ROAS', 'Active Weekly', 'Active Yearly'];
     const rows = forecast.map(f => [
       f.month,
       f.spend.toFixed(0),
+      f.cpi.toFixed(2),
+      f.installs,
       f.totalRevenue.toFixed(0),
       f.roas.toFixed(2),
       f.activeWeekly,
       f.activeYearly,
-      f.newWeekly + f.newYearly,
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -188,7 +227,7 @@ export function Prediction() {
         <SummaryCard
           title="Total Spend"
           value={`$${(totalSpend / 1000).toFixed(0)}K`}
-          subtitle={`$${(params.monthlyBudget / 1000).toFixed(0)}K/mo`}
+          subtitle={hasOverrides ? 'custom budget' : `$${(params.monthlyBudget / 1000).toFixed(0)}K/mo`}
           icon={<TrendingUp size={20} />}
           color="#3b82f6"
         />
@@ -211,7 +250,10 @@ export function Prediction() {
       <div style={styles.mainGrid}>
         {/* Parameters Panel */}
         <div style={styles.paramsCard}>
-          <h3 style={styles.cardTitle}>Model Parameters</h3>
+          <h3 style={styles.cardTitle}>Default Parameters</h3>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 16 }}>
+            These values apply to all months unless overridden in the table below.
+          </p>
 
           <div style={styles.paramSection}>
             <div style={styles.paramLabel}>Marketing</div>
@@ -243,14 +285,13 @@ export function Prediction() {
             <ParamInput label="Months" value={params.forecastMonths} onChange={v => setParams(p => ({ ...p, forecastMonths: v }))} step={1} min={1} max={36} />
           </div>
 
-          <button onClick={() => setParams(defaultParams)} style={styles.resetBtn}>
-            Reset to Defaults
+          <button onClick={() => { setParams(defaultParams); resetAllOverrides(); }} style={styles.resetBtn}>
+            Reset All to Defaults
           </button>
         </div>
 
         {/* Charts */}
         <div style={styles.chartsColumn}>
-          {/* Revenue Chart */}
           <div style={styles.chartCard}>
             <h3 style={styles.cardTitle}>Revenue vs Spend Forecast</h3>
             <div style={{ height: 280 }}>
@@ -275,7 +316,6 @@ export function Prediction() {
             </div>
           </div>
 
-          {/* Subscribers Chart */}
           <div style={styles.chartCard}>
             <h3 style={styles.cardTitle}>Active Subscribers Growth</h3>
             <div style={{ height: 240 }}>
@@ -301,15 +341,29 @@ export function Prediction() {
         </div>
       </div>
 
-      {/* Forecast Table */}
+      {/* Editable Forecast Table */}
       <div style={styles.tableCard}>
-        <h3 style={styles.cardTitle}>Monthly Forecast Details</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ ...styles.cardTitle, marginBottom: 4 }}>Monthly Forecast Details</h3>
+            <p style={{ fontSize: 12, color: '#6b7280' }}>
+              Click on Spend or CPI cells to edit values for individual months.
+              {hasOverrides && <span style={{ color: '#f59e0b', marginLeft: 8 }}>● {Object.keys(monthOverrides).length} month(s) customized</span>}
+            </p>
+          </div>
+          {hasOverrides && (
+            <button onClick={resetAllOverrides} style={styles.resetTableBtn}>
+              <RotateCcw size={14} /> Reset Table
+            </button>
+          )}
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
             <thead>
               <tr>
                 <th style={styles.th}>Month</th>
-                <th style={styles.thRight}>Spend</th>
+                <th style={{ ...styles.thRight, background: '#fef3c7' }}>Spend</th>
+                <th style={{ ...styles.thRight, background: '#fef3c7' }}>CPI</th>
                 <th style={styles.thRight}>Installs</th>
                 <th style={styles.thRight}>New Subs</th>
                 <th style={styles.thRight}>Active W</th>
@@ -317,13 +371,30 @@ export function Prediction() {
                 <th style={styles.thRight}>Revenue</th>
                 <th style={styles.thRight}>Cum. Revenue</th>
                 <th style={styles.thRight}>ROAS</th>
+                <th style={{ ...styles.th, width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
               {forecast.map(f => (
-                <tr key={f.month} style={styles.tr}>
+                <tr key={f.month} style={{ ...styles.tr, background: f.isOverridden ? '#fffbeb' : undefined }}>
                   <td style={styles.td}>{f.month}</td>
-                  <td style={styles.tdRight}>${f.spend.toLocaleString()}</td>
+                  <td style={{ ...styles.tdRight, padding: 4 }}>
+                    <EditableCell
+                      value={f.spend}
+                      onChange={v => handleMonthOverride(f.month, 'spend', v)}
+                      format={v => `$${v.toLocaleString()}`}
+                      isOverridden={monthOverrides[f.month]?.spend !== undefined}
+                    />
+                  </td>
+                  <td style={{ ...styles.tdRight, padding: 4 }}>
+                    <EditableCell
+                      value={f.cpi}
+                      onChange={v => handleMonthOverride(f.month, 'cpi', v)}
+                      format={v => `$${v.toFixed(2)}`}
+                      step={0.1}
+                      isOverridden={monthOverrides[f.month]?.cpi !== undefined}
+                    />
+                  </td>
                   <td style={styles.tdRight}>{f.installs.toLocaleString()}</td>
                   <td style={styles.tdRight}>{(f.newWeekly + f.newYearly).toLocaleString()}</td>
                   <td style={styles.tdRight}>{f.activeWeekly.toLocaleString()}</td>
@@ -333,6 +404,17 @@ export function Prediction() {
                   <td style={{ ...styles.tdRight, color: f.roas >= 1 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
                     {f.roas.toFixed(2)}x
                   </td>
+                  <td style={{ padding: 4, textAlign: 'center' }}>
+                    {f.isOverridden && (
+                      <button
+                        onClick={() => resetMonthOverride(f.month)}
+                        style={styles.resetRowBtn}
+                        title="Reset to default"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -340,6 +422,66 @@ export function Prediction() {
         </div>
       </div>
     </div>
+  );
+}
+
+function EditableCell({ value, onChange, format, step = 1, isOverridden }: {
+  value: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+  step?: number;
+  isOverridden: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [tempValue, setTempValue] = useState(value.toString());
+
+  const handleBlur = () => {
+    setEditing(false);
+    const parsed = parseFloat(tempValue);
+    if (!isNaN(parsed) && parsed !== value) {
+      onChange(parsed);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleBlur();
+    } else if (e.key === 'Escape') {
+      setEditing(false);
+      setTempValue(value.toString());
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        value={tempValue}
+        onChange={e => setTempValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        step={step}
+        autoFocus
+        style={styles.editInput}
+      />
+    );
+  }
+
+  return (
+    <button
+      onClick={() => {
+        setTempValue(value.toString());
+        setEditing(true);
+      }}
+      style={{
+        ...styles.editableCell,
+        background: isOverridden ? '#fef3c7' : '#f9fafb',
+        borderColor: isOverridden ? '#f59e0b' : '#e5e7eb',
+        fontWeight: isOverridden ? 600 : 400,
+      }}
+    >
+      {format(value)}
+    </button>
   );
 }
 
@@ -508,6 +650,27 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     marginTop: 8,
   },
+  resetTableBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 12px',
+    background: '#fef3c7',
+    color: '#92400e',
+    border: '1px solid #f59e0b',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  resetRowBtn: {
+    padding: 4,
+    background: 'transparent',
+    color: '#9ca3af',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+  },
   tableCard: {
     background: '#fff',
     borderRadius: 12,
@@ -547,5 +710,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     textAlign: 'right',
     fontFamily: "'JetBrains Mono', monospace",
+  },
+  editableCell: {
+    width: '100%',
+    padding: '6px 8px',
+    border: '1px solid',
+    borderRadius: 4,
+    fontSize: 13,
+    textAlign: 'right' as const,
+    cursor: 'pointer',
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  editInput: {
+    width: '100%',
+    padding: '6px 8px',
+    border: '2px solid #3b82f6',
+    borderRadius: 4,
+    fontSize: 13,
+    textAlign: 'right' as const,
+    fontFamily: "'JetBrains Mono', monospace",
+    outline: 'none',
   },
 };
