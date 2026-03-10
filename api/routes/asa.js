@@ -190,7 +190,7 @@ router.get('/campaigns', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
-          NULL as impression_share -- TODO: Enable after running migration,
+          NULL as impression_share, -- TODO: Enable after running migration
           CASE WHEN SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) > 0
                THEN SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) /
                     SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END)
