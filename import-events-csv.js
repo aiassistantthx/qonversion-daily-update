@@ -110,7 +110,7 @@ async function main() {
 
     // Map CSV columns to DB columns
     // 0: Event Date, 1: Transaction ID, 3: Event Name, 5: Platform, 7: Product ID
-    // 12: Price USD, 14: Refund, 15: Q User ID, 17: Device, 20: Country
+    // 12: Price USD, 14: Refund, 15: Q User ID, 20: Country
     // 22: Install Date, 23: Media source, 24: Campaign, 27: App version
 
     const eventDate = fields[0];
@@ -121,7 +121,6 @@ async function main() {
     const priceUsd = parseFloat(fields[12]) || 0;
     const refund = fields[14]?.toLowerCase() === 'true' || fields[14] === '1';
     const qUserId = fields[15];
-    const device = fields[17] || null;
     const country = fields[20];
     const installDate = fields[22] || null;
     const mediaSource = fields[23] || null;
@@ -146,7 +145,6 @@ async function main() {
       install_date: installDate,
       media_source: mediaSource,
       campaign_name: campaignName,
-      device: device,
       app_version: appVersion
     });
 
