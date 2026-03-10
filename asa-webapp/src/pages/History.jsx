@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
 import { Select } from '../components/Input';
 import { StatusBadge, Badge } from '../components/Badge';
-import { getHistory } from '../lib/api';
-import { RefreshCw } from 'lucide-react';
+import { getHistory, syncChanges } from '../lib/api';
+import { RefreshCw, Download } from 'lucide-react';
 
 export default function History() {
   const [filters, setFilters] = useState({
@@ -21,6 +21,22 @@ export default function History() {
     queryFn: () => getHistory(filters),
   });
 
+  const syncChangesMutation = useMutation({
+    mutationFn: syncChanges,
+    onSuccess: (result) => {
+      const total = result.changes.campaigns + result.changes.adgroups + result.changes.keywords;
+      if (total > 0) {
+        alert(`Synced ${total} changes from Apple Ads:\n- Campaigns: ${result.changes.campaigns}\n- Ad Groups: ${result.changes.adgroups}\n- Keywords: ${result.changes.keywords}`);
+        refetch();
+      } else {
+        alert('No new changes detected in Apple Ads');
+      }
+    },
+    onError: (error) => {
+      alert(`Failed to sync changes: ${error.message}`);
+    }
+  });
+
   const history = data?.data || [];
 
   return (
@@ -31,9 +47,18 @@ export default function History() {
           <p className="text-gray-500">Audit log of all changes</p>
         </div>
 
-        <Button variant="secondary" onClick={() => refetch()} loading={isFetching}>
-          <RefreshCw size={16} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            onClick={() => syncChangesMutation.mutate()}
+            loading={syncChangesMutation.isPending}
+          >
+            <Download size={16} /> Sync from Apple Ads
+          </Button>
+          <Button variant="secondary" onClick={() => refetch()} loading={isFetching}>
+            <RefreshCw size={16} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -76,6 +101,7 @@ export default function History() {
               { value: 'web', label: 'Web' },
               { value: 'rule', label: 'Rule' },
               { value: 'api', label: 'API' },
+              { value: 'sync', label: 'Apple Ads' },
             ]}
             className="w-32"
           />

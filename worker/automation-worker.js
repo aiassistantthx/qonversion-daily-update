@@ -139,6 +139,40 @@ async function syncAppleAdsData() {
 }
 
 /**
+ * Sync changes from Apple Ads (detect external changes)
+ */
+async function syncAppleAdsChanges() {
+  log('info', 'Starting Apple Ads change detection...');
+
+  try {
+    const startTime = Date.now();
+
+    const changes = await appleAds.syncChanges();
+
+    const duration = Date.now() - startTime;
+
+    const summary = {
+      campaigns: changes.campaigns,
+      adgroups: changes.adgroups,
+      keywords: changes.keywords,
+      total: changes.campaigns + changes.adgroups + changes.keywords,
+      durationMs: duration
+    };
+
+    log('info', 'Change detection completed', summary);
+
+    await recordJobRun('change_sync', 'hourly', summary);
+
+    return changes;
+
+  } catch (error) {
+    log('error', `Change detection failed: ${error.message}`);
+    await recordJobRun('change_sync', 'hourly', null, error.message);
+    throw error;
+  }
+}
+
+/**
  * Record job run to database
  */
 async function recordJobRun(jobType, frequency, result, error = null) {

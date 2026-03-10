@@ -794,6 +794,224 @@ class AppleAdsService {
 
     return results;
   }
+
+  // ================================================
+  // CHANGE DETECTION / AUDIT LOG
+  // ================================================
+
+  /**
+   * Detect and record changes made directly in Apple Ads
+   * Compares current state from API with stored state in database
+   */
+  async syncChanges() {
+    if (!this.isConfigured()) {
+      console.log('Apple Ads API not configured, skipping change sync');
+      return { campaigns: 0, adgroups: 0, keywords: 0 };
+    }
+
+    const changes = {
+      campaigns: 0,
+      adgroups: 0,
+      keywords: 0
+    };
+
+    try {
+      // Get all campaigns from API
+      const campaigns = await this.getCampaigns();
+
+      for (const campaign of campaigns) {
+        // Check campaign changes
+        const campaignChanges = await this.detectCampaignChanges(campaign);
+        changes.campaigns += campaignChanges;
+
+        // Get and check ad groups
+        const adgroups = await this.getAdGroups(campaign.id);
+        for (const adgroup of adgroups) {
+          const adgroupChanges = await this.detectAdGroupChanges(campaign.id, adgroup);
+          changes.adgroups += adgroupChanges;
+
+          // Get and check keywords
+          const keywords = await this.getKeywords(campaign.id, adgroup.id);
+          for (const keyword of keywords) {
+            const keywordChanges = await this.detectKeywordChanges(campaign.id, adgroup.id, keyword);
+            changes.keywords += keywordChanges;
+          }
+        }
+      }
+
+      console.log('Change sync completed:', changes);
+      return changes;
+
+    } catch (error) {
+      console.error('Failed to sync changes:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Detect changes for a single campaign
+   */
+  async detectCampaignChanges(campaign) {
+    let changeCount = 0;
+
+    try {
+      // Get stored campaign data (most recent)
+      const storedResult = await db.query(`
+        SELECT campaign_status, daily_budget
+        FROM apple_ads_campaigns
+        WHERE campaign_id = $1
+        ORDER BY date DESC
+        LIMIT 1
+      `, [campaign.id]);
+
+      if (storedResult.rows.length === 0) {
+        return 0; // No stored data, skip
+      }
+
+      const stored = storedResult.rows[0];
+      const currentStatus = campaign.status;
+      const currentBudget = parseFloat(campaign.budgetAmount?.amount || 0);
+
+      // Check status change
+      if (stored.campaign_status !== currentStatus) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('campaign', $1, $1, 'status_update', 'status', $2, $3, 'sync')
+        `, [campaign.id, stored.campaign_status, currentStatus]);
+        changeCount++;
+        console.log(`Campaign ${campaign.id} status changed: ${stored.campaign_status} → ${currentStatus}`);
+      }
+
+      // Check budget change
+      if (stored.daily_budget && Math.abs(stored.daily_budget - currentBudget) > 0.01) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('campaign', $1, $1, 'budget_update', 'dailyBudget', $2, $3, 'sync')
+        `, [campaign.id, stored.daily_budget.toFixed(2), currentBudget.toFixed(2)]);
+        changeCount++;
+        console.log(`Campaign ${campaign.id} budget changed: ${stored.daily_budget} → ${currentBudget}`);
+      }
+
+    } catch (error) {
+      console.error(`Failed to detect changes for campaign ${campaign.id}:`, error.message);
+    }
+
+    return changeCount;
+  }
+
+  /**
+   * Detect changes for a single ad group
+   */
+  async detectAdGroupChanges(campaignId, adgroup) {
+    let changeCount = 0;
+
+    try {
+      // Get stored ad group data
+      const storedResult = await db.query(`
+        SELECT adgroup_status, default_bid
+        FROM apple_ads_adgroups
+        WHERE campaign_id = $1 AND adgroup_id = $2
+        ORDER BY date DESC
+        LIMIT 1
+      `, [campaignId, adgroup.id]);
+
+      if (storedResult.rows.length === 0) {
+        return 0;
+      }
+
+      const stored = storedResult.rows[0];
+      const currentStatus = adgroup.status;
+      const currentBid = parseFloat(adgroup.defaultBidAmount?.amount || 0);
+
+      // Check status change
+      if (stored.adgroup_status !== currentStatus) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('adgroup', $1, $2, $1, 'status_update', 'status', $3, $4, 'sync')
+        `, [adgroup.id, campaignId, stored.adgroup_status, currentStatus]);
+        changeCount++;
+        console.log(`Ad Group ${adgroup.id} status changed: ${stored.adgroup_status} → ${currentStatus}`);
+      }
+
+      // Check bid change
+      if (stored.default_bid && Math.abs(stored.default_bid - currentBid) > 0.01) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('adgroup', $1, $2, $1, 'bid_update', 'defaultBid', $3, $4, 'sync')
+        `, [adgroup.id, campaignId, stored.default_bid.toFixed(2), currentBid.toFixed(2)]);
+        changeCount++;
+        console.log(`Ad Group ${adgroup.id} bid changed: ${stored.default_bid} → ${currentBid}`);
+      }
+
+    } catch (error) {
+      console.error(`Failed to detect changes for ad group ${adgroup.id}:`, error.message);
+    }
+
+    return changeCount;
+  }
+
+  /**
+   * Detect changes for a single keyword
+   */
+  async detectKeywordChanges(campaignId, adgroupId, keyword) {
+    let changeCount = 0;
+
+    try {
+      // Get stored keyword data
+      const storedResult = await db.query(`
+        SELECT keyword_status, bid_amount
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1 AND adgroup_id = $2 AND keyword_id = $3
+        ORDER BY date DESC
+        LIMIT 1
+      `, [campaignId, adgroupId, keyword.id]);
+
+      if (storedResult.rows.length === 0) {
+        return 0;
+      }
+
+      const stored = storedResult.rows[0];
+      const currentStatus = keyword.status;
+      const currentBid = parseFloat(keyword.bidAmount?.amount || 0);
+
+      // Check status change
+      if (stored.keyword_status !== currentStatus) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('keyword', $1, $2, $3, $1, 'status_update', 'status', $4, $5, 'sync')
+        `, [keyword.id, campaignId, adgroupId, stored.keyword_status, currentStatus]);
+        changeCount++;
+        console.log(`Keyword ${keyword.id} status changed: ${stored.keyword_status} → ${currentStatus}`);
+      }
+
+      // Check bid change
+      if (stored.bid_amount && Math.abs(stored.bid_amount - currentBid) > 0.01) {
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('keyword', $1, $2, $3, $1, 'bid_update', 'bidAmount', $4, $5, 'sync')
+        `, [keyword.id, campaignId, adgroupId, stored.bid_amount.toFixed(2), currentBid.toFixed(2)]);
+        changeCount++;
+        console.log(`Keyword ${keyword.id} bid changed: ${stored.bid_amount} → ${currentBid}`);
+      }
+
+    } catch (error) {
+      console.error(`Failed to detect changes for keyword ${keyword.id}:`, error.message);
+    }
+
+    return changeCount;
+  }
 }
 
 // Export singleton instance

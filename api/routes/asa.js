@@ -2202,6 +2202,36 @@ router.post('/sync/incremental', async (req, res) => {
   }
 });
 
+/**
+ * POST /asa/sync/changes
+ * Sync changes made directly in Apple Ads (detects bid/status changes)
+ */
+router.post('/sync/changes', async (req, res) => {
+  try {
+    // Record sync start
+    await recordChange('sync', 'changes', 'started', null, null, 'Starting change detection sync', 'sync', null, req);
+
+    const changes = await appleAds.syncChanges();
+
+    // Record sync completion
+    await recordChange('sync', 'changes', 'completed', null, null, JSON.stringify({
+      campaigns: changes.campaigns,
+      adgroups: changes.adgroups,
+      keywords: changes.keywords,
+      total: changes.campaigns + changes.adgroups + changes.keywords
+    }), 'sync', null, req);
+
+    res.json({
+      success: true,
+      changes
+    });
+  } catch (error) {
+    // Record sync error
+    await recordChange('sync', 'changes', 'error', null, null, error.message, 'sync', null, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================
 // COUNTRIES
 // ================================================

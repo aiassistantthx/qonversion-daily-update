@@ -72,6 +72,7 @@ export const getEntityHistory = (type, id) => api.get(`/history/entity/${type}/$
 export const getSyncStatus = () => api.get('/sync/status').then(res => res.data);
 export const triggerSync = (days = 7) => api.post(`/sync?days=${days}`).then(res => res.data);
 export const triggerIncrementalSync = () => api.post('/sync/incremental').then(res => res.data);
+export const syncChanges = () => api.post('/sync/changes').then(res => res.data);
 
 // Trends
 export const getTrends = (params = {}) => api.get('/trends', { params }).then(res => res.data);
