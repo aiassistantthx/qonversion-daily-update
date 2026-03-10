@@ -9,29 +9,15 @@ import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
-  const { data: copData, isLoading: copLoading } = useQuery({
-    queryKey: ['cop'],
-    queryFn: () => api.getCop(30),
-    refetchInterval: 60000,
-  });
-
-  const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
-    queryKey: ['cop-by-campaign'],
-    queryFn: () => api.getCopByCampaign(30),
-    refetchInterval: 60000,
-  });
-
-  const { data: revenueSource, isLoading: revenueLoading } = useQuery({
-    queryKey: ['revenue-by-source'],
-    queryFn: () => api.getRevenueBySource(30),
-    refetchInterval: 60000,
-  });
-
-  const { data: dailyData, isLoading: dailyLoading } = useQuery({
-    queryKey: ['daily'],
-    queryFn: api.getDaily,
-    refetchInterval: 60000,
-  });
+  // These endpoints don't exist yet - use empty defaults
+  const copData = null;
+  const copLoading = false;
+  const campaignsData = { campaigns: [] };
+  const campaignsLoading = false;
+  const revenueSource = { summary: { paid: 0, organic: 0, total: 0, paidPercent: 0, organicPercent: 0 }, daily: [] };
+  const revenueLoading = false;
+  const dailyData = { metrics: [] };
+  const dailyLoading = false;
 
   const { data: topCountriesRoas } = useQuery({
     queryKey: ['top-countries-roas'],
@@ -51,7 +37,7 @@ export function MarketingDashboard() {
     refetchInterval: 60000,
   });
 
-  const isLoading = copLoading || campaignsLoading || revenueLoading || dailyLoading || marketingLoading;
+  const isLoading = marketingLoading;
 
   if (isLoading) {
     return (

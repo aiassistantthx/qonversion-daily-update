@@ -68,23 +68,23 @@ function getFlag(countryName: string): string {
 export function TopCountriesRoasWidget({ countries }: TopCountriesRoasWidgetProps) {
   if (!countries || countries.length === 0) {
     return (
-      <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
-          <Trophy size={18} className="text-terminal-accent" />
-          <div className="text-sm text-terminal-muted">Top Countries by ROAS</div>
+          <Trophy size={18} className="text-yellow-500" />
+          <div className="text-sm font-medium text-gray-900">Top Countries by ROAS</div>
         </div>
-        <div className="text-xs text-terminal-dim text-center py-4">No data available</div>
+        <div className="text-xs text-gray-400 text-center py-4">No data available</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
-        <Trophy size={18} className="text-terminal-accent" />
-        <div className="text-sm text-terminal-muted">Top Countries by ROAS</div>
+        <Trophy size={18} className="text-yellow-500" />
+        <div className="text-sm font-medium text-gray-900">Top Countries by ROAS</div>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1">
         {countries.map((country, index) => {
           const roasPercent = country.roas != null ? country.roas * 100 : 0;
           const isGood = roasPercent >= 100;
@@ -92,31 +92,31 @@ export function TopCountriesRoasWidget({ countries }: TopCountriesRoasWidgetProp
           return (
             <div
               key={country.country}
-              className="flex items-center justify-between p-2 rounded hover:bg-terminal-hover transition-colors"
+              className="flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 transition-colors"
             >
-              <div className="flex items-center gap-2 flex-1">
-                <div className="text-terminal-dim text-xs w-4">{index + 1}</div>
+              <div className="flex items-center gap-3 flex-1">
+                <div className="text-gray-400 text-xs w-4 font-mono">{index + 1}</div>
                 <div className="text-base">{getFlag(country.country)}</div>
-                <div className="text-xs text-terminal-text">{country.country}</div>
+                <div className="text-sm text-gray-900 font-medium">{country.country}</div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div className="text-right">
-                  <div className="text-xs text-terminal-dim">Revenue</div>
-                  <div className="text-xs font-mono text-terminal-text">
+                  <div className="text-xs text-gray-400">Revenue</div>
+                  <div className="text-sm font-mono text-gray-900">
                     ${country.revenue.toLocaleString()}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-terminal-dim">Spend</div>
-                  <div className="text-xs font-mono text-terminal-text">
+                  <div className="text-xs text-gray-400">Spend</div>
+                  <div className="text-sm font-mono text-gray-900">
                     ${country.spend.toLocaleString()}
                   </div>
                 </div>
                 <div className="text-right min-w-[60px]">
-                  <div className="text-xs text-terminal-dim">ROAS</div>
+                  <div className="text-xs text-gray-400">ROAS</div>
                   <div
                     className={`text-sm font-mono font-semibold ${
-                      isGood ? 'text-terminal-success' : 'text-terminal-warning'
+                      isGood ? 'text-green-600' : 'text-amber-600'
                     }`}
                   >
                     {roasPercent.toFixed(0)}%

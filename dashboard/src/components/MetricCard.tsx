@@ -70,14 +70,14 @@ export function MetricCard({
   };
 
   const getTrendIcon = () => {
-    if (change === undefined || change === 0) return <Minus className="w-4 h-4 text-terminal-muted" />;
-    if (change > 0) return <TrendingUp className="w-4 h-4 text-terminal-green" />;
-    return <TrendingDown className="w-4 h-4 text-terminal-red" />;
+    if (change === undefined || change === 0) return <Minus className="w-4 h-4 text-gray-400" />;
+    if (change > 0) return <TrendingUp className="w-4 h-4 text-green-600" />;
+    return <TrendingDown className="w-4 h-4 text-red-600" />;
   };
 
   const getTrendColor = () => {
-    if (change === undefined || change === 0) return 'text-terminal-muted';
-    return change > 0 ? 'text-terminal-green' : 'text-terminal-red';
+    if (change === undefined || change === 0) return 'text-gray-400';
+    return change > 0 ? 'text-green-600' : 'text-red-600';
   };
 
   const maxSparkline = sparkline ? Math.max(...sparkline) : 0;
@@ -85,9 +85,9 @@ export function MetricCard({
   const AnomalyBadge = () => {
     if (!anomaly) return null;
     const Icon = anomaly.type === 'critical' ? AlertCircle : AlertTriangle;
-    const bgColor = anomaly.type === 'critical' ? 'bg-red-500/20' : 'bg-yellow-500/20';
-    const textColor = anomaly.type === 'critical' ? 'text-red-400' : 'text-yellow-400';
-    const borderColor = anomaly.type === 'critical' ? 'border-red-500/30' : 'border-yellow-500/30';
+    const bgColor = anomaly.type === 'critical' ? 'bg-red-100' : 'bg-yellow-100';
+    const textColor = anomaly.type === 'critical' ? 'text-red-700' : 'text-yellow-700';
+    const borderColor = anomaly.type === 'critical' ? 'border-red-200' : 'border-yellow-200';
 
     return (
       <div
@@ -101,14 +101,14 @@ export function MetricCard({
   };
 
   return (
-    <div className={`relative bg-terminal-card border rounded-lg p-4 card-hover ${
-      anomaly?.type === 'critical' ? 'border-red-500/50' :
-      anomaly?.type === 'warning' ? 'border-yellow-500/50' :
-      'border-terminal-border'
+    <div className={`relative bg-white border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow ${
+      anomaly?.type === 'critical' ? 'border-red-300' :
+      anomaly?.type === 'warning' ? 'border-yellow-300' :
+      'border-gray-200'
     }`}>
       <AnomalyBadge />
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-terminal-muted">{title}</span>
+        <span className="text-sm text-gray-500">{title}</span>
         {change !== undefined && (
           <div className={`flex items-center gap-1 ${getTrendColor()}`}>
             {getTrendIcon()}
@@ -119,16 +119,16 @@ export function MetricCard({
         )}
       </div>
 
-      <div className="text-2xl font-semibold font-mono text-terminal-text mb-2">
+      <div className="text-2xl font-semibold font-mono text-gray-900 mb-2">
         {formatValue(value)}
       </div>
 
       {sparkline && sparkline.length > 0 && (
-        <div className="sparkline mt-2">
+        <div className="flex items-end gap-0.5 h-8 mt-2">
           {sparkline.map((val, i) => (
             <div
               key={i}
-              className="sparkline-bar"
+              className="flex-1 bg-blue-200 rounded-sm min-h-[2px]"
               style={{ height: `${(val / maxSparkline) * 100}%` }}
             />
           ))}
@@ -136,7 +136,7 @@ export function MetricCard({
       )}
 
       {changeLabel && (
-        <div className="text-xs text-terminal-muted mt-2">
+        <div className="text-xs text-gray-500 mt-2">
           {changeLabel}
         </div>
       )}

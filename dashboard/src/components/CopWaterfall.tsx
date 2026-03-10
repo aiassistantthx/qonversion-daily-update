@@ -24,8 +24,8 @@ export function CopWaterfall({ data, targetCop = 50 }: CopWaterfallProps) {
   );
 
   return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-      <div className="text-sm text-terminal-muted mb-4">COP by Window</div>
+    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+      <div className="text-sm font-medium text-gray-900 mb-4">COP by Window</div>
 
       <div className="space-y-3">
         {windows.map(({ key, label, value }) => {
@@ -34,23 +34,23 @@ export function CopWaterfall({ data, targetCop = 50 }: CopWaterfallProps) {
 
           return (
             <div key={key} className="flex items-center gap-3">
-              <div className="w-8 text-sm font-mono text-terminal-muted">{label}</div>
-              <div className="flex-1 h-6 bg-terminal-border rounded relative">
+              <div className="w-8 text-sm font-mono text-gray-500">{label}</div>
+              <div className="flex-1 h-6 bg-gray-100 rounded relative">
                 {/* Target line */}
                 <div
-                  className="absolute top-0 bottom-0 w-px bg-terminal-yellow opacity-50"
+                  className="absolute top-0 bottom-0 w-px bg-amber-400"
                   style={{ left: `${(targetCop / maxValue) * 100}%` }}
                 />
                 {/* Bar */}
                 <div
                   className={`h-full rounded transition-all ${
-                    isAboveTarget ? 'bg-terminal-red' : 'bg-terminal-cyan'
+                    isAboveTarget ? 'bg-red-500' : 'bg-blue-500'
                   }`}
                   style={{ width: `${width}%` }}
                 />
               </div>
-              <div className={`w-16 text-right font-mono text-sm ${
-                isAboveTarget ? 'text-terminal-red' : 'text-terminal-text'
+              <div className={`w-16 text-right font-mono text-sm font-medium ${
+                isAboveTarget ? 'text-red-600' : 'text-gray-900'
               }`}>
                 {value !== null ? `$${value.toFixed(0)}` : '—'}
               </div>
@@ -59,8 +59,8 @@ export function CopWaterfall({ data, targetCop = 50 }: CopWaterfallProps) {
         })}
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-xs text-terminal-muted">
-        <div className="w-3 h-px bg-terminal-yellow" />
+      <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+        <div className="w-3 h-0.5 bg-amber-400" />
         <span>Target: ${targetCop}</span>
       </div>
     </div>

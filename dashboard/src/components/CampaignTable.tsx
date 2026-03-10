@@ -37,12 +37,12 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
   };
 
   return (
-    <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-terminal-border flex justify-between items-center">
-        <div className="text-sm text-terminal-muted">COP by Campaign</div>
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+      <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+        <div className="text-sm font-medium text-gray-900">COP by Campaign</div>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1 px-2 py-1 text-xs text-terminal-muted hover:text-terminal-text"
+          className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
           title="Export to CSV"
         >
           <Download size={14} />
@@ -53,28 +53,28 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="text-xs text-terminal-muted border-b border-terminal-border">
+            <tr className="text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
               <th
-                className="text-left px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                className="text-left px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
                 onClick={() => handleSort('campaignName' as keyof CampaignCop)}
               >
                 Campaign <SortIcon column="campaignName" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
               <th
-                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                className="text-right px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
                 onClick={() => handleSort('cop' as keyof CampaignCop)}
               >
                 COP <SortIcon column="cop" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
               <th
-                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                className="text-right px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
                 onClick={() => handleSort('spend' as keyof CampaignCop)}
               >
                 Spend <SortIcon column="spend" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
-              <th className="text-right px-4 py-2 font-medium">Share</th>
+              <th className="text-right px-4 py-3 font-medium">Share</th>
               <th
-                className="text-right px-4 py-2 font-medium cursor-pointer hover:text-terminal-text"
+                className="text-right px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
                 onClick={() => handleSort('roas' as keyof CampaignCop)}
               >
                 ROAS <SortIcon column="roas" currentColumn={sortKey as string} ascending={sortAsc} />
@@ -90,42 +90,42 @@ export function CampaignTable({ campaigns }: CampaignTableProps) {
               return (
                 <tr
                   key={campaign.campaignId}
-                  className="border-b border-terminal-border/50 hover:bg-terminal-border/30"
+                  className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <div className="text-sm text-terminal-text truncate max-w-[200px]">
+                    <div className="text-sm font-medium text-gray-900 truncate max-w-[200px]">
                       {campaign.campaignName || `Campaign ${campaign.campaignId}`}
                     </div>
-                    <div className="text-xs text-terminal-muted">
+                    <div className="text-xs text-gray-500">
                       {campaign.payers} payers / {campaign.installs} installs
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className={`font-mono text-sm flex items-center justify-end gap-1 ${
-                      isGoodCop ? 'text-terminal-green' : 'text-terminal-red'
+                    <div className={`font-mono text-sm font-medium flex items-center justify-end gap-1 ${
+                      isGoodCop ? 'text-green-600' : 'text-red-600'
                     }`}>
                       {isGoodCop ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
                       {campaign.cop !== null ? formatCurrency(campaign.cop) : '—'}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-terminal-text">
+                  <td className="px-4 py-3 text-right font-mono text-sm text-gray-900">
                     {formatCurrency(campaign.spend)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <div className="w-16 h-2 bg-terminal-border rounded overflow-hidden">
+                      <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-terminal-cyan"
+                          className="h-full bg-blue-500"
                           style={{ width: `${sharePercent}%` }}
                         />
                       </div>
-                      <span className="font-mono text-xs text-terminal-muted w-10">
+                      <span className="font-mono text-xs text-gray-500 w-10">
                         {sharePercent.toFixed(0)}%
                       </span>
                     </div>
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono text-sm ${
-                    isGoodRoas ? 'text-terminal-green' : 'text-terminal-red'
+                  <td className={`px-4 py-3 text-right font-mono text-sm font-medium ${
+                    isGoodRoas ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {campaign.roas !== null ? `${campaign.roas.toFixed(2)}x` : '—'}
                   </td>
