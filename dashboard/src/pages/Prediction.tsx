@@ -184,7 +184,7 @@ export function Prediction() {
   const totalSpend = forecast.reduce((s, f) => s + f.spend, 0);
 
   const handleExport = () => {
-    const headers = ['Month', 'Spend', 'CPI', 'Installs', 'Revenue', 'ROAS', 'Active Weekly', 'Active Yearly'];
+    const headers = ['Month', 'Spend', 'CPI', 'Installs', 'Sales', 'ROAS', 'Active Weekly', 'Active Yearly'];
     const rows = forecast.map(f => [
       f.month,
       f.spend.toFixed(0),
@@ -224,9 +224,9 @@ export function Prediction() {
       {/* Summary Cards */}
       <div style={styles.summaryGrid}>
         <SummaryCard
-          title="Total Revenue"
+          title="Total Sales"
           value={`$${(totalRevenue / 1000).toFixed(0)}K`}
-          subtitle={`${params.forecastMonths} months`}
+          subtitle={`${params.forecastMonths} months (gross)`}
           icon={<DollarSign size={20} />}
           color="#10b981"
         />
@@ -304,7 +304,7 @@ export function Prediction() {
         {/* Charts */}
         <div style={styles.chartsColumn}>
           <div style={styles.chartCard}>
-            <h3 style={styles.cardTitle}>Revenue vs Spend Forecast</h3>
+            <h3 style={styles.cardTitle}>Sales vs Spend Forecast</h3>
             <div style={{ height: 280 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
@@ -316,7 +316,7 @@ export function Prediction() {
                     contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
                     formatter={(v, name) => {
                       if (name === 'roas') return [`${Number(v).toFixed(2)}x`, 'ROAS'];
-                      return [`$${Number(v).toFixed(1)}k`, name === 'revenue' ? 'Revenue' : 'Spend'];
+                      return [`$${Number(v).toFixed(1)}k`, name === 'revenue' ? 'Sales' : 'Spend'];
                     }}
                   />
                   <Area yAxisId="money" type="monotone" dataKey="revenue" fill="#10b98130" stroke="#10b981" strokeWidth={2} name="revenue" />
@@ -379,8 +379,8 @@ export function Prediction() {
                 <th style={styles.thRight}>New Subs</th>
                 <th style={styles.thRight}>Active W</th>
                 <th style={styles.thRight}>Active Y</th>
-                <th style={styles.thRight}>Revenue</th>
-                <th style={styles.thRight}>Cum. Revenue</th>
+                <th style={styles.thRight}>Sales</th>
+                <th style={styles.thRight}>Cum. Sales</th>
                 <th style={styles.thRight}>ROAS</th>
                 <th style={{ ...styles.th, width: 40 }}></th>
               </tr>
