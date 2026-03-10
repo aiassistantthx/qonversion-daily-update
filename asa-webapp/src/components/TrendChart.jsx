@@ -15,12 +15,22 @@ export default function TrendChart({ data }) {
     );
   }
 
-  const chartData = data.data.map((item) => ({
-    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    spend: parseFloat(item.spend) || 0,
-    revenue: parseFloat(item.revenue) || 0,
-    roas: parseFloat(item.roas) || 0
-  }));
+  const chartData = data.data.map((item, index) => {
+    const baseData = {
+      date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      spend: parseFloat(item.spend) || 0,
+      revenue: parseFloat(item.revenue) || 0,
+      roas: parseFloat(item.roas) || 0
+    };
+
+    if (data.prevData && data.prevData[index]) {
+      baseData.prev_spend = parseFloat(data.prevData[index].spend) || 0;
+      baseData.prev_revenue = parseFloat(data.prevData[index].revenue) || 0;
+      baseData.prev_roas = parseFloat(data.prevData[index].roas) || 0;
+    }
+
+    return baseData;
+  });
 
   const metrics = [
     { key: 'spend', label: 'Spend', color: '#3b82f6', prefix: '$' },
@@ -102,6 +112,18 @@ export default function TrendChart({ data }) {
               dot={{ r: 3, fill: currentMetric.color }}
               name={currentMetric.label}
             />
+            {data.prevData && data.prevData.length > 0 && (
+              <Line
+                type="monotone"
+                dataKey={`prev_${selectedMetric}`}
+                stroke={currentMetric.color}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={{ r: 3, fill: currentMetric.color }}
+                name={`${currentMetric.label} (Previous)`}
+                opacity={0.6}
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

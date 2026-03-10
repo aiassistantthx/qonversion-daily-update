@@ -2315,10 +2315,22 @@ router.get('/countries', async (req, res) => {
  */
 router.get('/trends', async (req, res) => {
   try {
-    const { from, to, compare } = req.query;
+    let { from, to, days, compare } = req.query;
 
-    if (!from || !to) {
-      return res.status(400).json({ error: 'from and to dates are required (YYYY-MM-DD)' });
+    if (!from && !to && !days) {
+      return res.status(400).json({ error: 'Either days or (from and to) dates are required' });
+    }
+
+    if (days) {
+      days = parseInt(days) || 7;
+      const toDate = new Date();
+      toDate.setDate(toDate.getDate() - 1);
+      to = toDate.toISOString().split('T')[0];
+      const fromDate = new Date(toDate);
+      fromDate.setDate(fromDate.getDate() - days + 1);
+      from = fromDate.toISOString().split('T')[0];
+    } else if (!from || !to) {
+      return res.status(400).json({ error: 'Both from and to dates are required (YYYY-MM-DD)' });
     }
 
     let prevFrom, prevTo;
