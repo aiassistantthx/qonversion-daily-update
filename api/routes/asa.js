@@ -978,14 +978,15 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       ) k
       LEFT JOIN (
         SELECT
-          adgroup_id,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
-          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
-        FROM events_v2
-        WHERE ${revenueCondition}
-          AND campaign_id = $1
-          AND adgroup_id IS NOT NULL
-        GROUP BY adgroup_id
+          COALESCE(e.adgroup_id, kw.adgroup_id) as adgroup_id,
+          SUM(CASE WHEN e.refund = false THEN COALESCE(e.price_usd, 0) ELSE 0 END) as revenue,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted') THEN e.q_user_id END) as paid_users
+        FROM events_v2 e
+        LEFT JOIN apple_ads_keywords kw ON e.keyword_id::TEXT = kw.keyword_id::TEXT
+        WHERE ${revenueCondition.replace(/([^.])event_date/g, '$1e.event_date')}
+          AND e.campaign_id = $1
+          AND (e.adgroup_id IS NOT NULL OR kw.adgroup_id IS NOT NULL)
+        GROUP BY COALESCE(e.adgroup_id, kw.adgroup_id)
       ) r ON k.adgroup_id::TEXT = r.adgroup_id::TEXT
     `, [campaignId]);
 
