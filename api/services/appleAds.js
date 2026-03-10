@@ -211,6 +211,28 @@ class AppleAdsService {
   }
 
   /**
+   * Get impression share reports for campaigns
+   * Returns Share of Voice and Share of Impressions data
+   */
+  async getImpressionShareReports(startDate, endDate, granularity = 'DAILY') {
+    const body = {
+      startTime: startDate.toISOString().split('T')[0],
+      endTime: endDate.toISOString().split('T')[0],
+      selector: {
+        orderBy: [{ field: 'impressionShare', sortOrder: 'DESCENDING' }],
+      },
+      returnRowTotals: true,
+      returnRecordsWithNoMetrics: false,
+      timeZone: 'UTC',
+      granularity,
+      groupBy: ['countryOrRegion'],
+    };
+
+    const response = await this.request('/reports/campaigns/impressionshare', 'POST', body);
+    return response;
+  }
+
+  /**
    * Sync campaign data to database
    */
   async syncCampaignData(date) {
@@ -226,6 +248,23 @@ class AppleAdsService {
       const rows = reports.data?.reportingDataResponse?.row || [];
       let synced = 0;
 
+      // Get impression share data
+      let impressionShareMap = new Map();
+      try {
+        const impressionShareReports = await this.getImpressionShareReports(date, date);
+        const shareRows = impressionShareReports.data?.reportingDataResponse?.row || [];
+
+        shareRows.forEach(row => {
+          const campaignId = row.metadata?.campaignId;
+          if (campaignId) {
+            const impressionShare = parseFloat(row.total?.impressionShare || 0);
+            impressionShareMap.set(campaignId, impressionShare);
+          }
+        });
+      } catch (error) {
+        console.warn('Failed to fetch impression share data:', error.message);
+      }
+
       for (const report of rows) {
         const metadata = report.metadata;
         const totals = report.total;
@@ -234,6 +273,7 @@ class AppleAdsService {
         const impressions = parseInt(totals?.impressions || 0);
         const taps = parseInt(totals?.taps || 0);
         const installs = parseInt(totals?.installs || 0);
+        const impressionShare = impressionShareMap.get(metadata.campaignId) || null;
 
         // Calculate metrics
         const ttr = impressions > 0 ? (taps / impressions) * 100 : 0;
@@ -247,9 +287,10 @@ class AppleAdsService {
             date, campaign_id, campaign_name,
             spend, impressions, taps, installs,
             ttr, conversion_rate, avg_cpa, avg_cpt, avg_cpm,
+            impression_share,
             synced_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
           ON CONFLICT (date, campaign_id)
           DO UPDATE SET
             campaign_name = EXCLUDED.campaign_name,
@@ -262,6 +303,7 @@ class AppleAdsService {
             avg_cpa = EXCLUDED.avg_cpa,
             avg_cpt = EXCLUDED.avg_cpt,
             avg_cpm = EXCLUDED.avg_cpm,
+            impression_share = EXCLUDED.impression_share,
             synced_at = NOW()
         `, [
           dateStr,
@@ -276,6 +318,7 @@ class AppleAdsService {
           avgCpa,
           avgCpt,
           avgCpm,
+          impressionShare,
         ]);
         synced++;
       }

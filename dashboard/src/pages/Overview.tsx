@@ -339,6 +339,11 @@ export function Overview() {
     queryFn: api.getYoY,
   });
 
+  const { data: trendsData } = useQuery<TrendChartData>({
+    queryKey: ['trends', dateRange],
+    queryFn: () => fetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -422,6 +427,9 @@ export function Overview() {
           <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
         </button>
       </div>
+
+      {/* Trends Chart */}
+      <TrendChart data={trendsData} />
 
       {/* Current Month KPIs */}
       <div style={{ marginBottom: 8 }}>
