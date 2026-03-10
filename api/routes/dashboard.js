@@ -4229,9 +4229,11 @@ router.get('/active-subscribers', async (req, res) => {
     // Yearly subs: active if last event was within 380 days (365 days + 15 days grace)
     // IMPORTANT: Exclude users who have Subscription Canceled/Expired/Refunded after their last purchase
     const currentQuery = `
-      WITH last_subscription_event AS (
+      WITH user_last_event AS (
+        -- Get the LAST subscription-related event for each user
         SELECT DISTINCT ON (q_user_id)
           q_user_id,
+          event_name,
           event_date,
           product_id,
           CASE
@@ -4240,27 +4242,25 @@ router.get('/active-subscribers', async (req, res) => {
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
-        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        WHERE event_name IN (
+          'Trial Converted', 'Subscription Started', 'Subscription Renewed',
+          'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
+        )
           AND event_date >= CURRENT_DATE - INTERVAL '380 days'
         ORDER BY q_user_id, event_date DESC
       ),
-      canceled_users AS (
-        SELECT DISTINCT q_user_id
-        FROM events_v2
-        WHERE event_name IN ('Subscription Canceled', 'Subscription Expired', 'Subscription Refunded')
-          AND event_date >= CURRENT_DATE - INTERVAL '380 days'
-      ),
       active_subscribers AS (
         SELECT
-          lse.q_user_id,
-          lse.sub_type
-        FROM last_subscription_event lse
-        LEFT JOIN canceled_users cu ON lse.q_user_id = cu.q_user_id
-        WHERE cu.q_user_id IS NULL  -- Exclude canceled users
+          q_user_id,
+          sub_type,
+          event_date
+        FROM user_last_event
+        -- Only include if last event was a POSITIVE event (not cancel/expire/refund)
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND (
-            (lse.sub_type = 'weekly' AND lse.event_date >= CURRENT_DATE - INTERVAL '14 days')
-            OR (lse.sub_type = 'monthly' AND lse.event_date >= CURRENT_DATE - INTERVAL '37 days')
-            OR (lse.sub_type = 'yearly' AND lse.event_date >= CURRENT_DATE - INTERVAL '380 days')
+            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '14 days')
+            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '37 days')
+            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '380 days')
           )
       )
       SELECT
@@ -4279,9 +4279,11 @@ router.get('/active-subscribers', async (req, res) => {
 
     // Previous period (30 days before)
     const previousQuery = `
-      WITH last_subscription_event AS (
+      WITH user_last_event AS (
+        -- Get the LAST subscription-related event for each user as of 30 days ago
         SELECT DISTINCT ON (q_user_id)
           q_user_id,
+          event_name,
           event_date,
           product_id,
           CASE
@@ -4290,29 +4292,25 @@ router.get('/active-subscribers', async (req, res) => {
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
-        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        WHERE event_name IN (
+          'Trial Converted', 'Subscription Started', 'Subscription Renewed',
+          'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
+        )
           AND event_date >= CURRENT_DATE - INTERVAL '410 days'
           AND event_date < CURRENT_DATE - INTERVAL '30 days'
         ORDER BY q_user_id, event_date DESC
       ),
-      canceled_users AS (
-        SELECT DISTINCT q_user_id
-        FROM events_v2
-        WHERE event_name IN ('Subscription Canceled', 'Subscription Expired', 'Subscription Refunded')
-          AND event_date >= CURRENT_DATE - INTERVAL '410 days'
-          AND event_date < CURRENT_DATE - INTERVAL '30 days'
-      ),
       active_subscribers AS (
         SELECT
-          lse.q_user_id,
-          lse.sub_type
-        FROM last_subscription_event lse
-        LEFT JOIN canceled_users cu ON lse.q_user_id = cu.q_user_id
-        WHERE cu.q_user_id IS NULL
+          q_user_id,
+          sub_type,
+          event_date
+        FROM user_last_event
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND (
-            (lse.sub_type = 'weekly' AND lse.event_date >= CURRENT_DATE - INTERVAL '44 days' AND lse.event_date < CURRENT_DATE - INTERVAL '30 days')
-            OR (lse.sub_type = 'monthly' AND lse.event_date >= CURRENT_DATE - INTERVAL '67 days' AND lse.event_date < CURRENT_DATE - INTERVAL '30 days')
-            OR (lse.sub_type = 'yearly' AND lse.event_date >= CURRENT_DATE - INTERVAL '410 days' AND lse.event_date < CURRENT_DATE - INTERVAL '30 days')
+            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '44 days')
+            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '67 days')
+            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '410 days')
           )
       )
       SELECT
