@@ -354,20 +354,48 @@ router.get('/main', async (req, res) => {
     const crToPaid = trials > 0 ? (converted / trials) * 100 : null;
 
     // ---- PREVIOUS MONTH METRICS (for comparison) ----
-    // Spend
-    const prevSpendResult = await db.query(spendQuery, [prevMonth]);
+    // Compare first N days of current month vs first N days of previous month
+    // This gives a fair like-for-like comparison
+
+    // Spend for first N days of previous month
+    const prevSpendQuery = `
+      SELECT COALESCE(SUM(spend), 0) as spend
+      FROM apple_ads_campaigns
+      WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM date) <= $2
+        AND ${campaignCondition}
+    `;
+    const prevSpendResult = await db.query(prevSpendQuery, [prevMonth, currentDay]);
     const prevMonthSpend = parseFloat(prevSpendResult.rows[0]?.spend) || 0;
 
-    // Revenue
-    const prevRevenueResult = await db.query(revenueQuery, [prevMonth]);
+    // Revenue for first N days of previous month
+    const prevRevenueQuery = `
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM event_date) <= $2
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `;
+    const prevRevenueResult = await db.query(prevRevenueQuery, [prevMonth, currentDay]);
     const prevMonthRevenue = parseFloat(prevRevenueResult.rows[0]?.revenue) || 0;
 
     // Cohort revenue from Apple Ads (for ROAS comparison)
     const prevCohortRevenueResult = await db.query(cohortRevenueQuery, [prevMonth]);
     const prevMonthCohortRevenue = parseFloat(prevCohortRevenueResult.rows[0]?.revenue) || 0;
 
-    // Subscribers
-    const prevSubscribersResult = await db.query(subscribersQuery, [prevMonth]);
+    // Subscribers for first N days of previous month
+    const prevSubscribersQuery = `
+      SELECT COUNT(DISTINCT q_user_id) as subscribers
+      FROM events_v2
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM event_date) <= $2
+        AND (
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        )
+    `;
+    const prevSubscribersResult = await db.query(prevSubscribersQuery, [prevMonth, currentDay]);
     const prevMonthSubscribers = parseInt(prevSubscribersResult.rows[0]?.subscribers) || 0;
 
     // COP (full month, closed cohorts)
@@ -419,11 +447,10 @@ router.get('/main', async (req, res) => {
     const roas = monthSpend > 0 ? monthCohortRevenue / monthSpend : null;
     const prevRoas = prevMonthSpend > 0 ? prevMonthCohortRevenue / prevMonthSpend : null;
 
-    // Calculate % changes (normalized to same day of month for fair comparison)
-    const normFactor = currentDay / prevMonthDays;
-    const spendChange = prevMonthSpend > 0 ? ((monthSpend / (prevMonthSpend * normFactor)) - 1) * 100 : null;
-    const revenueChange = prevMonthRevenue > 0 ? ((monthRevenue / (prevMonthRevenue * normFactor)) - 1) * 100 : null;
-    const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribers / (prevMonthSubscribers * normFactor)) - 1) * 100 : null;
+    // Calculate % changes (comparing first N days of current month vs first N days of previous month)
+    const spendChange = prevMonthSpend > 0 ? ((monthSpend / prevMonthSpend) - 1) * 100 : null;
+    const revenueChange = prevMonthRevenue > 0 ? ((monthRevenue / prevMonthRevenue) - 1) * 100 : null;
+    const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribers / prevMonthSubscribers) - 1) * 100 : null;
     const copChange = prevCop && cop ? ((cop / prevCop) - 1) * 100 : null;
     const crChange = prevCrToPaid && crToPaid ? ((crToPaid / prevCrToPaid) - 1) * 100 : null;
     // ROAS change - NOT normalized by day (ratio metric)
