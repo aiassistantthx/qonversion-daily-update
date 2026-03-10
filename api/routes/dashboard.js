@@ -4239,10 +4239,11 @@ router.get('/active-subscribers', async (req, res) => {
   try {
     // Current active subscribers by type
     // Logic: Find users with active subscriptions, excluding those who canceled/refunded
-    // Weekly subs: active if last event was within 14 days (7 days + 7 days grace)
-    // Monthly subs: active if last event was within 37 days (30 days + 7 days grace)
-    // Yearly subs: active if last event was within 380 days (365 days + 15 days grace)
+    // Weekly subs: active if last event was within 10 days (7 days subscription + 3 days grace)
+    // Monthly subs: active if last event was within 33 days (30 days subscription + 3 days grace)
+    // Yearly subs: active if last event was within 372 days (365 days subscription + 7 days grace)
     // IMPORTANT: Exclude users who have Subscription Canceled/Expired/Refunded after their last purchase
+    // Grace periods aligned with Apple App Store billing retry periods
     const currentQuery = `
       WITH user_last_event AS (
         -- Get the LAST subscription-related event for each user
@@ -4273,9 +4274,9 @@ router.get('/active-subscribers', async (req, res) => {
         -- Only include if last event was a POSITIVE event (not cancel/expire/refund)
         WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
           AND (
-            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '14 days')
-            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '37 days')
-            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '380 days')
+            (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '10 days')
+            OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '33 days')
+            OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '372 days')
           )
       )
       SELECT
