@@ -42,7 +42,7 @@ export function TopCountriesWidget({ data }: TopCountriesWidgetProps) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {data.countries.map((country, idx) => {
+        {data.countries.map((country) => {
           const roasPercent = maxRoas > 0 ? ((country.roas || 0) / maxRoas) * 100 : 0;
           const isPositive = (country.roas || 0) >= 1;
 

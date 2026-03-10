@@ -145,7 +145,7 @@ export function MarketingDashboard() {
         </div>
       </div>
 
-      {/* Organic vs Paid */}
+      {/* Organic vs Paid and Top Countries */}
       {revenueSource && (
         <div className="grid grid-cols-2 gap-4">
           <RevenueSourceBar
@@ -207,6 +207,11 @@ export function MarketingDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Top Countries by ROAS */}
+      {topCountriesRoas && topCountriesRoas.countries.length > 0 && (
+        <TopCountriesRoasWidget countries={topCountriesRoas.countries} />
       )}
 
       {/* Campaign table */}
