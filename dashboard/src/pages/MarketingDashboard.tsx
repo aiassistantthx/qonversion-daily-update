@@ -6,6 +6,7 @@ import { RevenueSourceBar } from '../components/RevenueSourceBar';
 import { CampaignTable } from '../components/CampaignTable';
 import { MetricCard, detectAnomaly } from '../components/MetricCard';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
+import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
   const { data: copData } = useQuery({
@@ -35,6 +36,18 @@ export function MarketingDashboard() {
   const { data: topCountriesRoas } = useQuery({
     queryKey: ['top-countries-roas'],
     queryFn: () => api.getTopCountriesRoas(10),
+    refetchInterval: 60000,
+  });
+
+  const { data: marketingData } = useQuery({
+    queryKey: ['marketing'],
+    queryFn: () => api.getMarketing(6),
+    refetchInterval: 60000,
+  });
+
+  const { data: keywordsData } = useQuery({
+    queryKey: ['keywords'],
+    queryFn: () => api.getKeywords(30),
     refetchInterval: 60000,
   });
 
@@ -84,6 +97,98 @@ export function MarketingDashboard() {
           anomaly={revenueAnomaly}
         />
       </div>
+
+      {/* Spend vs Revenue and CPA Trend */}
+      {marketingData && marketingData.data.length > 0 && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+            <div className="text-sm text-terminal-muted mb-4">Spend vs Revenue (Monthly)</div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[...marketingData.data].reverse()}>
+                  <XAxis
+                    dataKey="month"
+                    stroke="#8b949e"
+                    fontSize={10}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke="#8b949e"
+                    fontSize={10}
+                    tickLine={false}
+                    tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#161b22',
+                      border: '1px solid #30363d',
+                      borderRadius: '8px',
+                      color: '#e6edf3'
+                    }}
+                    formatter={(value, name) => [
+                      `$${Number(value)?.toFixed(0) || 0}`,
+                      name === 'spend' ? 'Spend' : 'Revenue (Total)'
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="spend"
+                    stroke="#ff6b6b"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey={(m) => m.revenue.total}
+                    stroke="#00ff88"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+            <div className="text-sm text-terminal-muted mb-4">CPA Trend (Monthly)</div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[...marketingData.data].reverse()}>
+                  <XAxis
+                    dataKey="month"
+                    stroke="#8b949e"
+                    fontSize={10}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke="#8b949e"
+                    fontSize={10}
+                    tickLine={false}
+                    tickFormatter={(val) => `$${val}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#161b22',
+                      border: '1px solid #30363d',
+                      borderRadius: '8px',
+                      color: '#e6edf3'
+                    }}
+                    formatter={(value) => [`$${Number(value)?.toFixed(2) || '—'}`, 'CPA (d7)']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey={(m) => m.cop.d7}
+                    stroke="#00d4ff"
+                    strokeWidth={2}
+                    dot={true}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* COP section */}
       <div className="grid grid-cols-2 gap-4">
@@ -217,6 +322,11 @@ export function MarketingDashboard() {
       {/* Campaign table */}
       {campaignsData && campaignsData.campaigns.length > 0 && (
         <CampaignTable campaigns={campaignsData.campaigns} />
+      )}
+
+      {/* Keywords table */}
+      {keywordsData && keywordsData.keywords.length > 0 && (
+        <KeywordTable keywords={keywordsData.keywords} />
       )}
     </div>
   );

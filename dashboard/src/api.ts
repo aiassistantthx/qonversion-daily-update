@@ -223,6 +223,66 @@ export interface TopCountryRoas {
   roas: number | null;
 }
 
+export interface MarketingMetrics {
+  month: string;
+  spend: number;
+  cohortAge: number;
+  cop: {
+    d4: number | null;
+    d7: number | null;
+    d30: number | null;
+    d60: number | null;
+    d180: number | null;
+    total: number | null;
+    predicted: number | null;
+  };
+  roas: {
+    d4: number | null;
+    d7: number | null;
+    d30: number | null;
+    d60: number | null;
+    d180: number | null;
+    total: number | null;
+    predicted: number | null;
+  };
+  subs: {
+    d4: number;
+    d7: number;
+    d30: number;
+    d60: number;
+    d180: number;
+    total: number;
+  };
+  revenue: {
+    d4: number;
+    d7: number;
+    d30: number;
+    d60: number;
+    d180: number;
+    total: number;
+  };
+  paybackMonths: number | null;
+  predictedPaybackMonths: number | null;
+  isPaidBack: boolean;
+}
+
+export interface KeywordPerformance {
+  keywordId: string;
+  keyword: string;
+  campaignName: string;
+  spend: number;
+  impressions: number;
+  taps: number;
+  installs: number;
+  trials: number;
+  conversions: number;
+  revenue: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpa: number | null;
+  roas: number | null;
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -238,4 +298,6 @@ export const api = {
   getForecast: () => fetchApi<ForecastData>('/dashboard/forecast'),
   getChurnRate: (months = 12) => fetchApi<ChurnRateData>(`/dashboard/churn-rate?months=${months}`),
   getTopCountriesRoas: (limit = 10) => fetchApi<{ countries: TopCountryRoas[] }>(`/dashboard/top-countries-roas?limit=${limit}`),
+  getMarketing: (months = 6) => fetchApi<{ data: MarketingMetrics[] }>(`/dashboard/marketing?months=${months}`),
+  getKeywords: (days = 30) => fetchApi<{ keywords: KeywordPerformance[]; summary: { spend: number; installs: number; trials: number; conversions: number; revenue: number } }>(`/dashboard/keywords?days=${days}`),
 };

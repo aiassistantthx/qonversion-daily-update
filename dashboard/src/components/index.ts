@@ -78,3 +78,5 @@ export { TopCountriesWidget } from './TopCountriesWidget';
 export type { CountryRoasData } from './TopCountriesWidget';
 
 export { TopCountriesRoasWidget } from './TopCountriesRoasWidget';
+
+export { KeywordTable } from './KeywordTable';
