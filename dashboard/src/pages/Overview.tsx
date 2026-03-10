@@ -279,13 +279,8 @@ export function Overview() {
   const [countryFilter, setCountryFilter] = useState<CountrySelection>(() => parseCountryFilterFromURL());
   const [campaignFilter, setCampaignFilter] = useState<CampaignSelection>(() => parseCampaignFilterFromURL());
   const [keywordDays, setKeywordDays] = useState(90);
-  const [dailyChartMetrics, setDailyChartMetrics] = useState<string[]>([]);
   const [roasEvolutionCohorts, setRoasEvolutionCohorts] = useState<string[]>([]);
   const [monthlyChartMetrics, setMonthlyChartMetrics] = useState<string[]>([]);
-
-  const handleDailyChartMetricsChange = useCallback((selected: string[]) => {
-    setDailyChartMetrics(selected);
-  }, []);
 
   const handleRoasEvolutionCohortsChange = useCallback((selected: string[]) => {
     setRoasEvolutionCohorts(selected);
@@ -451,25 +446,6 @@ export function Overview() {
   const copSparkline = last7Days.map(d => d.cop).filter(v => v != null) as number[];
   const roasSparkline = last7Days.map(d => d.roas).filter(v => v != null) as number[];
 
-  const dailyChartData = daily.slice(-30).map(d => {
-    const dateObj = new Date(d.date);
-    let formattedDate;
-    if (dateScale === 'month') {
-      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-    } else if (dateScale === 'week') {
-      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } else {
-      formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-    return {
-      date: formattedDate,
-      revenue: d.revenue,
-      spend: d.spend,
-      cop: d.cop,
-      copPredicted: d.copPredicted,
-    };
-  });
-
   const monthlyChartData = monthly.map(m => ({
     month: m.month,
     spend: m.spend / 1000,
@@ -558,49 +534,6 @@ export function Overview() {
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
-
-      {/* Daily Chart */}
-      <div style={styles.chartCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <h3 style={{ ...styles.chartTitle, marginBottom: 0 }}>
-            {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
-          </h3>
-          <MetricSelector
-            options={[
-              { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
-              { key: 'spend', label: 'Spend', color: '#ef4444' },
-              { key: 'cop', label: 'COP', color: '#10b981' },
-              { key: 'copPredicted', label: 'COP Predicted', color: '#10b981' },
-            ]}
-            onChange={handleDailyChartMetricsChange}
-            storageKey="dailyChart-selectedMetrics"
-          />
-        </div>
-        <div style={styles.chartContainer}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={dailyChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
-              <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
-              <Legend />
-              {dailyChartMetrics.includes('revenue') && (
-                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
-              )}
-              {dailyChartMetrics.includes('spend') && (
-                <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
-              )}
-              {dailyChartMetrics.includes('cop') && (
-                <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
-              )}
-              {dailyChartMetrics.includes('copPredicted') && (
-                <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
-              )}
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>
