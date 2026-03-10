@@ -37,16 +37,17 @@ interface ForecastMonth {
   roas: number;
 }
 
+// Real metrics from OpenChat data (March 2026)
 const defaultParams: PredictionParams = {
-  monthlyBudget: 40000,
-  cpi: 1.20,
-  trialRate: 65,
-  conversionRate: 30,
-  weeklyPrice: 4.99,
-  yearlyPrice: 39.99,
-  weeklyChurnMonthly: 51,
-  yearlyChurnAnnual: 65,
-  weeklyShare: 94,
+  monthlyBudget: 50000,      // Avg monthly spend
+  cpi: 1.83,                 // Cost per install (from keywords data)
+  trialRate: 32,             // Install → Trial rate (31.5% from data)
+  conversionRate: 22,        // Trial → Paid rate (21.7% Apple Ads)
+  weeklyPrice: 6.99,         // Weekly subscription price
+  yearlyPrice: 49.99,        // Yearly subscription price
+  weeklyChurnMonthly: 51,    // Weekly subs monthly churn (5.9%/week → ~51%/mo)
+  yearlyChurnAnnual: 65,     // Yearly subs annual churn
+  weeklyShare: 75,           // % of new subs choosing weekly (from product breakdown)
   forecastMonths: 12,
 };
 
@@ -69,9 +70,9 @@ export function Prediction() {
   const forecast = useMemo(() => {
     const results: ForecastMonth[] = [];
 
-    // Start with current base
-    let activeWeekly = activeData?.breakdown?.weekly?.active || 5000;
-    let activeYearly = activeData?.breakdown?.yearly?.active || 800;
+    // Start with current base from API (real data)
+    let activeWeekly = activeData?.current?.weekly || 2800;
+    let activeYearly = activeData?.current?.yearly || 4900;
     let cumulativeSpend = 0;
     let cumulativeRevenue = 0;
 
@@ -167,7 +168,7 @@ export function Prediction() {
             Revenue Prediction Model
           </h2>
           <p style={styles.subtitle}>
-            Forecast based on unit economics. Adjust parameters to explore outcomes.
+            Forecast based on real OpenChat metrics. Starting base: {activeData?.current?.weekly?.toLocaleString() || '~2,800'} weekly + {activeData?.current?.yearly?.toLocaleString() || '~4,900'} yearly active subs.
           </p>
         </div>
         <button onClick={handleExport} style={styles.exportBtn}>
