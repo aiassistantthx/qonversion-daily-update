@@ -4480,7 +4480,8 @@ router.get('/planning-data', async (req, res) => {
       WHERE event_date >= CURRENT_DATE - INTERVAL '6 months'
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
-      GROUP BY TO_CHAR(event_date, 'YYYY-MM'), source
+      GROUP BY TO_CHAR(event_date, 'YYYY-MM'),
+        CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
       ORDER BY month
     `;
 
