@@ -3017,6 +3017,92 @@ router.get('/churn-rate', async (req, res) => {
   }
 });
 
+// Debug endpoint for churn calculation
+router.get('/churn-rate/debug', async (req, res) => {
+  try {
+    // Check product ID patterns
+    const productPatterns = await db.query(`
+      SELECT
+        product_id,
+        COUNT(*) as event_count,
+        CASE
+          WHEN product_id LIKE '%weekly%' THEN 'weekly'
+          WHEN product_id LIKE '%yearly%' THEN 'yearly'
+          WHEN product_id LIKE '%monthly%' THEN 'monthly'
+          ELSE 'unknown'
+        END as detected_type
+      FROM events_v2
+      WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+        AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY product_id
+      ORDER BY event_count DESC
+    `);
+
+    // Check churned calculation for a specific day
+    const dateToCheck = '2026-03-01';
+    const churnedDetail = await db.query(`
+      WITH user_last_subscription AS (
+        SELECT
+          q_user_id,
+          MAX(event_date) as last_active_date,
+          (ARRAY_AGG(product_id ORDER BY event_date DESC))[1] as last_product_id
+        FROM events_v2
+        WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+          AND refund = false
+          AND event_date >= '2026-01-01'
+        GROUP BY q_user_id
+      ),
+      user_expiry AS (
+        SELECT
+          q_user_id,
+          last_active_date,
+          last_product_id,
+          CASE
+            WHEN last_product_id LIKE '%weekly%' THEN last_active_date + INTERVAL '7 days'
+            WHEN last_product_id LIKE '%yearly%' THEN last_active_date + INTERVAL '365 days'
+            WHEN last_product_id LIKE '%monthly%' THEN last_active_date + INTERVAL '30 days'
+            ELSE last_active_date + INTERVAL '30 days'
+          END as expiry_date
+        FROM user_last_subscription
+      ),
+      churned_on_date AS (
+        SELECT
+          ue.q_user_id,
+          ue.last_active_date,
+          ue.last_product_id,
+          ue.expiry_date
+        FROM user_expiry ue
+        WHERE DATE(ue.expiry_date) = '${dateToCheck}'
+          AND NOT EXISTS (
+            SELECT 1 FROM events_v2 e2
+            WHERE e2.q_user_id = ue.q_user_id
+              AND e2.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+              AND e2.event_date > ue.last_active_date
+          )
+      )
+      SELECT
+        last_product_id,
+        COUNT(*) as churned_count,
+        MIN(last_active_date) as earliest_sub,
+        MAX(last_active_date) as latest_sub
+      FROM churned_on_date
+      GROUP BY last_product_id
+      ORDER BY churned_count DESC
+    `);
+
+    res.json({
+      productPatterns: productPatterns.rows,
+      churnedDetailOnDate: {
+        date: dateToCheck,
+        byProduct: churnedDetail.rows
+      }
+    });
+  } catch (error) {
+    console.error('Churn rate debug error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================
 // COUNTRIES BREAKDOWN
 // ============================================
