@@ -17,8 +17,8 @@ import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
 
-// Target CAC from yearly payback calculation
-const TARGET_CAC = 88.75;
+// Target CAC from yearly payback calculation (proceeds-based)
+const TARGET_CAC = 65.68;
 
 const DEFAULT_COLUMNS = {
   matchType: true,
@@ -406,6 +406,28 @@ export default function Keywords() {
     return result;
   }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, searchQuery, sortField, sortDirection]);
 
+  // Calculate totals from filtered keywords
+  const totals = useMemo(() => {
+    if (!keywords.length) return null;
+    const t = keywords.reduce((acc, kw) => {
+      acc.spend += parseFloat(kw.spend_7d || 0);
+      acc.revenue += parseFloat(kw.revenue_7d || 0);
+      acc.installs += parseInt(kw.installs_7d || 0);
+      acc.impressions += parseInt(kw.impressions_7d || 0);
+      acc.taps += parseInt(kw.taps_7d || 0);
+      acc.paidUsers += parseInt(kw.paid_users_7d || 0);
+      return acc;
+    }, { spend: 0, revenue: 0, installs: 0, impressions: 0, taps: 0, paidUsers: 0 });
+    t.roas = t.spend > 0 ? t.revenue / t.spend : 0;
+    t.cpa = t.installs > 0 ? t.spend / t.installs : 0;
+    t.cop = t.paidUsers > 0 ? t.spend / t.paidUsers : 0;
+    t.ttr = t.impressions > 0 ? t.taps / t.impressions : 0;
+    t.cvr = t.taps > 0 ? t.installs / t.taps : 0;
+    t.cpt = t.taps > 0 ? t.spend / t.taps : 0;
+    t.cpm = t.impressions > 0 ? (t.spend / t.impressions) * 1000 : 0;
+    return t;
+  }, [keywords]);
+
   const totalPages = Math.ceil(totalKeywords / itemsPerPage);
 
   const handleSort = (field) => {
@@ -615,22 +637,10 @@ export default function Keywords() {
     </TableHeader>
   );
 
-  // Calculate totals
-  const totals = useMemo(() => {
-    return keywords.reduce((acc, k) => ({
-      spend: acc.spend + parseFloat(k.spend_7d || 0),
-      impressions: acc.impressions + parseInt(k.impressions_7d || 0),
-      taps: acc.taps + parseInt(k.taps_7d || 0),
-      installs: acc.installs + parseInt(k.installs_7d || 0),
-      revenue: acc.revenue + parseFloat(k.revenue_7d || 0),
-      paidUsers: acc.paidUsers + parseInt(k.paid_users_7d || 0),
-      sov: acc.sov + parseFloat(k.sov || 0),
-    }), { spend: 0, impressions: 0, taps: 0, installs: 0, revenue: 0, paidUsers: 0, sov: 0 });
-  }, [keywords]);
-
-  const avgCpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
-  const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
-  const cop = totals.paidUsers > 0 ? totals.spend / totals.paidUsers : 0;
+  // Derived values from totals
+  const avgCpa = totals?.cpa || 0;
+  const roas = totals?.roas || 0;
+  const cop = totals?.cop || 0;
 
   const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 2;
 
@@ -929,6 +939,56 @@ export default function Keywords() {
                   );
                 })}
               </TableRow>
+              {/* Totals Row */}
+              {totals && (
+                <TableRow className="bg-blue-50 font-semibold border-b-2 border-blue-200">
+                  <TableHeader></TableHeader>
+                  <TableHeader className="text-blue-700">TOTAL ({keywords.length})</TableHeader>
+                  {columnOrder.map((columnId) => {
+                    if (!visibleColumns[columnId]) return null;
+                    switch (columnId) {
+                      case 'matchType':
+                      case 'bid':
+                      case 'bidVsCpa':
+                      case 'sov':
+                        return <TableHeader key={columnId}>—</TableHeader>;
+                      case 'spend':
+                        return <TableHeader key={columnId} className="text-right">${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      case 'impressions':
+                        return <TableHeader key={columnId} className="text-right">{totals.impressions?.toLocaleString()}</TableHeader>;
+                      case 'taps':
+                        return <TableHeader key={columnId} className="text-right">{totals.taps?.toLocaleString()}</TableHeader>;
+                      case 'installs':
+                        return <TableHeader key={columnId} className="text-right">{totals.installs?.toLocaleString()}</TableHeader>;
+                      case 'revenue':
+                        return <TableHeader key={columnId} className="text-right text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      case 'roas':
+                        return <TableHeader key={columnId} className="text-right"><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{totals.roas?.toFixed(2)}x</span></TableHeader>;
+                      case 'cpa':
+                        return <TableHeader key={columnId} className="text-right">${totals.cpa?.toFixed(2)}</TableHeader>;
+                      case 'cac':
+                      case 'cop':
+                        return <TableHeader key={columnId} className="text-right">${totals.cop?.toFixed(2)}</TableHeader>;
+                      case 'kpiDiff':
+                        const kpiDiff = totals.cop ? totals.cop - TARGET_CAC : null;
+                        return <TableHeader key={columnId} className="text-right"><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
+                      case 'roasD7':
+                      case 'roasD30':
+                        return <TableHeader key={columnId} className="text-right">—</TableHeader>;
+                      case 'ttr':
+                        return <TableHeader key={columnId} className="text-right">{(totals.ttr * 100).toFixed(2)}%</TableHeader>;
+                      case 'cvr':
+                        return <TableHeader key={columnId} className="text-right">{(totals.cvr * 100).toFixed(2)}%</TableHeader>;
+                      case 'cpt':
+                        return <TableHeader key={columnId} className="text-right">${totals.cpt?.toFixed(2)}</TableHeader>;
+                      case 'cpm':
+                        return <TableHeader key={columnId} className="text-right">${totals.cpm?.toFixed(2)}</TableHeader>;
+                      default:
+                        return <TableHeader key={columnId}>—</TableHeader>;
+                    }
+                  })}
+                </TableRow>
+              )}
             </TableHead>
             <TableBody>
               {isLoading ? (
