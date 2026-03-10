@@ -150,25 +150,58 @@ async function fetchWebhookDaily(days = 14) {
   return result;
 }
 
-// Получить proceeds (revenue) напрямую из Qonversion API
+// Получить Sales (gross revenue) из Attribution API
+// Это revenue из webhook событий - gross до комиссии Apple
 async function fetchQonversionProceeds() {
-  log('Fetching Qonversion proceeds...');
-  const response = await fetch(`${QONVERSION_API_URL}/chart/proceeds?environment=1&unit=day`);
-  if (!response.ok) {
-    throw new Error(`Qonversion API error: ${response.status}`);
+  log('Fetching Sales from Qonversion Dashboard API...');
+
+  // Load cookies from auth.json for authentication
+  const authPath = path.join(__dirname, 'auth.json');
+  if (!fs.existsSync(authPath)) {
+    throw new Error('auth.json not found. Run: cd ~/scripts/qonversion && node login.js');
   }
+
+  const authData = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+  const cookies = authData.cookies
+    .filter(c => c.domain && c.domain.includes('qonversion'))
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+
+  // Use dashboard API for gross sales (before Apple commission)
+  const response = await fetch(
+    'https://dash.qonversion.io/api/v1/analytics/chart/sales?unit=day&environment=1&project=PcnB70vn',
+    {
+      headers: {
+        'Cookie': cookies
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Qonversion Dashboard API error: ${response.status}`);
+  }
+
   const data = await response.json();
 
-  // Преобразуем в удобный формат { 'YYYY-MM-DD': value }
+  if (!data.success && data.data?.status === 401) {
+    throw new Error('Qonversion auth expired. Run: cd ~/scripts/qonversion && node login.js');
+  }
+
+  // Преобразуем в удобный формат { 'YYYY-MM-DD': grossSales }
   const result = {};
-  const series = data.data?.series?.find(s => s.label === 'After refunds');
-  if (series?.data) {
-    for (const item of series.data) {
-      const date = new Date(item.start_time * 1000).toISOString().split('T')[0];
-      result[date] = item.value;
+  const salesSeries = data.data?.series?.find(s => s.label === 'After refunds');
+
+  if (salesSeries?.data) {
+    for (const point of salesSeries.data) {
+      const date = new Date(point.start_time * 1000).toISOString().split('T')[0];
+      const sales = point.value || 0;
+      if (sales > 0) {
+        result[date] = Math.round(sales * 100) / 100;
+      }
     }
   }
-  log(`Got proceeds for ${Object.keys(result).length} days`);
+
+  log(`Got sales for ${Object.keys(result).length} days (gross sales from dashboard API)`);
   return result;
 }
 
