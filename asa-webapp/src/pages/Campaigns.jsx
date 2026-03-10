@@ -9,9 +9,10 @@ import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { BulkCampaignCreate } from '../components/BulkCampaignCreate';
 import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
-import { getCampaigns, updateCampaignStatus, deleteCampaign } from '../lib/api';
+import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import {
@@ -173,6 +174,7 @@ export default function Campaigns() {
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
 
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset, reorderColumns } = useColumnSettings(
     'campaigns-columns',
@@ -339,6 +341,16 @@ export default function Campaigns() {
 
   const selectedCampaigns = campaigns.filter(c => selectedIds.has(c.id));
 
+  const handleBulkCreate = async (campaignsToCreate) => {
+    try {
+      const result = await createCampaignsBulk(campaignsToCreate);
+      queryClient.invalidateQueries(['campaigns']);
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const exportCSV = () => {
     const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP', 'TTR', 'CVR', 'CPT', 'CPM'];
     const rows = campaigns.map(c => {
@@ -419,6 +431,9 @@ export default function Campaigns() {
           />
           <Button variant="secondary" onClick={exportCSV}>
             <Download size={16} /> Export CSV
+          </Button>
+          <Button variant="secondary" onClick={() => setBulkCreateOpen(true)}>
+            Bulk Create
           </Button>
           <Button onClick={() => navigate('/campaigns/create')}>
             Create Campaign
@@ -669,6 +684,13 @@ export default function Campaigns() {
         onDelete={handleBulkDelete}
         entityType="campaigns"
         canAdjustBid={false}
+      />
+
+      <BulkCampaignCreate
+        isOpen={bulkCreateOpen}
+        onClose={() => setBulkCreateOpen(false)}
+        onSuccess={handleBulkCreate}
+        appId="6738917224"
       />
     </div>
   );

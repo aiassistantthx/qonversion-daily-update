@@ -551,6 +551,156 @@ router.post('/campaigns', async (req, res) => {
 });
 
 /**
+ * POST /asa/campaigns/bulk
+ * Create multiple campaigns at once
+ */
+router.post('/campaigns/bulk', async (req, res) => {
+  try {
+    const { campaigns } = req.body;
+
+    if (!campaigns || !Array.isArray(campaigns) || campaigns.length === 0) {
+      return res.status(400).json({ error: 'campaigns array is required' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < campaigns.length; i++) {
+      const campaignData = campaigns[i];
+      try {
+        const {
+          name,
+          adamId,
+          countriesOrRegions,
+          supplySources,
+          adGroupName,
+          defaultBid,
+          keywords,
+          negativeKeywords,
+          dailyBudget,
+          totalBudget,
+          startDate,
+          endDate,
+          status
+        } = campaignData;
+
+        // Validate required fields
+        if (!name || !adamId || !countriesOrRegions || !adGroupName || !dailyBudget) {
+          errors.push({ index: i, name, error: 'Missing required fields' });
+          continue;
+        }
+
+        // Create campaign
+        const campaignPayload = {
+          name,
+          adamId: parseInt(adamId),
+          countriesOrRegions,
+          budgetAmount: {
+            amount: String(dailyBudget),
+            currency: 'USD'
+          },
+          dailyBudgetAmount: {
+            amount: String(dailyBudget),
+            currency: 'USD'
+          },
+          status: status || 'PAUSED'
+        };
+
+        if (supplySources && supplySources.length > 0) {
+          campaignPayload.supplySources = supplySources;
+        }
+
+        if (startDate) {
+          campaignPayload.startTime = startDate;
+        }
+
+        if (endDate) {
+          campaignPayload.endTime = endDate;
+        }
+
+        if (totalBudget) {
+          campaignPayload.budgetAmount = {
+            amount: String(totalBudget),
+            currency: 'USD'
+          };
+        }
+
+        const campaign = await appleAds.createCampaign(campaignPayload);
+
+        // Create ad group
+        const adGroupPayload = {
+          name: adGroupName,
+          defaultBidAmount: {
+            amount: String(defaultBid || '1.00'),
+            currency: 'USD'
+          },
+          status: status || 'PAUSED'
+        };
+
+        const adGroupResponse = await appleAds.request(
+          `/campaigns/${campaign.id}/adgroups`,
+          'POST',
+          adGroupPayload
+        );
+        const adGroup = adGroupResponse.data;
+
+        // Create keywords if provided
+        if (keywords && keywords.length > 0) {
+          await appleAds.createKeywords(campaign.id, adGroup.id, keywords);
+        }
+
+        // Create negative keywords if provided
+        if (negativeKeywords && negativeKeywords.length > 0) {
+          const negativeKeywordsPayload = negativeKeywords.map(text => ({
+            text,
+            matchType: 'EXACT'
+          }));
+          await appleAds.createNegativeKeywords(campaign.id, negativeKeywordsPayload);
+        }
+
+        // Record change
+        await recordChange(
+          'campaign',
+          campaign.id,
+          'create',
+          'campaign',
+          null,
+          JSON.stringify({ name, status: campaignPayload.status }),
+          'api',
+          null,
+          req
+        );
+
+        results.push({
+          success: true,
+          index: i,
+          name,
+          campaign,
+          adGroup,
+          keywordsCreated: keywords?.length || 0,
+          negativeKeywordsCreated: negativeKeywords?.length || 0
+        });
+      } catch (error) {
+        console.error(`Failed to create campaign ${i}:`, error);
+        errors.push({ index: i, name: campaignData.name, error: error.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      total: campaigns.length,
+      created: results.length,
+      failed: errors.length,
+      results,
+      errors
+    });
+  } catch (error) {
+    console.error('Bulk campaign creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * PUT /asa/campaigns/:id
  * Update campaign settings
  */

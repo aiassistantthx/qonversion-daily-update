@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
   ComposedChart, Bar, ReferenceLine, Line
@@ -143,11 +144,44 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
           <div style={{ fontSize: 12, color: monthlyHealth.color, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
             <TrendingDown size={14} />
             Monthly Churn
+            <div
+              style={{ position: 'relative', display: 'inline-block' }}
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+            >
+              <Info size={12} style={{ cursor: 'help', opacity: 0.6 }} />
+              {showTooltip && (
+                <div style={{
+                  position: 'absolute',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  top: 20,
+                  background: '#1f2937',
+                  color: '#fff',
+                  padding: 12,
+                  borderRadius: 8,
+                  fontSize: 11,
+                  whiteSpace: 'nowrap',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  minWidth: 280,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Monthly Churn Calculation:</div>
+                  <div style={{ marginBottom: 4 }}>From Weekly: 1 - (1 - weekly)^4.33</div>
+                  <div style={{ marginBottom: 4 }}>From Yearly: 1 - (1 - yearly)^(1/12)</div>
+                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div>Weekly → {data.summary.monthlyChurnFromWeekly.toFixed(1)}%</div>
+                    <div>Yearly → {data.summary.monthlyChurnFromYearly.toFixed(1)}%</div>
+                    <div style={{ fontWeight: 600, marginTop: 4 }}>Average: {data.summary.monthlyAvgChurn.toFixed(1)}%</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ fontSize: 24, fontWeight: 700, color: monthlyHealth.color }}>
             {data.summary.monthlyAvgChurn.toFixed(1)}%
           </div>
-          <div style={{ fontSize: 11, color: '#6b7280' }} title={`From weekly: ${data.summary.monthlyChurnFromWeekly.toFixed(1)}% | From yearly: ${data.summary.monthlyChurnFromYearly.toFixed(1)}%`}>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>
             Calculated avg
           </div>
         </div>
