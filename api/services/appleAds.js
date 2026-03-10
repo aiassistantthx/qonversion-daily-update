@@ -183,11 +183,28 @@ class AppleAdsService {
   }
 
   /**
-   * Get all campaigns
+   * Get all campaigns with pagination
    */
   async getCampaigns() {
-    const response = await this.request('/campaigns');
-    return response.data || [];
+    const allCampaigns = [];
+    let offset = 0;
+    const limit = 1000; // Max allowed by Apple API
+
+    while (true) {
+      const response = await this.request(`/campaigns?limit=${limit}&offset=${offset}`);
+      const campaigns = response.data || [];
+      allCampaigns.push(...campaigns);
+
+      // Check if there are more results
+      const pagination = response.pagination;
+      if (!pagination || campaigns.length < limit || offset + campaigns.length >= pagination.totalResults) {
+        break;
+      }
+
+      offset += limit;
+    }
+
+    return allCampaigns;
   }
 
   /**
@@ -422,8 +439,24 @@ class AppleAdsService {
    * Get all ad groups for a campaign
    */
   async getAdGroups(campaignId) {
-    const response = await this.request(`/campaigns/${campaignId}/adgroups`);
-    return response.data || [];
+    const allAdGroups = [];
+    let offset = 0;
+    const limit = 1000;
+
+    while (true) {
+      const response = await this.request(`/campaigns/${campaignId}/adgroups?limit=${limit}&offset=${offset}`);
+      const adgroups = response.data || [];
+      allAdGroups.push(...adgroups);
+
+      const pagination = response.pagination;
+      if (!pagination || adgroups.length < limit || offset + adgroups.length >= pagination.totalResults) {
+        break;
+      }
+
+      offset += limit;
+    }
+
+    return allAdGroups;
   }
 
   /**
@@ -466,8 +499,24 @@ class AppleAdsService {
    * Get all keywords for an ad group
    */
   async getKeywords(campaignId, adGroupId) {
-    const response = await this.request(`/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords`);
-    return response.data || [];
+    const allKeywords = [];
+    let offset = 0;
+    const limit = 1000;
+
+    while (true) {
+      const response = await this.request(`/campaigns/${campaignId}/adgroups/${adGroupId}/targetingkeywords?limit=${limit}&offset=${offset}`);
+      const keywords = response.data || [];
+      allKeywords.push(...keywords);
+
+      const pagination = response.pagination;
+      if (!pagination || keywords.length < limit || offset + keywords.length >= pagination.totalResults) {
+        break;
+      }
+
+      offset += limit;
+    }
+
+    return allKeywords;
   }
 
   /**

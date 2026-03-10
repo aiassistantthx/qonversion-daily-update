@@ -10,14 +10,13 @@ import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
   // These endpoints don't exist yet - use empty defaults
-  const copData = null;
-  const copLoading = false;
-  const campaignsData = { campaigns: [] };
-  const campaignsLoading = false;
+  const copData = null as null | {
+    current: { d1: number | null; d4: number | null; d7: number | null; d14: number | null; d30: number | null };
+    trend: Array<{date: string; value: number}>
+  };
+  const campaignsData = { campaigns: [] as Array<{campaignId: string; campaignName: string; installs: number; payers: number; cop: number; spend: number; revenue: number; roas: number}> };
   const revenueSource = { summary: { paid: 0, organic: 0, total: 0, paidPercent: 0, organicPercent: 0 }, daily: [] };
-  const revenueLoading = false;
-  const dailyData = { metrics: [] };
-  const dailyLoading = false;
+  const dailyData = { metrics: [] as Array<{cpa: number; spend: number; revenue: number; date: string}> };
 
   const { data: topCountriesRoas } = useQuery({
     queryKey: ['top-countries-roas'],
