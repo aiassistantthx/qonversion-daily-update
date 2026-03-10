@@ -247,6 +247,14 @@ async function runWorker() {
       if (shouldRunJob('hourly')) {
         await executeRulesForFrequency('hourly');
         await checkBudgetAlerts(); // Check budget usage hourly
+
+        // Sync changes from Apple Ads hourly
+        try {
+          await syncAppleAdsChanges();
+        } catch (error) {
+          log('error', 'Change sync failed, continuing...');
+        }
+
         lastRuns.hourly = Date.now();
       }
 
