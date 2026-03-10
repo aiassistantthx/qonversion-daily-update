@@ -2724,7 +2724,8 @@ router.get('/churn-rate', async (req, res) => {
 
     // Daily subscriber movement (matches Qonversion methodology)
     // New = Trial Converted + Subscription Started (all subscription types)
-    // Churned = Subscription Canceled events (when subscription expires/cancels)
+    // Churned = subscriptions that EXPIRED (last renewal + 7 days for weekly, without new renewal)
+    // This matches Qonversion's "Subscription Expired" event logic
     const dailyMovementResult = await db.query(`
       WITH days AS (
         SELECT generate_series(
@@ -2744,15 +2745,51 @@ router.get('/churn-rate', async (req, res) => {
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
         GROUP BY DATE(event_date)
       ),
-      -- Churned = Subscription Canceled events (this is what Qonversion tracks)
+      -- For churned: find each user's last renewal/start event and calculate expiry date
+      -- Weekly = expires 7 days after, Yearly = expires 365 days after
+      user_last_events AS (
+        SELECT
+          q_user_id,
+          product_id,
+          MAX(event_date) as last_event_date,
+          -- Calculate expiry: weekly = +7 days, yearly = +365 days
+          CASE
+            WHEN product_id LIKE '%weekly%' THEN MAX(event_date) + INTERVAL '7 days'
+            WHEN product_id LIKE '%yearly%' THEN MAX(event_date) + INTERVAL '365 days'
+            WHEN product_id LIKE '%monthly%' THEN MAX(event_date) + INTERVAL '30 days'
+            ELSE MAX(event_date) + INTERVAL '30 days'
+          END as expiry_date
+        FROM events_v2
+        WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+          AND refund = false
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '1 year'
+        GROUP BY q_user_id, product_id
+      ),
+      -- Churned = subscriptions whose expiry_date falls on day D and no renewal after
+      -- Check if user had any renewal AFTER expiry date (grace period renewal)
+      user_churned AS (
+        SELECT
+          ule.q_user_id,
+          ule.product_id,
+          DATE(ule.expiry_date) as churned_date
+        FROM user_last_events ule
+        WHERE ule.expiry_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND ule.expiry_date < CURRENT_DATE
+          -- No renewal after the expiry date
+          AND NOT EXISTS (
+            SELECT 1 FROM events_v2 e2
+            WHERE e2.q_user_id = ule.q_user_id
+              AND e2.product_id = ule.product_id
+              AND e2.event_name = 'Subscription Renewed'
+              AND e2.event_date > ule.expiry_date
+          )
+      ),
       daily_churned AS (
         SELECT
-          DATE(event_date) as day,
+          churned_date as day,
           COUNT(*) as churned
-        FROM events_v2
-        WHERE event_name = 'Subscription Canceled'
-          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
-        GROUP BY DATE(event_date)
+        FROM user_churned
+        GROUP BY churned_date
       ),
       daily_active AS (
         SELECT
