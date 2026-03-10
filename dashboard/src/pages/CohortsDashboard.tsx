@@ -151,7 +151,7 @@ export function CohortsDashboard() {
               </tr>
             </thead>
             <tbody>
-              {cohortsData?.cohorts.map((cohort, i) => {
+              {[...(cohortsData?.cohorts || [])].sort((a, b) => b.cohortMonth.localeCompare(a.cohortMonth)).map((cohort, i) => {
                 const d7 = cohort.curve.find(p => p.day <= 7)?.revenuePerUser;
                 const d30 = cohort.curve.find(p => p.day <= 30)?.revenuePerUser;
                 const d60 = cohort.curve.find(p => p.day <= 60)?.revenuePerUser;

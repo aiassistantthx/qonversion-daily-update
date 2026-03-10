@@ -205,7 +205,7 @@ export function RoasEvolution() {
               </tr>
             </thead>
             <tbody>
-              {cohortStats.map((cohort) => (
+              {[...cohortStats].sort((a, b) => b.month.localeCompare(a.month)).map((cohort) => (
                 <tr key={cohort.month} style={styles.tr}>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
