@@ -249,53 +249,53 @@ export function Planning() {
     assumptions: Assumptions,
     setAssumptions: React.Dispatch<React.SetStateAction<Assumptions>>
   ) => (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-3.5">
       <div>
-        <label className="text-xs font-medium text-terminal-muted block mb-1.5">CAC Target ($)</label>
+        <label className="text-xs font-semibold text-terminal-muted uppercase tracking-wide block mb-2">CAC Target ($)</label>
         <input
           type="number"
           value={assumptions.cacTarget}
           onChange={(e) => setAssumptions({ ...assumptions, cacTarget: Number(e.target.value) })}
-          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
+          className="w-full px-4 py-2.5 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-bold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors shadow-sm"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-terminal-muted block mb-1.5">Monthly Budget ($)</label>
+        <label className="text-xs font-semibold text-terminal-muted uppercase tracking-wide block mb-2">Monthly Budget ($)</label>
         <input
           type="number"
           value={assumptions.monthlyBudget}
           onChange={(e) => setAssumptions({ ...assumptions, monthlyBudget: Number(e.target.value) })}
-          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
+          className="w-full px-4 py-2.5 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-bold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors shadow-sm"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-terminal-muted block mb-1.5">Weekly Churn (%/mo)</label>
+        <label className="text-xs font-semibold text-terminal-muted uppercase tracking-wide block mb-2">Weekly Churn (%/mo)</label>
         <input
           type="number"
           step="0.1"
           value={assumptions.monthlyChurnRate}
           onChange={(e) => setAssumptions({ ...assumptions, monthlyChurnRate: Number(e.target.value) })}
-          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
+          className="w-full px-4 py-2.5 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-bold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors shadow-sm"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-terminal-muted block mb-1.5">Yearly Churn (%/mo)</label>
+        <label className="text-xs font-semibold text-terminal-muted uppercase tracking-wide block mb-2">Yearly Churn (%/mo)</label>
         <input
           type="number"
           step="0.1"
           value={assumptions.yearlyChurnRate}
           onChange={(e) => setAssumptions({ ...assumptions, yearlyChurnRate: Number(e.target.value) })}
-          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
+          className="w-full px-4 py-2.5 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-bold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors shadow-sm"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-terminal-muted block mb-1.5">Yearly Renewal Rate (%)</label>
+        <label className="text-xs font-semibold text-terminal-muted uppercase tracking-wide block mb-2">Yearly Renewal Rate (%)</label>
         <input
           type="number"
           step="0.1"
           value={assumptions.yearlyRenewalRate}
           onChange={(e) => setAssumptions({ ...assumptions, yearlyRenewalRate: Number(e.target.value) })}
-          className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
+          className="w-full px-4 py-2.5 bg-terminal-bg border border-terminal-border rounded-lg text-terminal-text text-sm font-mono font-bold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors shadow-sm"
         />
       </div>
     </div>
@@ -485,47 +485,47 @@ export function Planning() {
 
             return (
               <>
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-cyan/50 transition-colors">
-                  <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">12-Month Revenue</div>
-                  <div className="text-3xl font-bold font-mono text-terminal-cyan mb-2">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 hover:border-terminal-cyan/50 hover:shadow-md transition-all shadow-sm">
+                  <div className="text-xs font-semibold text-terminal-muted mb-3 uppercase tracking-wide">12-Month Revenue</div>
+                  <div className="text-3xl font-bold font-mono text-terminal-cyan mb-3">
                     ${(totalRevenue / 1000).toFixed(0)}k
                   </div>
-                  <div className="text-xs text-terminal-muted">
+                  <div className="text-xs text-terminal-muted font-medium">
                     Range: ${(totalRevenuePessimistic / 1000).toFixed(0)}k - ${(totalRevenueOptimistic / 1000).toFixed(0)}k
                   </div>
                 </div>
 
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-cyan/50 transition-colors">
-                  <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Monthly Average</div>
-                  <div className="text-3xl font-bold font-mono text-terminal-text mb-2">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 hover:border-terminal-cyan/50 hover:shadow-md transition-all shadow-sm">
+                  <div className="text-xs font-semibold text-terminal-muted mb-3 uppercase tracking-wide">Monthly Average</div>
+                  <div className="text-3xl font-bold font-mono text-terminal-text mb-3">
                     ${(totalRevenue / 12 / 1000).toFixed(1)}k
                   </div>
-                  <div className="text-xs text-terminal-muted">
+                  <div className="text-xs text-terminal-muted font-medium">
                     Current: ${((forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) / 1000).toFixed(1)}k/mo
                   </div>
                 </div>
 
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-cyan/50 transition-colors">
-                  <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Active Subscribers</div>
-                  <div className="text-3xl font-bold font-mono text-terminal-text mb-2">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 hover:border-terminal-cyan/50 hover:shadow-md transition-all shadow-sm">
+                  <div className="text-xs font-semibold text-terminal-muted mb-3 uppercase tracking-wide">Active Subscribers</div>
+                  <div className="text-3xl font-bold font-mono text-terminal-text mb-3">
                     {endingBase.toLocaleString()}
                   </div>
-                  <div className="text-xs text-terminal-muted">
+                  <div className="text-xs text-terminal-muted font-medium">
                     End of forecast period
                   </div>
                 </div>
 
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-cyan/50 transition-colors">
-                  <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Growth Trajectory</div>
-                  <div className="flex items-center gap-2 mb-2">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 hover:border-terminal-cyan/50 hover:shadow-md transition-all shadow-sm">
+                  <div className="text-xs font-semibold text-terminal-muted mb-3 uppercase tracking-wide">Growth Trajectory</div>
+                  <div className="flex items-center gap-2.5 mb-3">
                     <div className={`text-2xl ${totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'text-terminal-green' : 'text-terminal-yellow'}`}>
                       {totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? '📈' : '📊'}
                     </div>
-                    <div className={`text-2xl font-bold ${totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'text-terminal-green' : 'text-terminal-yellow'}`}>
+                    <div className={`text-xl font-bold ${totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'text-terminal-green' : 'text-terminal-yellow'}`}>
                       {totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'Growing' : 'Stable'}
                     </div>
                   </div>
-                  <div className="text-xs text-terminal-muted">
+                  <div className="text-xs text-terminal-muted font-medium">
                     Based on current trends
                   </div>
                 </div>
@@ -537,36 +537,42 @@ export function Planning() {
 
       {/* Forecast Validation */}
       {forecastApiData?.validation?.results && forecastApiData.validation.results.length > 0 && (
-        <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-terminal-border">
-            <div className="text-sm text-terminal-muted">Historical Model Validation</div>
+        <div className="bg-terminal-card border border-terminal-border rounded-xl overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-terminal-border bg-terminal-bg/30">
+            <div className="text-base font-semibold text-terminal-text">Historical Model Validation</div>
+            <div className="text-xs text-terminal-muted mt-1">Comparing forecasted vs actual revenue for past months</div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead>
-                <tr className="text-xs text-terminal-muted border-b border-terminal-border">
-                  <th className="text-left px-4 py-2 font-medium">Month</th>
-                  <th className="text-right px-4 py-2 font-medium">Actual</th>
-                  <th className="text-right px-4 py-2 font-medium">Forecasted</th>
-                  <th className="text-right px-4 py-2 font-medium">Error</th>
+              <thead className="bg-terminal-bg/50">
+                <tr className="text-xs font-semibold text-terminal-muted uppercase tracking-wide border-b-2 border-terminal-border">
+                  <th className="text-left px-6 py-3">Month</th>
+                  <th className="text-right px-6 py-3">Actual</th>
+                  <th className="text-right px-6 py-3">Forecasted</th>
+                  <th className="text-right px-6 py-3">Error</th>
                 </tr>
               </thead>
               <tbody>
-                {forecastApiData.validation.results.map((result: any) => {
+                {forecastApiData.validation.results.map((result: any, index: number) => {
                   const errorNum = parseFloat(result.errorPercent);
                   const errorColor = Math.abs(errorNum) < 5 ? 'text-terminal-green' :
                                      Math.abs(errorNum) < 10 ? 'text-terminal-yellow' :
                                      'text-terminal-red';
                   return (
-                    <tr key={result.month} className="border-b border-terminal-border/50">
-                      <td className="px-4 py-3 font-mono text-terminal-text">{result.month}</td>
-                      <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                    <tr
+                      key={result.month}
+                      className={`border-b border-terminal-border/30 hover:bg-terminal-bg/30 transition-colors ${
+                        index % 2 === 0 ? 'bg-terminal-bg/10' : ''
+                      }`}
+                    >
+                      <td className="px-6 py-3.5 font-mono text-sm text-terminal-text font-medium">{result.month}</td>
+                      <td className="px-6 py-3.5 text-right font-mono text-sm text-terminal-text font-semibold">
                         ${(result.actual / 1000).toFixed(1)}k
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-terminal-muted">
+                      <td className="px-6 py-3.5 text-right font-mono text-sm text-terminal-muted">
                         ${(result.forecasted / 1000).toFixed(1)}k
                       </td>
-                      <td className={`px-4 py-3 text-right font-mono ${errorColor}`}>
+                      <td className={`px-6 py-3.5 text-right font-mono text-sm font-semibold ${errorColor}`}>
                         {errorNum > 0 ? '+' : ''}{result.errorPercent}%
                       </td>
                     </tr>
@@ -579,10 +585,12 @@ export function Planning() {
       )}
 
       {/* Payback Analysis Section */}
-      <PaybackAnalysis />
+      <div className="border-t-2 border-terminal-border/50 pt-8 mt-8">
+        <PaybackAnalysis />
+      </div>
 
       {/* Scenario Modeling Section */}
-      <div className="border-t-4 border-terminal-border pt-8 mt-8">
+      <div className="border-t-4 border-terminal-border/70 pt-10 mt-10">
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-1.5 h-7 bg-terminal-green rounded"></div>
@@ -612,7 +620,7 @@ export function Planning() {
         </div>
 
         {/* Scenario Selector */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-5">
         {scenarios.map((scenario) => {
           const Icon = scenario.icon;
           const isSelected = scenario.name === currentScenario?.name;
@@ -623,19 +631,20 @@ export function Planning() {
                 scenario.name === 'Base Case' ? 'base' :
                 scenario.name === 'Optimistic' ? 'optimistic' : 'conservative'
               )}
-              className={`p-5 rounded-xl border-2 transition-all ${
+              className={`p-6 rounded-xl border-2 transition-all duration-200 ${
                 isSelected
-                  ? 'border-terminal-green bg-terminal-card shadow-lg scale-105'
-                  : 'border-terminal-border bg-terminal-card/50 hover:border-terminal-green/50 hover:shadow-md'
+                  ? 'border-terminal-green bg-terminal-card shadow-lg scale-[1.02]'
+                  : 'border-terminal-border bg-terminal-card/50 hover:border-terminal-green/50 hover:shadow-md hover:scale-[1.01]'
               }`}
             >
-              <div className="flex items-center gap-3 mb-1">
-                <Icon size={22} style={{ color: scenario.color }} />
+              <div className="flex items-center gap-3 mb-2">
+                <Icon size={24} style={{ color: scenario.color }} />
                 <span className="font-bold text-lg text-terminal-text">{scenario.name}</span>
               </div>
               {isSelected && (
-                <div className="text-xs text-terminal-green font-medium mt-2">
-                  ✓ Active scenario
+                <div className="flex items-center gap-1.5 text-xs text-terminal-green font-semibold mt-3 px-2 py-1 bg-terminal-green/10 rounded w-fit">
+                  <span>✓</span>
+                  <span>Active scenario</span>
                 </div>
               )}
             </button>
@@ -644,36 +653,45 @@ export function Planning() {
       </div>
 
       {/* Assumptions Editor */}
-      <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-        <div className="flex justify-between items-center mb-5">
+      <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h3 className="text-base font-bold text-terminal-text mb-1">Adjust Assumptions</h3>
-            <p className="text-xs text-terminal-muted">Modify parameters to explore different outcomes</p>
+            <h3 className="text-lg font-bold text-terminal-text mb-1.5">Adjust Assumptions</h3>
+            <p className="text-sm text-terminal-muted">Modify parameters to explore different outcomes</p>
           </div>
-          <div className="flex items-center gap-2 bg-terminal-bg border border-terminal-border rounded-lg px-4 py-2">
-            <label className="text-sm font-medium text-terminal-muted">Forecast Period:</label>
+          <div className="flex items-center gap-3 bg-terminal-bg border border-terminal-border rounded-lg px-4 py-2.5 shadow-sm">
+            <label className="text-sm font-semibold text-terminal-muted">Forecast Period:</label>
             <input
               type="number"
               min="3"
               max="24"
               value={forecastMonths}
               onChange={(e) => setForecastMonths(Number(e.target.value))}
-              className="w-16 px-3 py-1.5 bg-terminal-bg border border-terminal-border rounded text-terminal-text text-sm font-mono font-semibold"
+              className="w-16 px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-terminal-text text-sm font-mono font-semibold hover:border-terminal-cyan/50 focus:border-terminal-cyan focus:outline-none transition-colors"
             />
-            <span className="text-sm text-terminal-muted">months</span>
+            <span className="text-sm font-medium text-terminal-muted">months</span>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-5">
-          <div className="bg-terminal-bg/50 rounded-lg p-4 border border-terminal-cyan/20">
-            <div className="text-sm font-bold text-terminal-cyan mb-3">Base Case</div>
+          <div className="bg-terminal-bg/50 rounded-xl p-5 border-2 border-terminal-cyan/30 shadow-sm">
+            <div className="text-base font-bold text-terminal-cyan mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-terminal-cyan rounded"></div>
+              Base Case
+            </div>
             {renderAssumptionInputs(baseAssumptions, setBaseAssumptions)}
           </div>
-          <div className="bg-terminal-bg/50 rounded-lg p-4 border border-terminal-green/20">
-            <div className="text-sm font-bold text-terminal-green mb-3">Optimistic</div>
+          <div className="bg-terminal-bg/50 rounded-xl p-5 border-2 border-terminal-green/30 shadow-sm">
+            <div className="text-base font-bold text-terminal-green mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-terminal-green rounded"></div>
+              Optimistic
+            </div>
             {renderAssumptionInputs(optimisticAssumptions, setOptimisticAssumptions)}
           </div>
-          <div className="bg-terminal-bg/50 rounded-lg p-4 border border-terminal-yellow/20">
-            <div className="text-sm font-bold text-terminal-yellow mb-3">Conservative</div>
+          <div className="bg-terminal-bg/50 rounded-xl p-5 border-2 border-terminal-yellow/30 shadow-sm">
+            <div className="text-base font-bold text-terminal-yellow mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-terminal-yellow rounded"></div>
+              Conservative
+            </div>
             {renderAssumptionInputs(conservativeAssumptions, setConservativeAssumptions)}
           </div>
         </div>
@@ -681,53 +699,58 @@ export function Planning() {
 
       {/* Key Metrics */}
       {summary && (
-        <div className="grid grid-cols-5 gap-4">
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 transition-colors">
-            <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Total Revenue</div>
-            <div className="text-2xl font-bold font-mono text-terminal-text mb-1">
+        <div className="grid grid-cols-5 gap-5">
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 hover:shadow-md transition-all shadow-sm">
+            <div className="text-xs font-semibold text-terminal-muted mb-2.5 uppercase tracking-wide">Total Revenue</div>
+            <div className="text-2xl font-bold font-mono text-terminal-cyan mb-1.5">
               ${(totalRevenue / 1000).toFixed(1)}k
             </div>
-            <div className="text-xs text-terminal-muted">{forecastMonths} month period</div>
+            <div className="text-xs text-terminal-muted font-medium">{forecastMonths} month period</div>
           </div>
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 transition-colors">
-            <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Total Spend</div>
-            <div className="text-2xl font-bold font-mono text-terminal-text mb-1">
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 hover:shadow-md transition-all shadow-sm">
+            <div className="text-xs font-semibold text-terminal-muted mb-2.5 uppercase tracking-wide">Total Spend</div>
+            <div className="text-2xl font-bold font-mono text-terminal-text mb-1.5">
               ${(totalSpend / 1000).toFixed(1)}k
             </div>
-            <div className="text-xs text-terminal-muted">{forecastMonths} month budget</div>
+            <div className="text-xs text-terminal-muted font-medium">{forecastMonths} month budget</div>
           </div>
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 transition-colors">
-            <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Average ROAS</div>
-            <div className={`text-2xl font-bold font-mono mb-1 ${avgRoas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 hover:shadow-md transition-all shadow-sm">
+            <div className="text-xs font-semibold text-terminal-muted mb-2.5 uppercase tracking-wide">Average ROAS</div>
+            <div className={`text-2xl font-bold font-mono mb-1.5 ${avgRoas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
               {avgRoas.toFixed(2)}x
             </div>
-            <div className={`text-xs ${avgRoas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
-              {avgRoas >= 1 ? 'Profitable' : 'Loss-making'}
+            <div className={`text-xs font-semibold ${avgRoas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+              {avgRoas >= 1 ? '✓ Profitable' : '⚠ Loss-making'}
             </div>
           </div>
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 transition-colors">
-            <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">Active Subscribers</div>
-            <div className="text-2xl font-bold font-mono text-terminal-text mb-1">
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 hover:shadow-md transition-all shadow-sm">
+            <div className="text-xs font-semibold text-terminal-muted mb-2.5 uppercase tracking-wide">Active Subscribers</div>
+            <div className="text-2xl font-bold font-mono text-terminal-text mb-1.5">
               {Math.round(summary.totalActive).toLocaleString()}
             </div>
-            <div className="text-xs text-terminal-muted">
+            <div className="text-xs text-terminal-muted font-medium">
               {Math.round(summary.appleAdsActive).toLocaleString()} paid • {Math.round(summary.organicActive).toLocaleString()} organic
             </div>
           </div>
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 transition-colors">
-            <div className="text-xs font-medium text-terminal-muted mb-2 uppercase tracking-wide">New Subscribers</div>
-            <div className="text-2xl font-bold font-mono text-terminal-text mb-1">
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-5 hover:border-terminal-green/50 hover:shadow-md transition-all shadow-sm">
+            <div className="text-xs font-semibold text-terminal-muted mb-2.5 uppercase tracking-wide">New Subscribers</div>
+            <div className="text-2xl font-bold font-mono text-terminal-text mb-1.5">
               {Math.round(forecastData.reduce((sum, d) => sum + d.newSubs, 0)).toLocaleString()}
             </div>
-            <div className="text-xs text-terminal-muted">From paid acquisition</div>
+            <div className="text-xs text-terminal-muted font-medium">From paid acquisition</div>
           </div>
         </div>
       )}
 
       {/* Stacked Area Chart */}
-      <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-        <div className="text-base font-semibold text-terminal-text mb-1">Revenue Projection by Source</div>
-        <div className="text-xs text-terminal-muted mb-5">Breakdown of paid vs. organic revenue streams</div>
+      <div className="bg-terminal-card border border-terminal-border rounded-xl p-6 shadow-sm">
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-1 h-6 bg-terminal-green rounded"></div>
+            <div className="text-lg font-bold text-terminal-text">Revenue Projection by Source</div>
+          </div>
+          <div className="text-sm text-terminal-muted">Breakdown of paid vs. organic revenue streams</div>
+        </div>
         <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
@@ -779,50 +802,55 @@ export function Planning() {
       </div>
 
       {/* Forecast Table */}
-      <div className="bg-terminal-card border border-terminal-border rounded-xl overflow-hidden">
+      <div className="bg-terminal-card border border-terminal-border rounded-xl overflow-hidden shadow-sm">
         <div className="px-6 py-4 border-b border-terminal-border bg-terminal-bg/30">
           <div className="text-base font-semibold text-terminal-text">Detailed Monthly Breakdown</div>
           <div className="text-xs text-terminal-muted mt-1">Complete scenario projection data</div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead>
-              <tr className="text-xs text-terminal-muted border-b border-terminal-border">
-                <th className="text-left px-4 py-2 font-medium">Month</th>
-                <th className="text-right px-4 py-2 font-medium">Apple Ads Rev</th>
-                <th className="text-right px-4 py-2 font-medium">Organic Rev</th>
-                <th className="text-right px-4 py-2 font-medium">Total Rev</th>
-                <th className="text-right px-4 py-2 font-medium">Spend</th>
-                <th className="text-right px-4 py-2 font-medium">ROAS</th>
-                <th className="text-right px-4 py-2 font-medium">Active Subs</th>
-                <th className="text-right px-4 py-2 font-medium">New Subs</th>
+            <thead className="bg-terminal-bg/50">
+              <tr className="text-xs font-semibold text-terminal-muted uppercase tracking-wide border-b-2 border-terminal-border">
+                <th className="text-left px-5 py-3">Month</th>
+                <th className="text-right px-5 py-3">Apple Ads Rev</th>
+                <th className="text-right px-5 py-3">Organic Rev</th>
+                <th className="text-right px-5 py-3">Total Rev</th>
+                <th className="text-right px-5 py-3">Spend</th>
+                <th className="text-right px-5 py-3">ROAS</th>
+                <th className="text-right px-5 py-3">Active Subs</th>
+                <th className="text-right px-5 py-3">New Subs</th>
               </tr>
             </thead>
             <tbody>
               {forecastData.map((row, i) => {
                 const roas = row.totalRevenue / row.spend;
                 return (
-                  <tr key={i} className="border-b border-terminal-border/50 hover:bg-terminal-bg/50">
-                    <td className="px-4 py-3 font-mono text-terminal-text">{row.date}</td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                  <tr
+                    key={i}
+                    className={`border-b border-terminal-border/30 hover:bg-terminal-bg/30 transition-colors ${
+                      i % 2 === 0 ? 'bg-terminal-bg/10' : ''
+                    }`}
+                  >
+                    <td className="px-5 py-3.5 font-mono text-sm text-terminal-text font-medium">{row.date}</td>
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-terminal-cyan font-semibold">
                       ${(row.appleAdsRevenue / 1000).toFixed(1)}k
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-purple-400 font-semibold">
                       ${(row.organicRevenue / 1000).toFixed(1)}k
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-terminal-text font-bold">
                       ${(row.totalRevenue / 1000).toFixed(1)}k
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-muted">
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-terminal-muted">
                       ${(row.spend / 1000).toFixed(1)}k
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono ${roas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+                    <td className={`px-5 py-3.5 text-right font-mono text-sm font-bold ${roas >= 1 ? 'text-terminal-green' : 'text-terminal-red'}`}>
                       {roas.toFixed(2)}x
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-terminal-text">
                       {Math.round(row.totalActive).toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-terminal-muted">
+                    <td className="px-5 py-3.5 text-right font-mono text-sm text-terminal-muted">
                       {Math.round(row.newSubs)}
                     </td>
                   </tr>
