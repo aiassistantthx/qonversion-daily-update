@@ -4182,8 +4182,9 @@ router.get('/active-subscribers', async (req, res) => {
   try {
     // Current active subscribers by type
     // Logic: Find the most recent subscription event for each user and determine if still active
-    // Weekly subs: active if last event was within 10 days
-    // Yearly subs: active if last event was within 380 days
+    // Weekly subs: active if last event was within 14 days (7 days + 7 days grace)
+    // Monthly subs: active if last event was within 37 days (30 days + 7 days grace)
+    // Yearly subs: active if last event was within 380 days (365 days + 15 days grace)
     const currentQuery = `
       WITH last_subscription_event AS (
         SELECT DISTINCT ON (q_user_id)
@@ -4192,6 +4193,7 @@ router.get('/active-subscribers', async (req, res) => {
           product_id,
           CASE
             WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            WHEN product_id LIKE '%monthly%' THEN 'monthly'
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
@@ -4205,7 +4207,8 @@ router.get('/active-subscribers', async (req, res) => {
           sub_type
         FROM last_subscription_event
         WHERE (
-          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '10 days')
+          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '14 days')
+          OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '37 days')
           OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '380 days')
         )
       )
@@ -4217,11 +4220,11 @@ router.get('/active-subscribers', async (req, res) => {
     `;
     const currentResult = await db.query(currentQuery);
 
-    const current = { weekly: 0, yearly: 0, total: 0 };
+    const current = { weekly: 0, monthly: 0, yearly: 0, total: 0 };
     for (const row of currentResult.rows) {
       current[row.sub_type] = parseInt(row.active_count) || 0;
     }
-    current.total = current.weekly + current.yearly;
+    current.total = current.weekly + current.monthly + current.yearly;
 
     // Previous period (30 days before)
     const previousQuery = `
@@ -4232,6 +4235,7 @@ router.get('/active-subscribers', async (req, res) => {
           product_id,
           CASE
             WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            WHEN product_id LIKE '%monthly%' THEN 'monthly'
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
@@ -4246,7 +4250,8 @@ router.get('/active-subscribers', async (req, res) => {
           sub_type
         FROM last_subscription_event
         WHERE (
-          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '40 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
+          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '44 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
+          OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '67 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
           OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '410 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
         )
       )
@@ -4258,15 +4263,18 @@ router.get('/active-subscribers', async (req, res) => {
     `;
     const previousResult = await db.query(previousQuery);
 
-    const previous = { weekly: 0, yearly: 0, total: 0 };
+    const previous = { weekly: 0, monthly: 0, yearly: 0, total: 0 };
     for (const row of previousResult.rows) {
       previous[row.sub_type] = parseInt(row.active_count) || 0;
     }
-    previous.total = previous.weekly + previous.yearly;
+    previous.total = previous.weekly + previous.monthly + previous.yearly;
 
     // Calculate trends
     const weeklyTrend = previous.weekly > 0
       ? ((current.weekly - previous.weekly) / previous.weekly) * 100
+      : 0;
+    const monthlyTrend = previous.monthly > 0
+      ? ((current.monthly - previous.monthly) / previous.monthly) * 100
       : 0;
     const yearlyTrend = previous.yearly > 0
       ? ((current.yearly - previous.yearly) / previous.yearly) * 100
@@ -4318,13 +4326,16 @@ router.get('/active-subscribers', async (req, res) => {
     res.json({
       current: {
         weekly: current.weekly,
+        monthly: current.monthly,
         yearly: current.yearly,
         total: current.total,
         weeklyPercentage: current.total > 0 ? (current.weekly / current.total) * 100 : 0,
+        monthlyPercentage: current.total > 0 ? (current.monthly / current.total) * 100 : 0,
         yearlyPercentage: current.total > 0 ? (current.yearly / current.total) * 100 : 0,
       },
       trend: {
         weekly: weeklyTrend,
+        monthly: monthlyTrend,
         yearly: yearlyTrend,
         total: totalTrend,
       },

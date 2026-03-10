@@ -79,6 +79,20 @@ export function RoasEvolution() {
     ? cohortMonths.filter(month => selectedCohorts.includes(month))
     : cohortMonths;
 
+  // Calculate dynamic Y-axis domain based on actual data
+  const maxRoas = chartData.reduce((max, point) => {
+    visibleCohorts.forEach(cohort => {
+      const value = point[cohort];
+      if (typeof value === 'number' && value > max) {
+        max = value;
+      }
+    });
+    return max;
+  }, 0);
+
+  // Add 20% padding above max, but ensure we show at least 100% breakeven line
+  const yAxisMax = Math.max(1, maxRoas * 1.2);
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -141,7 +155,7 @@ export function RoasEvolution() {
               <YAxis
                 tick={{ fill: '#6b7280', fontSize: 11 }}
                 tickFormatter={v => `${(v * 100).toFixed(0)}%`}
-                domain={[0, 10]}
+                domain={[0, yAxisMax]}
                 label={{ value: 'ROAS', angle: -90, position: 'insideLeft', fill: '#6b7280', fontSize: 12 }}
               />
               <ReferenceLine

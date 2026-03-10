@@ -1006,45 +1006,102 @@ export default function Keywords() {
                           <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        ${spend.toFixed(2)}
+                        );
+                      case 'spend':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            ${spend.toFixed(2)}
+                          </TableCell>
+                        );
+                      case 'impressions':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {parseInt(kw.impressions_7d || 0).toLocaleString()}
+                          </TableCell>
+                        );
+                      case 'sov':
+                        return (
+                          <TableCell key={columnId} className="text-right font-medium text-blue-600">
+                            {parseFloat(kw.sov || 0).toFixed(2)}%
+                          </TableCell>
+                        );
+                      case 'taps':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {parseInt(kw.taps_7d || 0).toLocaleString()}
+                          </TableCell>
+                        );
+                      case 'ttr':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {(parseFloat(kw.ttr_7d || 0) * 100).toFixed(2)}%
+                          </TableCell>
+                        );
+                      case 'installs':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {parseInt(kw.installs_7d || 0)}
+                          </TableCell>
+                        );
+                      case 'cvr':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {(parseFloat(kw.cvr_7d || 0) * 100).toFixed(2)}%
+                          </TableCell>
+                        );
+                      case 'cpa':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kw.cpa_7d ? `$${parseFloat(kw.cpa_7d).toFixed(2)}` : '-'}
+                          </TableCell>
+                        );
+                      case 'cpt':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kw.cpt_7d ? `$${parseFloat(kw.cpt_7d).toFixed(2)}` : '-'}
+                          </TableCell>
+                        );
+                      case 'cpm':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kw.cpm_7d ? `$${parseFloat(kw.cpm_7d).toFixed(2)}` : '-'}
+                          </TableCell>
+                        );
+                      case 'revenue':
+                        return (
+                          <TableCell key={columnId} className="text-right text-green-600">
+                            ${revenue.toFixed(2)}
+                          </TableCell>
+                        );
+                      case 'roas':
+                        return (
+                          <TableCell key={columnId} className={`text-right font-medium ${roas >= 1 ? 'text-green-600' : roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roas > 0 ? `${roas.toFixed(2)}x` : '-'}
+                          </TableCell>
+                        );
+                      case 'cop':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
+                          </TableCell>
+                        );
+                      default:
+                        return null;
+                    }
+                  };
+
+                  return (
+                    <TableRow key={kw.keyword_id} className={selectedKeywords.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedKeywords.has(kw.keyword_id)}
+                          onCheckedChange={() => toggleKeyword(kw.keyword_id)}
+                        />
                       </TableCell>
-                      <TableCell className="text-right">
-                        {parseInt(kw.impressions_7d || 0).toLocaleString()}
+                      <TableCell className="font-medium max-w-xs truncate" title={kw.keyword_text}>
+                        {kw.keyword_text}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-blue-600">
-                        {parseFloat(kw.sov || 0).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {parseInt(kw.taps_7d || 0).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {(parseFloat(kw.ttr_7d || 0) * 100).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {parseInt(kw.installs_7d || 0)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {(parseFloat(kw.cvr_7d || 0) * 100).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {kw.cpa_7d ? `$${parseFloat(kw.cpa_7d).toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {kw.cpt_7d ? `$${parseFloat(kw.cpt_7d).toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {kw.cpm_7d ? `$${parseFloat(kw.cpm_7d).toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-right text-green-600">
-                        ${revenue.toFixed(2)}
-                      </TableCell>
-                      <TableCell className={`text-right font-medium ${roas >= 1 ? 'text-green-600' : roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                        {roas > 0 ? `${roas.toFixed(2)}x` : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
-                      </TableCell>
+                      {visibleColumns.filter(c => c !== 'keyword').map(columnId => renderCell(columnId))}
                     </TableRow>
                   );
                 })
