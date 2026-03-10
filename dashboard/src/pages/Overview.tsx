@@ -11,7 +11,6 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
-  TrendChart,
   SubscriptionBreakdown,
   RetentionChart,
   WeeklyChurnChart,
@@ -27,7 +26,7 @@ import {
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  TrendChartData, SubscriptionBreakdownData,
+  SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
   CountriesData, MRRBreakdownData, ActiveSubscribersData
 } from '../components';
@@ -395,10 +394,6 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/countries?${buildParams({ limit: 20 })}`).then(r => r.json()),
   });
 
-  const { data: trendChartData } = useQuery<TrendChartData>({
-    queryKey: ['asa-trends', dateRange],
-    queryFn: () => fetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`).then(r => r.json()),
-  });
 
   const { data: mrrBreakdownData } = useQuery<MRRBreakdownData>({
     queryKey: ['mrr-breakdown'],
@@ -657,9 +652,6 @@ export function Overview() {
           </ResponsiveContainer>
         </div>
       </div>
-
-      {/* Trend Chart - Spend/Revenue/ROAS */}
-      {trendChartData?.data && <TrendChart data={trendChartData} />}
 
       {/* Subscription Breakdown */}
       <SubscriptionBreakdown data={subscriptionBreakdownData} />

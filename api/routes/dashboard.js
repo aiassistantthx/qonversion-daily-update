@@ -2745,42 +2745,51 @@ router.get('/churn-rate', async (req, res) => {
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
         GROUP BY DATE(event_date)
       ),
-      -- For churned: find when each subscription actually expired
-      -- A subscription expires when: last_renewal + period + grace_period passes without renewal
-      -- Grace period = 3 days (billing retry window)
-      -- We calculate the expiry date for each renewal event, not just the last one
-      subscription_periods AS (
+      -- For churned: find when each USER's subscription expired (user-level, not subscription-level)
+      -- A user churns when their LAST active subscription expires without renewal
+      -- Grace period = 16 days for billing retry (Apple's billing retry can be up to 16 days)
+      user_last_subscription AS (
         SELECT
           q_user_id,
-          event_date as start_date,
-          product_id,
-          -- Calculate when this subscription period expires (with 3 day grace)
-          CASE
-            WHEN product_id LIKE '%weekly%' THEN event_date + INTERVAL '10 days'  -- 7 + 3 grace
-            WHEN product_id LIKE '%yearly%' THEN event_date + INTERVAL '368 days' -- 365 + 3 grace
-            WHEN product_id LIKE '%monthly%' THEN event_date + INTERVAL '33 days' -- 30 + 3 grace
-            ELSE event_date + INTERVAL '33 days'
-          END as expiry_date
+          MAX(event_date) as last_active_date,
+          -- Get the subscription type from the last event
+          (ARRAY_AGG(product_id ORDER BY event_date DESC))[1] as last_product_id
         FROM events_v2
         WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
           AND refund = false
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '1 year'
+        GROUP BY q_user_id
       ),
-      -- Find which subscription periods actually expired (no renewal within grace period)
+      -- Calculate expiry date for each user's last subscription
+      user_expiry AS (
+        SELECT
+          q_user_id,
+          last_active_date,
+          last_product_id,
+          -- Add subscription period only (grace period is when we receive expired event)
+          -- For weekly: expires after 7 days
+          CASE
+            WHEN last_product_id LIKE '%weekly%' THEN last_active_date + INTERVAL '7 days'
+            WHEN last_product_id LIKE '%yearly%' THEN last_active_date + INTERVAL '365 days'
+            WHEN last_product_id LIKE '%monthly%' THEN last_active_date + INTERVAL '30 days'
+            ELSE last_active_date + INTERVAL '30 days'
+          END as expiry_date
+        FROM user_last_subscription
+      ),
+      -- Users who churned = their subscription expired and no renewal after
       expired_subscriptions AS (
-        SELECT DISTINCT ON (sp.q_user_id, DATE(sp.expiry_date))
-          sp.q_user_id,
-          DATE(sp.expiry_date) as churned_date
-        FROM subscription_periods sp
-        WHERE sp.expiry_date >= CURRENT_DATE - INTERVAL '${months} months'
-          AND sp.expiry_date < CURRENT_DATE
-          -- No renewal event within the grace period window
+        SELECT
+          q_user_id,
+          DATE(expiry_date) as churned_date
+        FROM user_expiry
+        WHERE expiry_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND expiry_date < CURRENT_DATE
+          -- Verify no renewal after the calculated expiry
           AND NOT EXISTS (
             SELECT 1 FROM events_v2 e2
-            WHERE e2.q_user_id = sp.q_user_id
+            WHERE e2.q_user_id = user_expiry.q_user_id
               AND e2.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
-              AND e2.event_date > sp.start_date
-              AND e2.event_date <= sp.expiry_date + INTERVAL '1 day'
+              AND e2.event_date > user_expiry.last_active_date
           )
       ),
       daily_churned AS (
