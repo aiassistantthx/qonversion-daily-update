@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Line } from 'recharts';
 import { Download, TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { PaybackAnalysis } from '../components/PaybackAnalysis';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -558,6 +559,9 @@ export function Planning() {
           </div>
         </div>
       )}
+
+      {/* Payback Analysis Section */}
+      <PaybackAnalysis />
 
       {/* Scenario Modeling Section */}
       <div className="border-t-2 border-terminal-border pt-6 mt-6">
