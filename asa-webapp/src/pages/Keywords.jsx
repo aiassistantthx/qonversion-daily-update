@@ -8,11 +8,148 @@ import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useColumnSettings } from '../hooks/useColumnSettings';
 import { Modal } from '../components/Modal';
 import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
+import { ColumnPicker } from '../components/ColumnPicker';
+import { PresetViews } from '../components/PresetViews';
 import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
+
+const DEFAULT_COLUMNS = {
+  matchType: true,
+  bid: true,
+  bidVsCpa: true,
+  spend: true,
+  impressions: true,
+  sov: true,
+  taps: true,
+  ttr: false,
+  installs: true,
+  cvr: false,
+  cpa: true,
+  cpt: false,
+  cpm: false,
+  revenue: true,
+  roas: true,
+  cop: false,
+};
+
+const COLUMN_DEFINITIONS = [
+  { id: 'matchType', label: 'Match' },
+  { id: 'bid', label: 'Bid' },
+  { id: 'bidVsCpa', label: 'Bid vs CPA' },
+  { id: 'spend', label: 'Spend' },
+  { id: 'impressions', label: 'Impressions' },
+  { id: 'sov', label: 'SOV %' },
+  { id: 'taps', label: 'Taps' },
+  { id: 'ttr', label: 'TTR' },
+  { id: 'installs', label: 'Installs' },
+  { id: 'cvr', label: 'CVR' },
+  { id: 'cpa', label: 'CPA' },
+  { id: 'cpt', label: 'CPT' },
+  { id: 'cpm', label: 'CPM' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'roas', label: 'ROAS' },
+  { id: 'cop', label: 'COP' },
+];
+
+const PRESET_VIEWS = [
+  {
+    name: 'performance',
+    label: 'Performance',
+    columns: {
+      matchType: true,
+      bid: false,
+      bidVsCpa: false,
+      spend: true,
+      impressions: false,
+      sov: true,
+      taps: false,
+      ttr: false,
+      installs: true,
+      cvr: false,
+      cpa: true,
+      cpt: false,
+      cpm: false,
+      revenue: true,
+      roas: true,
+      cop: false,
+    }
+  },
+  {
+    name: 'bidding',
+    label: 'Bidding',
+    columns: {
+      matchType: true,
+      bid: true,
+      bidVsCpa: true,
+      spend: true,
+      impressions: false,
+      sov: false,
+      taps: false,
+      ttr: false,
+      installs: true,
+      cvr: false,
+      cpa: true,
+      cpt: false,
+      cpm: false,
+      revenue: false,
+      roas: false,
+      cop: false,
+    }
+  },
+  {
+    name: 'conversion',
+    label: 'Conversion',
+    columns: {
+      matchType: true,
+      bid: false,
+      bidVsCpa: false,
+      spend: false,
+      impressions: false,
+      sov: false,
+      taps: true,
+      ttr: true,
+      installs: true,
+      cvr: true,
+      cpa: true,
+      cpt: true,
+      cpm: false,
+      revenue: false,
+      roas: false,
+      cop: false,
+    }
+  },
+  {
+    name: 'full',
+    label: 'Full',
+    columns: {
+      matchType: true,
+      bid: true,
+      bidVsCpa: true,
+      spend: true,
+      impressions: true,
+      sov: true,
+      taps: true,
+      ttr: true,
+      installs: true,
+      cvr: true,
+      cpa: true,
+      cpt: true,
+      cpm: true,
+      revenue: true,
+      roas: true,
+      cop: true,
+    }
+  },
+  {
+    name: 'custom',
+    label: 'Custom',
+    columns: DEFAULT_COLUMNS
+  }
+];
 
 export default function Keywords() {
   const navigate = useNavigate();
@@ -40,6 +177,12 @@ export default function Keywords() {
   const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
+
+  const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
+    'keywords-columns',
+    DEFAULT_COLUMNS,
+    Object.keys(DEFAULT_COLUMNS)
+  );
 
   // Get campaigns for names
   const { data: campaignsData } = useQuery({
@@ -462,6 +605,8 @@ export default function Keywords() {
   const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
   const cop = totals.paidUsers > 0 ? totals.spend / totals.paidUsers : 0;
 
+  const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 2;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -483,6 +628,12 @@ export default function Keywords() {
           >
             <Plus size={16} /> Add Keywords
           </Button>
+          <ColumnPicker
+            columns={COLUMN_DEFINITIONS}
+            visibleColumns={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetToDefault}
+          />
           <Button variant="secondary" onClick={exportCSV}>
             <Download size={16} /> Export CSV
           </Button>
@@ -523,6 +674,13 @@ export default function Keywords() {
           </Button>
         </div>
       )}
+
+      {/* Preset Views */}
+      <PresetViews
+        activePreset={activePreset}
+        onPresetChange={applyPreset}
+        presets={PRESET_VIEWS}
+      />
 
       {/* Totals */}
       {keywords.length > 0 && (
@@ -732,32 +890,27 @@ export default function Keywords() {
                   />
                 </TableHeader>
                 <SortHeader field="keyword">Keyword</SortHeader>
-                <SortHeader field="matchType">Match</SortHeader>
-                <SortHeader field="bid" className="text-right">Bid</SortHeader>
-                <SortHeader field="bidVsCpa" className="text-right">Bid vs CPA</SortHeader>
-                <SortHeader field="spend" className="text-right">Spend</SortHeader>
-                <SortHeader field="impressions" className="text-right">Impressions</SortHeader>
-                <SortHeader field="sov" className="text-right">SOV %</SortHeader>
-                <SortHeader field="taps" className="text-right">Taps</SortHeader>
-                <SortHeader field="ttr" className="text-right">TTR</SortHeader>
-                <SortHeader field="installs" className="text-right">Installs</SortHeader>
-                <SortHeader field="cvr" className="text-right">CVR</SortHeader>
-                <SortHeader field="cpa" className="text-right">CPA</SortHeader>
-                <SortHeader field="cpt" className="text-right">CPT</SortHeader>
-                <SortHeader field="cpm" className="text-right">CPM</SortHeader>
-                <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
-                <SortHeader field="roas" className="text-right">ROAS</SortHeader>
-                <SortHeader field="cop" className="text-right">COP</SortHeader>
+                {columnOrder.map((columnId) => {
+                  if (!visibleColumns[columnId]) return null;
+                  const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
+                  if (!column) return null;
+                  const isRightAligned = columnId !== 'matchType';
+                  return (
+                    <SortHeader key={columnId} field={columnId} className={isRightAligned ? 'text-right' : ''}>
+                      {column.label}
+                    </SortHeader>
+                  );
+                })}
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={18} className="text-center py-8">Loading keywords...</TableCell>
+                  <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading keywords...</TableCell>
                 </TableRow>
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={18} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">
                     No keywords found.
                   </TableCell>
                 </TableRow>
@@ -772,25 +925,19 @@ export default function Keywords() {
                   const isOverpaying = bidVsCpaRatio > 1.5 && cpa > 0;
                   const recommendedBid = cpa > 0 ? Math.max(0.5, cpa * 1.2) : bid;
 
-                  return (
-                    <TableRow key={kw.keyword_id} className="hover:bg-gray-50">
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(kw.keyword_id)}
-                          onChange={() => toggleSelect(kw.keyword_id)}
-                          className="rounded border-gray-300"
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium max-w-xs truncate" title={kw.keyword_text}>
-                        {kw.keyword_text}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={kw.match_type === 'EXACT' ? 'info' : 'default'}>
-                          {kw.match_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
+                  const renderCell = (columnId) => {
+                    switch (columnId) {
+                      case 'matchType':
+                        return (
+                          <TableCell key={columnId}>
+                            <Badge variant={kw.match_type === 'EXACT' ? 'info' : 'default'}>
+                              {kw.match_type}
+                            </Badge>
+                          </TableCell>
+                        );
+                      case 'bid':
+                        return (
+                          <TableCell key={columnId} className="text-right">
                         {editingKeywordId === kw.keyword_id ? (
                           <div className="flex items-center gap-1 justify-end">
                             <Input

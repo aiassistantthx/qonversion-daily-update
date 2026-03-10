@@ -449,78 +449,80 @@ export default function AdGroups() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8">Loading ad groups...</TableCell>
+                <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading ad groups...</TableCell>
               </TableRow>
             ) : adGroups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">
                   No ad groups found
                 </TableCell>
               </TableRow>
             ) : (
-              adGroups.map((ag) => (
-                <TableRow key={`${ag.campaignId}-${ag.id}`} className="hover:bg-gray-50">
-                  <TableCell>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(`${ag.campaignId}-${ag.id}`)}
-                      onChange={() => toggleSelect(ag.id, ag.campaignId)}
-                      className="rounded border-gray-300"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => navigateToKeywords(ag.campaignId, ag.id)}
-                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                    >
-                      {ag.name}
-                      <ArrowRight size={14} />
-                    </button>
-                  </TableCell>
-                  <TableCell className="text-gray-500">{ag.campaignName}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={ag.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right font-medium text-green-600">
-                    ${getPerf(ag, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className={getPerf(ag, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                      {getPerf(ag, 'roas').toFixed(2)}x
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(ag, 'installs').toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(getPerf(ag, 'ttr') * 100).toFixed(2)}%
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(getPerf(ag, 'cvr') * 100).toFixed(2)}%
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => navigateToKeywords(ag.campaignId, ag.id)}
-                    >
-                      <KeyRound size={14} />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              adGroups.map((ag) => {
+                const renderCell = (columnId) => {
+                  switch (columnId) {
+                    case 'campaign':
+                      return <TableCell key={columnId} className="text-gray-500">{ag.campaignName}</TableCell>;
+                    case 'status':
+                      return <TableCell key={columnId}><StatusBadge status={ag.status} /></TableCell>;
+                    case 'spend':
+                      return <TableCell key={columnId} className="text-right">${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                    case 'revenue':
+                      return <TableCell key={columnId} className="text-right font-medium text-green-600">${getPerf(ag, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                    case 'roas':
+                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas').toFixed(2)}x</span></TableCell>;
+                    case 'installs':
+                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'installs').toLocaleString()}</TableCell>;
+                    case 'cpa':
+                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}</TableCell>;
+                    case 'ttr':
+                      return <TableCell key={columnId} className="text-right">{(getPerf(ag, 'ttr') * 100).toFixed(2)}%</TableCell>;
+                    case 'cvr':
+                      return <TableCell key={columnId} className="text-right">{(getPerf(ag, 'cvr') * 100).toFixed(2)}%</TableCell>;
+                    case 'cpt':
+                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}</TableCell>;
+                    case 'cpm':
+                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}</TableCell>;
+                    default:
+                      return null;
+                  }
+                };
+
+                return (
+                  <TableRow key={`${ag.campaignId}-${ag.id}`} className="hover:bg-gray-50">
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(`${ag.campaignId}-${ag.id}`)}
+                        onChange={() => toggleSelect(ag.id, ag.campaignId)}
+                        className="rounded border-gray-300"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => navigateToKeywords(ag.campaignId, ag.id)}
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                      >
+                        {ag.name}
+                        <ArrowRight size={14} />
+                      </button>
+                    </TableCell>
+                    {columnOrder.map((columnId) => {
+                      if (!visibleColumns[columnId]) return null;
+                      return renderCell(columnId);
+                    })}
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => navigateToKeywords(ag.campaignId, ag.id)}
+                      >
+                        <KeyRound size={14} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
