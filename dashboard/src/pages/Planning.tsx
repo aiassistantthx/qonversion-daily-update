@@ -18,15 +18,6 @@ interface ScenarioConfig {
   icon: typeof Target;
 }
 
-interface CohortData {
-  cohortDate: string;
-  source: 'apple_ads' | 'organic';
-  subscribers: number;
-  revenue: number;
-  spend?: number;
-  age: number;
-}
-
 interface ForecastPoint {
   date: string;
   appleAdsRevenue: number;
@@ -472,7 +463,7 @@ export function Planning() {
                 <YAxis stroke="#6b7280" fontSize={12} tickLine={false} tickFormatter={(val) => `$${val}k`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
-                  formatter={(v: any, name: string) => [`$${Number(v).toFixed(1)}k`, name === 'base' ? 'Base Case' : name === 'optimistic' ? 'Optimistic' : 'Conservative']}
+                  formatter={(v, name) => [`$${Number(v).toFixed(1)}k`, name === 'base' ? 'Base Case' : name === 'optimistic' ? 'Optimistic' : 'Conservative']}
                 />
                 <Area type="monotone" dataKey="optimistic" stroke="#10b981" fill="#10b98130" strokeWidth={2} name="Optimistic" />
                 <Area type="monotone" dataKey="base" stroke="#3b82f6" fill="#3b82f630" strokeWidth={2} name="Base Case" />
