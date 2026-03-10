@@ -4808,4 +4808,90 @@ router.get('/seasonality', async (req, res) => {
   }
 });
 
+// ============================================
+// COHORTS - Revenue curves by cohort
+// ============================================
+router.get('/cohorts', async (req, res) => {
+  try {
+    const monthsBack = parseInt(req.query.months) || 6;
+    const PROCEEDS_FACTOR = 0.82;
+
+    const result = await db.query(`
+      WITH cohort_base AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          q_user_id,
+          install_date,
+          DATE_PART('day', event_date - install_date)::int as days_since_install,
+          price_usd,
+          refund,
+          event_name
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
+          AND media_source = 'Apple AdServices'
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+      ),
+      cohort_sizes AS (
+        SELECT
+          cohort_month,
+          COUNT(DISTINCT q_user_id) FILTER (
+            WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          ) as cohort_size
+        FROM cohort_base
+        GROUP BY cohort_month
+      ),
+      cohort_revenue AS (
+        SELECT
+          cb.cohort_month,
+          cb.days_since_install as day,
+          SUM(cb.price_usd) FILTER (WHERE cb.refund = false) as cumulative_revenue
+        FROM cohort_base cb
+        GROUP BY cb.cohort_month, cb.days_since_install
+      )
+      SELECT
+        cs.cohort_month,
+        cs.cohort_size,
+        cr.day,
+        SUM(cr.cumulative_revenue) OVER (
+          PARTITION BY cr.cohort_month
+          ORDER BY cr.day
+        ) as cumulative_revenue
+      FROM cohort_sizes cs
+      JOIN cohort_revenue cr ON cs.cohort_month = cr.cohort_month
+      WHERE cs.cohort_size > 0
+      ORDER BY cs.cohort_month DESC, cr.day
+    `);
+
+    const cohortMap = new Map();
+
+    result.rows.forEach(row => {
+      const month = row.cohort_month;
+      if (!cohortMap.has(month)) {
+        cohortMap.set(month, {
+          cohortMonth: month,
+          cohortSize: parseInt(row.cohort_size),
+          curve: []
+        });
+      }
+
+      const cohort = cohortMap.get(month);
+      const cumulativeRevenue = parseFloat(row.cumulative_revenue) * PROCEEDS_FACTOR;
+      const revenuePerUser = cumulativeRevenue / cohort.cohortSize;
+
+      cohort.curve.push({
+        day: parseInt(row.day),
+        cumulativeRevenue,
+        revenuePerUser
+      });
+    });
+
+    const cohorts = Array.from(cohortMap.values());
+
+    res.json({ cohorts });
+  } catch (error) {
+    console.error('Cohorts error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
