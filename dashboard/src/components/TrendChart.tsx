@@ -17,6 +17,7 @@ export interface TrendChartData {
     installs: number;
     trials: number;
     paid_users: number;
+    cop?: number | null;
   }>;
 }
 

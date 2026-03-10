@@ -24,6 +24,7 @@ export default function SearchTerms() {
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [campaignFilter, setCampaignFilter] = useState('');
   const [sortField, setSortField] = useState('spend');
   const [sortDirection, setSortDirection] = useState('desc');
   const [page, setPage] = useState(1);
@@ -79,6 +80,10 @@ export default function SearchTerms() {
       result = result.filter(st => adGroupIds.includes(String(st.adgroup_id)));
     }
 
+    if (campaignFilter) {
+      result = result.filter(st => String(st.campaign_id) === campaignFilter);
+    }
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(st =>
@@ -131,7 +136,7 @@ export default function SearchTerms() {
     });
 
     return result;
-  }, [allSearchTermsData, campaignIds, adGroupIds, searchQuery, sortField, sortDirection]);
+  }, [allSearchTermsData, campaignIds, adGroupIds, campaignFilter, searchQuery, sortField, sortDirection]);
 
   const totalPages = Math.ceil(totalSearchTerms / itemsPerPage);
 
@@ -331,6 +336,22 @@ export default function SearchTerms() {
             className="pl-10"
           />
         </div>
+
+        <select
+          value={campaignFilter}
+          onChange={(e) => {
+            setCampaignFilter(e.target.value);
+            setPage(1);
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        >
+          <option value="">All Campaigns</option>
+          {Array.from(campaignMap.values()).map(campaign => (
+            <option key={campaign.id} value={String(campaign.id)}>
+              {campaign.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <Card>
