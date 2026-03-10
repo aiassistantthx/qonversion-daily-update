@@ -2723,8 +2723,8 @@ router.get('/churn-rate', async (req, res) => {
     const { period = 'week', months = 12 } = req.query;
 
     // Daily subscriber movement (matches Qonversion methodology)
-    // New = Trial Converted + Subscription Started
-    // Churned = subscriptions that expired (had renewal 7 days ago but no renewal today)
+    // New = Trial Converted + Subscription Started (all subscription types)
+    // Churned = Subscription Canceled events (when subscription expires/cancels)
     const dailyMovementResult = await db.query(`
       WITH days AS (
         SELECT generate_series(
@@ -2733,52 +2733,27 @@ router.get('/churn-rate', async (req, res) => {
           '1 day'
         )::date AS day
       ),
-      -- New subs each day (Trial Converted + Subscription Started)
+      -- New subs each day (Trial Converted + Subscription Started) - ALL subs
       daily_new AS (
         SELECT
           DATE(event_date) as day,
           COUNT(*) as new_subs
         FROM events_v2
-        WHERE product_id LIKE '%weekly%'
-          AND event_name IN ('Subscription Started', 'Trial Converted')
+        WHERE event_name IN ('Subscription Started', 'Trial Converted')
           AND refund = false
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
         GROUP BY DATE(event_date)
       ),
-      -- Churned = users who had a renewal exactly 7 days ago but NOT today
-      -- (their weekly subscription expired)
-      renewals_7d_ago AS (
-        SELECT
-          DATE(event_date) + INTERVAL '7 days' as expected_renewal_day,
-          q_user_id
-        FROM events_v2
-        WHERE product_id LIKE '%weekly%'
-          AND event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
-          AND refund = false
-          AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '7 days'
-      ),
-      renewals_today AS (
-        SELECT
-          DATE(event_date) as day,
-          q_user_id
-        FROM events_v2
-        WHERE product_id LIKE '%weekly%'
-          AND event_name = 'Subscription Renewed'
-          AND refund = false
-          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
-      ),
+      -- Churned = Subscription Canceled events (this is what Qonversion tracks)
       daily_churned AS (
         SELECT
-          r7.expected_renewal_day::date as day,
-          COUNT(DISTINCT r7.q_user_id) as churned
-        FROM renewals_7d_ago r7
-        LEFT JOIN renewals_today rt ON r7.q_user_id = rt.q_user_id
-          AND rt.day = r7.expected_renewal_day::date
-        WHERE rt.q_user_id IS NULL
-          AND r7.expected_renewal_day <= CURRENT_DATE - INTERVAL '1 day'
-        GROUP BY r7.expected_renewal_day::date
+          DATE(event_date) as day,
+          COUNT(*) as churned
+        FROM events_v2
+        WHERE event_name = 'Subscription Canceled'
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY DATE(event_date)
       ),
-      -- Active subs = cumulative (new - churned)
       daily_active AS (
         SELECT
           d.day,
