@@ -4492,7 +4492,7 @@ router.get('/active-subscribers', async (req, res) => {
     // Logic: Subscription is active if: event_date + subscription_period + grace > today
     // Weekly: 7 days + 10 days grace = active if event_date + 17 days > today
     // Monthly: 30 days + 10 days grace = active if event_date + 40 days > today
-    // Yearly: 365 days + 10 days grace = active if event_date + 375 days > today
+    // Yearly: 365 days + 3 days grace = active if event_date + 368 days > today (shorter grace for yearly)
     // IMPORTANT: Only count if last event was POSITIVE (not cancel/expire/refund)
     const currentQuery = `
       WITH user_last_event AS (
@@ -4526,7 +4526,7 @@ router.get('/active-subscribers', async (req, res) => {
           AND (
             (sub_type = 'weekly' AND event_date + INTERVAL '17 days' > CURRENT_DATE)
             OR (sub_type = 'monthly' AND event_date + INTERVAL '40 days' > CURRENT_DATE)
-            OR (sub_type = 'yearly' AND event_date + INTERVAL '375 days' > CURRENT_DATE)
+            OR (sub_type = 'yearly' AND event_date + INTERVAL '368 days' > CURRENT_DATE)
           )
       )
       SELECT
@@ -4576,7 +4576,7 @@ router.get('/active-subscribers', async (req, res) => {
           AND (
             (sub_type = 'weekly' AND event_date + INTERVAL '17 days' > CURRENT_DATE - INTERVAL '30 days')
             OR (sub_type = 'monthly' AND event_date + INTERVAL '40 days' > CURRENT_DATE - INTERVAL '30 days')
-            OR (sub_type = 'yearly' AND event_date + INTERVAL '375 days' > CURRENT_DATE - INTERVAL '30 days')
+            OR (sub_type = 'yearly' AND event_date + INTERVAL '368 days' > CURRENT_DATE - INTERVAL '30 days')
           )
       )
       SELECT
