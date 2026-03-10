@@ -269,7 +269,7 @@ export interface MarketingMetrics {
 export interface KeywordPerformance {
   keywordId: string;
   keyword: string;
-  campaignName: string;
+  campaign: string;  // Campaign name from API
   spend: number;
   impressions: number;
   taps: number;
@@ -280,6 +280,7 @@ export interface KeywordPerformance {
   ctr: number | null;
   cvr: number | null;
   cpa: number | null;
+  cop: number | null;
   roas: number | null;
 }
 

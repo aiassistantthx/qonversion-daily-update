@@ -30,7 +30,7 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
     const headers = ['Keyword', 'Campaign', 'Spend', 'Impressions', 'Taps', 'CTR', 'Installs', 'CPA', 'Conversions', 'Revenue', 'ROAS'];
     const rows = sortedData.map(k => [
       k.keyword,
-      k.campaignName,
+      k.campaign,
       k.spend?.toFixed(2) ?? '',
       k.impressions,
       k.taps,
@@ -73,9 +73,9 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
               </th>
               <th
                 className="text-left px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
-                onClick={() => handleSort('campaignName' as keyof KeywordPerformance)}
+                onClick={() => handleSort('campaign' as keyof KeywordPerformance)}
               >
-                Campaign <SortIcon column="campaignName" currentColumn={sortKey as string} ascending={sortAsc} />
+                Campaign <SortIcon column="campaign" currentColumn={sortKey as string} ascending={sortAsc} />
               </th>
               <th
                 className="text-right px-4 py-3 font-medium cursor-pointer hover:text-gray-900"
@@ -136,7 +136,7 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                      {kw.campaignName}
+                      {kw.campaign}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-sm text-gray-900">
