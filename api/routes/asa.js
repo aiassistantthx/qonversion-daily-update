@@ -2362,6 +2362,15 @@ router.get('/trends', async (req, res) => {
           AND campaign_id IS NOT NULL
         GROUP BY DATE(install_date)
       ),
+      daily_total_revenue AS (
+        SELECT
+          DATE(event_date) as date,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+        FROM events_v2
+        WHERE event_date >= $1 AND event_date <= $2
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+        GROUP BY DATE(event_date)
+      ),
       daily_installs AS (
         SELECT
           date,
@@ -2395,10 +2404,15 @@ router.get('/trends', async (req, res) => {
         s.date,
         COALESCE(s.spend, 0) as spend,
         COALESCE(r.revenue, 0) as revenue,
+        COALESCE(tr.total_revenue, 0) as total_revenue,
         CASE
           WHEN COALESCE(s.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / s.spend
           ELSE 0
         END as roas,
+        CASE
+          WHEN COALESCE(s.spend, 0) > 0 THEN COALESCE(tr.total_revenue, 0) / s.spend
+          ELSE 0
+        END as total_roas,
         COALESCE(i.installs, 0) as installs,
         COALESCE(t.trials, 0) as trials,
         COALESCE(p.paid_users, 0) as paid_users,
@@ -2406,6 +2420,7 @@ router.get('/trends', async (req, res) => {
         CASE WHEN t.trials > 0 THEN (COALESCE(p.paid_users, 0)::float / t.trials) * 100 ELSE 0 END as trial_to_paid_rate
       FROM daily_spend s
       LEFT JOIN daily_revenue r ON s.date = r.date
+      LEFT JOIN daily_total_revenue tr ON s.date = tr.date
       LEFT JOIN daily_installs i ON s.date = i.date
       LEFT JOIN daily_trials t ON s.date = t.date
       LEFT JOIN daily_paid p ON s.date = p.date
@@ -2435,6 +2450,15 @@ router.get('/trends', async (req, res) => {
         AND campaign_id IS NOT NULL
     `, [from, to]);
 
+    // Total revenue (all sources, by event_date)
+    const totalRevenueQuery = await db.query(`
+      SELECT
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+      FROM events_v2
+      WHERE event_date >= $1 AND event_date <= $2
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `, [from, to]);
+
     const trialsQuery = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as total_trials
       FROM events_v2
@@ -2452,7 +2476,8 @@ router.get('/trends', async (req, res) => {
     `, [from, to]);
 
     const totalSpend = parseFloat(totalsQuery.rows[0]?.total_spend) || 0;
-    const totalRevenue = parseFloat(revenueQuery.rows[0]?.total_revenue) || 0;
+    const totalCohortRevenue = parseFloat(revenueQuery.rows[0]?.total_revenue) || 0;
+    const totalAllRevenue = parseFloat(totalRevenueQuery.rows[0]?.total_revenue) || 0;
     const totalInstalls = parseInt(totalsQuery.rows[0]?.total_installs) || 0;
     const totalTrials = parseInt(trialsQuery.rows[0]?.total_trials) || 0;
     const totalPaidUsers = parseInt(paidQuery.rows[0]?.total_paid_users) || 0;
@@ -2462,8 +2487,10 @@ router.get('/trends', async (req, res) => {
       to,
       totals: {
         spend: totalSpend,
-        revenue: totalRevenue,
-        roas: totalSpend > 0 ? totalRevenue / totalSpend : 0,
+        revenue: totalCohortRevenue,
+        totalRevenue: totalAllRevenue,
+        roas: totalSpend > 0 ? totalCohortRevenue / totalSpend : 0,
+        totalRoas: totalSpend > 0 ? totalAllRevenue / totalSpend : 0,
         installs: totalInstalls,
         trials: totalTrials,
         paid_users: totalPaidUsers,
@@ -2475,7 +2502,9 @@ router.get('/trends', async (req, res) => {
         date: row.date,
         spend: parseFloat(row.spend) || 0,
         revenue: parseFloat(row.revenue) || 0,
+        totalRevenue: parseFloat(row.total_revenue) || 0,
         roas: parseFloat(row.roas) || 0,
+        totalRoas: parseFloat(row.total_roas) || 0,
         installs: parseInt(row.installs) || 0,
         trials: parseInt(row.trials) || 0,
         paid_users: parseInt(row.paid_users) || 0,
@@ -2489,7 +2518,9 @@ router.get('/trends', async (req, res) => {
         date: row.date,
         spend: parseFloat(row.spend) || 0,
         revenue: parseFloat(row.revenue) || 0,
+        totalRevenue: parseFloat(row.total_revenue) || 0,
         roas: parseFloat(row.roas) || 0,
+        totalRoas: parseFloat(row.total_roas) || 0,
         installs: parseInt(row.installs) || 0,
         trials: parseInt(row.trials) || 0,
         paid_users: parseInt(row.paid_users) || 0,

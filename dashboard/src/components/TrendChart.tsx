@@ -11,7 +11,9 @@ export interface TrendChartData {
     date: string;
     spend: number;
     revenue: number;
+    totalRevenue: number;
     roas: number;
+    totalRoas: number;
     installs: number;
     trials: number;
     paid_users: number;
@@ -22,12 +24,12 @@ interface TrendChartProps {
   data: TrendChartData | undefined;
 }
 
-type MetricType = 'spend' | 'revenue' | 'roas';
+type MetricType = 'spend' | 'revenue' | 'totalRevenue' | 'roas' | 'totalRoas';
 type ChartMode = 'financial' | 'conversions';
 
 export function TrendChart({ data }: TrendChartProps) {
   const [chartMode, setChartMode] = useState<ChartMode>('financial');
-  const [selectedMetric, setSelectedMetric] = useState<MetricType>('roas');
+  const [selectedMetric, setSelectedMetric] = useState<MetricType>('totalRevenue');
 
   if (!data || !data.data || data.data.length === 0) {
     return (
@@ -42,7 +44,9 @@ export function TrendChart({ data }: TrendChartProps) {
     date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     spend: d.spend,
     revenue: d.revenue,
+    totalRevenue: d.totalRevenue,
     roas: d.roas * 100,
+    totalRoas: d.totalRoas * 100,
     installs: d.installs,
     trials: d.trials,
     paid_users: d.paid_users,
@@ -60,19 +64,35 @@ export function TrendChart({ data }: TrendChartProps) {
         };
       case 'revenue':
         return {
-          title: 'Revenue',
+          title: 'Cohort Revenue',
+          color: '#93c5fd',
+          formatter: (v: number) => `$${(v / 1000).toFixed(1)}k`,
+          yAxisFormatter: (v: number) => `$${(v / 1000).toFixed(0)}k`,
+          tooltipLabel: 'Cohort Revenue',
+        };
+      case 'totalRevenue':
+        return {
+          title: 'Total Revenue',
           color: '#3b82f6',
           formatter: (v: number) => `$${(v / 1000).toFixed(1)}k`,
           yAxisFormatter: (v: number) => `$${(v / 1000).toFixed(0)}k`,
-          tooltipLabel: 'Revenue',
+          tooltipLabel: 'Total Revenue',
         };
       case 'roas':
         return {
-          title: 'ROAS',
+          title: 'Cohort ROAS',
+          color: '#86efac',
+          formatter: (v: number) => `${v.toFixed(0)}%`,
+          yAxisFormatter: (v: number) => `${v.toFixed(0)}%`,
+          tooltipLabel: 'Cohort ROAS',
+        };
+      case 'totalRoas':
+        return {
+          title: 'Total ROAS',
           color: '#10b981',
           formatter: (v: number) => `${v.toFixed(0)}%`,
           yAxisFormatter: (v: number) => `${v.toFixed(0)}%`,
-          tooltipLabel: 'ROAS',
+          tooltipLabel: 'Total ROAS',
         };
     }
   };
@@ -84,10 +104,10 @@ export function TrendChart({ data }: TrendChartProps) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 4 }}>
-            {chartMode === 'financial' ? 'Spend / Revenue / ROAS Trends' : 'Conversion Funnel'}
+            {chartMode === 'financial' ? 'Daily Spend / Revenue / ROAS' : 'Conversion Funnel'}
           </h3>
           <p style={{ fontSize: 12, color: '#6b7280' }}>
-            {chartMode === 'financial' ? 'Daily metrics for the selected period' : 'Installs → Trials → Paid Users'}
+            {chartMode === 'financial' ? 'Total = all sources, Cohort = Apple Ads users who installed on that day' : 'Installs → Trials → Paid Users'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -140,19 +160,49 @@ export function TrendChart({ data }: TrendChartProps) {
                 Spend
               </button>
               <button
-                onClick={() => setSelectedMetric('revenue')}
+                onClick={() => setSelectedMetric('totalRevenue')}
                 style={{
                   padding: '6px 12px',
                   borderRadius: 6,
                   border: '1px solid #e5e7eb',
-                  background: selectedMetric === 'revenue' ? '#3b82f6' : '#fff',
-                  color: selectedMetric === 'revenue' ? '#fff' : '#374151',
+                  background: selectedMetric === 'totalRevenue' ? '#3b82f6' : '#fff',
+                  color: selectedMetric === 'totalRevenue' ? '#fff' : '#374151',
                   fontSize: 13,
                   fontWeight: 500,
                   cursor: 'pointer',
                 }}
               >
-                Revenue
+                Total Revenue
+              </button>
+              <button
+                onClick={() => setSelectedMetric('totalRoas')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'totalRoas' ? '#10b981' : '#fff',
+                  color: selectedMetric === 'totalRoas' ? '#fff' : '#374151',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Total ROAS
+              </button>
+              <button
+                onClick={() => setSelectedMetric('revenue')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'revenue' ? '#93c5fd' : '#fff',
+                  color: selectedMetric === 'revenue' ? '#fff' : '#9ca3af',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Cohort
               </button>
               <button
                 onClick={() => setSelectedMetric('roas')}
@@ -160,14 +210,14 @@ export function TrendChart({ data }: TrendChartProps) {
                   padding: '6px 12px',
                   borderRadius: 6,
                   border: '1px solid #e5e7eb',
-                  background: selectedMetric === 'roas' ? '#10b981' : '#fff',
-                  color: selectedMetric === 'roas' ? '#fff' : '#374151',
-                  fontSize: 13,
+                  background: selectedMetric === 'roas' ? '#86efac' : '#fff',
+                  color: selectedMetric === 'roas' ? '#fff' : '#9ca3af',
+                  fontSize: 12,
                   fontWeight: 500,
                   cursor: 'pointer',
                 }}
               >
-                ROAS
+                Cohort ROAS
               </button>
             </>
           )}

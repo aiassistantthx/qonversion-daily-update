@@ -4,7 +4,7 @@ import {
   LineChart, Line, Bar, Area, ComposedChart,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
 } from 'recharts';
-import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search, AlertTriangle, AlertCircle } from 'lucide-react';
+import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search } from 'lucide-react';
 import {
   DateRangePicker, getDefaultDateRange, parseDateRangeFromURL, updateURLWithDateRange,
   DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale,
@@ -23,7 +23,6 @@ import {
   MetricSelector,
   PayerShareChart,
   ActiveSubscribersWidget,
-  PaybackGauge,
   MonthlyComparisonTable,
   useSortableData,
   SortIcon,
@@ -203,41 +202,6 @@ interface FunnelData {
   days: number;
 }
 
-interface AnomalyInfo {
-  type: 'warning' | 'critical';
-  message: string;
-  deviation: number;
-}
-
-function detectKPIAnomaly(
-  currentValue: number,
-  sparklineData: number[] | undefined,
-  metricName: string
-): AnomalyInfo | undefined {
-  if (!sparklineData || sparklineData.length < 3) return undefined;
-
-  const validData = sparklineData.filter(v => v != null && !isNaN(v));
-  if (validData.length < 3) return undefined;
-
-  const mean = validData.reduce((a, b) => a + b, 0) / validData.length;
-  const variance = validData.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / validData.length;
-  const stdDev = Math.sqrt(variance);
-
-  if (mean === 0 || stdDev === 0) return undefined;
-
-  const zScore = (currentValue - mean) / stdDev;
-  const deviationPercent = ((currentValue - mean) / mean) * 100;
-
-  if (Math.abs(deviationPercent) < 20 || Math.abs(zScore) < 2) return undefined;
-
-  const isHigh = currentValue > mean;
-
-  return {
-    type: Math.abs(zScore) > 3 ? 'critical' : 'warning',
-    message: `${metricName} ${isHigh ? '+' : ''}${deviationPercent.toFixed(0)}% vs avg`,
-    deviation: deviationPercent,
-  };
-}
 
 function KPICard({ title, value, subtitle, icon: Icon, change, invertChange, sparklineData }: {
   title: string;
@@ -252,9 +216,6 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange, spa
     ? (invertChange ? (change < 0 ? '#10b981' : '#ef4444') : (change > 0 ? '#10b981' : '#ef4444'))
     : undefined;
   const changeSign = change != null && change > 0 ? '+' : '';
-
-  // Anomaly detection disabled - was comparing formatted values incorrectly
-  const anomaly = undefined;
 
   const renderSparkline = () => {
     if (!sparklineData || sparklineData.length < 2) return null;
@@ -291,36 +252,11 @@ function KPICard({ title, value, subtitle, icon: Icon, change, invertChange, spa
     );
   };
 
-  const cardStyle = {
-    ...styles.card,
-    ...(anomaly?.type === 'critical' ? { borderColor: '#ef4444', borderWidth: 2 } : {}),
-    ...(anomaly?.type === 'warning' ? { borderColor: '#f59e0b', borderWidth: 2 } : {}),
-  };
-
   return (
-    <div style={cardStyle}>
+    <div style={styles.card}>
       <div style={styles.cardHeader}>
         <span style={styles.cardTitle}>{title}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {anomaly && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '2px 8px',
-                borderRadius: 4,
-                fontSize: 11,
-                fontWeight: 500,
-                backgroundColor: anomaly.type === 'critical' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                color: anomaly.type === 'critical' ? '#ef4444' : '#f59e0b',
-              }}
-              title={anomaly.message}
-            >
-              {anomaly.type === 'critical' ? <AlertCircle size={12} /> : <AlertTriangle size={12} />}
-              <span>{anomaly.deviation > 0 ? '+' : ''}{anomaly.deviation.toFixed(0)}%</span>
-            </div>
-          )}
           {Icon && <Icon size={18} color="#9ca3af" />}
         </div>
       </div>
@@ -512,7 +448,15 @@ export function Overview() {
   const { sortedData: sortedKeywords, sortKey: keywordsSortKey, sortAsc: keywordsSortAsc, handleSort: handleKeywordsSort } =
     useSortableData<KeywordRow>(keywords, 'spend' as keyof KeywordRow, false);
 
-  const last7Days = daily.slice(-7);
+  // Filter out incomplete days (today + days where webhooks haven't arrived yet)
+  // Incomplete = has spend but revenue = 0 (webhooks delayed)
+  const today = new Date().toISOString().split('T')[0];
+  const completeDays = daily.filter(d => {
+    if (d.date === today) return false; // Exclude today
+    if (d.spend > 0 && d.revenue === 0) return false; // Webhooks not arrived
+    return true;
+  });
+  const last7Days = completeDays.slice(-7);
   const spendSparkline = last7Days.map(d => d.spend);
   const revenueSparkline = last7Days.map(d => d.revenue);
   const subscribersSparkline = last7Days.map(d => d.subscribers);
