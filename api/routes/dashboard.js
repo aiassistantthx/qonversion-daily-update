@@ -2749,36 +2749,36 @@ router.get('/churn-rate', async (req, res) => {
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
         GROUP BY DATE(event_date)
       ),
-      -- Find each user's LAST weekly subscription renewal
-      -- Only count actual renewals (not trial conversions - those are counted separately)
-      -- A user churns when they don't renew after their paid subscription period ends
+      -- Find each user's LAST weekly subscription activity
+      -- Includes Trial Converted, Subscription Started, and Subscription Renewed
+      -- A user churns when they don't have any renewal within 14 days of last activity
       user_last_weekly AS (
         SELECT
           q_user_id,
           MAX(event_date) as last_renewal_date
         FROM events_v2
-        WHERE event_name = 'Subscription Renewed'
+        WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
           AND product_id LIKE '%weekly%'
           AND refund = false
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '30 days'
         GROUP BY q_user_id
       ),
-      -- User churned when: no renewal within 14 days of last renewal
-      -- Threshold: 14 days covers Apple billing retry period (3-16 days)
-      -- Churn date = last_renewal + 14 days (when we're sure they churned)
+      -- User churned when: no subscription activity within 14 days of last activity
+      -- Threshold: 14 days covers billing retry + 1 week renewal cycle
+      -- Churn date = last_activity + 14 days (when we're sure they churned)
       churned_subscriptions AS (
         SELECT
           ulw.q_user_id,
           DATE(ulw.last_renewal_date + INTERVAL '14 days') as churned_date
         FROM user_last_weekly ulw
         WHERE ulw.last_renewal_date + INTERVAL '14 days' >= CURRENT_DATE - INTERVAL '${months} months'
-          -- Only count if 14 days have passed since last renewal
+          -- Only count if 14 days have passed since last activity
           AND ulw.last_renewal_date + INTERVAL '14 days' < CURRENT_DATE
-          -- No renewal after the last one (within any timeframe)
+          -- No subsequent subscription activity
           AND NOT EXISTS (
             SELECT 1 FROM events_v2 e2
             WHERE e2.q_user_id = ulw.q_user_id
-              AND e2.event_name = 'Subscription Renewed'
+              AND e2.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
               AND e2.product_id LIKE '%weekly%'
               AND e2.event_date > ulw.last_renewal_date
           )
@@ -2817,7 +2817,7 @@ router.get('/churn-rate', async (req, res) => {
     const initialActiveResult = await db.query(`
       SELECT COUNT(DISTINCT q_user_id) as initial_active
       FROM events_v2
-      WHERE event_name = 'Subscription Renewed'
+      WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
         AND product_id LIKE '%weekly%'
         AND refund = false
         AND event_date >= $1::date - INTERVAL '14 days'

@@ -332,19 +332,24 @@ export function Planning() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-terminal-text mb-1">Planning Tool</h1>
-          <p className="text-sm text-terminal-muted">
-            Revenue forecasting with cohort-based model and scenario planning
+          <h1 className="text-2xl font-bold text-terminal-text mb-2">Revenue Planning & Forecasting</h1>
+          <p className="text-sm text-terminal-muted mb-1">
+            Data-driven revenue projections using cohort retention analysis
           </p>
+          <div className="flex gap-4 text-xs text-terminal-muted">
+            <span>• 12-month forecast with confidence intervals</span>
+            <span>• Historical validation</span>
+            <span>• What-if scenario modeling</span>
+          </div>
         </div>
         <button
           onClick={handleExport}
           className="flex items-center gap-2 px-4 py-2 bg-terminal-cyan text-terminal-bg rounded hover:bg-terminal-cyan/90 transition-colors"
         >
           <Download size={16} />
-          Export CSV
+          Export Scenarios
         </button>
       </div>
 
@@ -353,14 +358,15 @@ export function Planning() {
         <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <div className="text-sm text-terminal-muted mb-1">Revenue Forecast (12 Months)</div>
+              <div className="text-lg font-semibold text-terminal-text mb-1">Revenue Forecast (12 Months)</div>
               <div className="text-xs text-terminal-muted">
-                Cohort-based model with {forecastApiData.modelParameters.yearlyRenewalRate * 100}% renewal rate, {(forecastApiData.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}% weekly retention
+                Cohort-based projection model • {forecastApiData.modelParameters.yearlyRenewalRate * 100}% yearly renewal • {(forecastApiData.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}% weekly retention
               </div>
             </div>
             {forecastApiData.validation?.avgError && (
-              <div className="text-xs text-terminal-muted">
-                Avg forecast error: ±{forecastApiData.validation.avgError}%
+              <div className="px-3 py-1 bg-terminal-bg rounded border border-terminal-border">
+                <div className="text-xs text-terminal-muted">Model accuracy</div>
+                <div className="text-sm font-mono text-terminal-cyan">±{forecastApiData.validation.avgError}%</div>
               </div>
             )}
           </div>
@@ -427,20 +433,86 @@ export function Planning() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 flex gap-4 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-terminal-cyan rounded"></div>
-              <span className="text-terminal-muted">Base Case (Cohort Model)</span>
+          <div className="mt-4 space-y-2">
+            <div className="flex gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-terminal-cyan rounded"></div>
+                <span className="text-terminal-text font-medium">Base Forecast</span>
+                <span className="text-terminal-muted">Historical retention rates</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-terminal-green/30 border border-terminal-green rounded"></div>
+                <span className="text-terminal-green font-medium">Optimistic</span>
+                <span className="text-terminal-muted">+20% acquisition, +2pp retention</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-terminal-red/30 border border-terminal-red rounded"></div>
+                <span className="text-terminal-red font-medium">Pessimistic</span>
+                <span className="text-terminal-muted">-15% acquisition, -3pp retention</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-terminal-green/30 border border-terminal-green rounded"></div>
-              <span className="text-terminal-muted">Optimistic (+20% acquisition, +2pp retention)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-terminal-red/30 border border-terminal-red rounded"></div>
-              <span className="text-terminal-muted">Pessimistic (-15% acquisition, -3pp retention)</span>
+            <div className="text-xs text-terminal-muted bg-terminal-bg border border-terminal-border rounded px-3 py-2">
+              <strong>Methodology:</strong> Cohort-based forecast using actual subscriber retention curves and yearly renewal patterns from historical data.
+              Confidence intervals reflect variations in acquisition volume and retention performance.
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Forecast Summary Metrics */}
+      {forecastApiData?.renewalForecast && (
+        <div className="grid grid-cols-4 gap-4">
+          {(() => {
+            const next12Months = forecastApiData.renewalForecast.slice(0, 12);
+            const totalRevenue = next12Months.reduce((sum: number, m: any) => sum + m.totalRevenue, 0);
+            const totalRevenueOptimistic = next12Months.reduce((sum: number, m: any) => sum + m.totalRevenueOptimistic, 0);
+            const totalRevenuePessimistic = next12Months.reduce((sum: number, m: any) => sum + m.totalRevenuePessimistic, 0);
+            const endingBase = next12Months[next12Months.length - 1]?.weeklyBase || 0;
+
+            return (
+              <>
+                <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+                  <div className="text-xs text-terminal-muted mb-1">12-Month Revenue (Base)</div>
+                  <div className="text-2xl font-mono text-terminal-cyan">
+                    ${(totalRevenue / 1000).toFixed(0)}k
+                  </div>
+                  <div className="text-xs text-terminal-muted mt-1">
+                    Range: ${(totalRevenuePessimistic / 1000).toFixed(0)}k - ${(totalRevenueOptimistic / 1000).toFixed(0)}k
+                  </div>
+                </div>
+
+                <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+                  <div className="text-xs text-terminal-muted mb-1">Monthly Avg (Base)</div>
+                  <div className="text-2xl font-mono text-terminal-text">
+                    ${(totalRevenue / 12 / 1000).toFixed(1)}k
+                  </div>
+                  <div className="text-xs text-terminal-muted mt-1">
+                    Current: ${((forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) / 1000).toFixed(1)}k/mo
+                  </div>
+                </div>
+
+                <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+                  <div className="text-xs text-terminal-muted mb-1">Projected Active Subs</div>
+                  <div className="text-2xl font-mono text-terminal-text">
+                    {endingBase.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-terminal-muted mt-1">
+                    EOP (end of period)
+                  </div>
+                </div>
+
+                <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+                  <div className="text-xs text-terminal-muted mb-1">Growth Trajectory</div>
+                  <div className={`text-2xl font-mono ${totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'text-terminal-green' : 'text-terminal-yellow'}`}>
+                    {totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? '📈' : '📊'}
+                  </div>
+                  <div className="text-xs text-terminal-muted mt-1">
+                    {totalRevenue > (forecastApiData.currentMetrics?.avgWeeklyRevenue || 0) * 12 ? 'Growing' : 'Stable'}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -448,7 +520,7 @@ export function Planning() {
       {forecastApiData?.validation?.results && forecastApiData.validation.results.length > 0 && (
         <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-terminal-border">
-            <div className="text-sm text-terminal-muted">Model Validation (Last 3 Months)</div>
+            <div className="text-sm text-terminal-muted">Historical Model Validation</div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -488,16 +560,24 @@ export function Planning() {
       )}
 
       {/* Scenario Modeling Section */}
-      <div className="border-t border-terminal-border pt-6">
+      <div className="border-t-2 border-terminal-border pt-6 mt-6">
         <div className="mb-4">
-          <h2 className="text-xl font-bold text-terminal-text mb-1">Scenario Modeling</h2>
-          <p className="text-sm text-terminal-muted mb-2">
-            What-if analysis with custom assumptions for budget planning
+          <h2 className="text-xl font-bold text-terminal-text mb-1">What-If Scenario Modeling</h2>
+          <p className="text-sm text-terminal-muted mb-3">
+            Interactive budget planning tool with custom CAC, churn, and spend assumptions
           </p>
-          <div className="bg-terminal-bg border border-terminal-border rounded p-3 text-xs text-terminal-muted">
-            <strong>Note:</strong> The cohort-based forecast above uses actual historical retention ({(forecastApiData?.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}%)
-            and renewal rates ({(forecastApiData?.modelParameters.yearlyRenewalRate * 100)}%) from your data.
-            Scenario modeling below lets you test different assumptions for planning purposes.
+          <div className="bg-terminal-bg border border-terminal-yellow/30 rounded p-3 text-xs">
+            <div className="flex items-start gap-2">
+              <div className="text-terminal-yellow mt-0.5">⚠️</div>
+              <div>
+                <div className="text-terminal-text font-medium mb-1">Different Methodology</div>
+                <div className="text-terminal-muted">
+                  <strong>Cohort Forecast above:</strong> Uses actual retention curves from historical data ({(forecastApiData?.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}% weekly, {(forecastApiData?.modelParameters.yearlyRenewalRate * 100)}% yearly renewal).
+                  <br/>
+                  <strong>Scenario Modeling below:</strong> Simplified model for testing "what-if" scenarios with custom targets. Adjust CAC, churn, and budget to explore different growth paths.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
