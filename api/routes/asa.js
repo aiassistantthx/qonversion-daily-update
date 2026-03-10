@@ -261,8 +261,8 @@ router.get('/campaigns', async (req, res) => {
       cohort_revenue AS (
         SELECT
           campaign_id::TEXT as campaign_id,
-          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND campaign_id IS NOT NULL
@@ -1032,8 +1032,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       cohort_revenue AS (
         SELECT
           adgroup_id::TEXT as adgroup_id,
-          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND campaign_id = $1
@@ -1273,8 +1273,8 @@ router.get('/keywords', async (req, res) => {
           keyword_id,
           SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users,
-          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND keyword_id IS NOT NULL
@@ -3352,8 +3352,8 @@ router.get('/debug/cohort-roas', async (req, res) => {
       cohort_revenue AS (
         SELECT
           campaign_id::TEXT as campaign_id,
-          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30,
           COUNT(*) as event_count
         FROM events_v2
         WHERE ${revenueCondition}
