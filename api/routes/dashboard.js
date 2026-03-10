@@ -2808,6 +2808,24 @@ router.get('/churn-rate', async (req, res) => {
       ORDER BY day
     `);
 
+    // Get initial active weekly subscribers count at the start of period
+    // These are users who had a renewal in the 14 days before the start date
+    const periodStart = new Date();
+    periodStart.setMonth(periodStart.getMonth() - parseInt(months));
+    const periodStartStr = periodStart.toISOString().split('T')[0];
+
+    const initialActiveResult = await db.query(`
+      SELECT COUNT(DISTINCT q_user_id) as initial_active
+      FROM events_v2
+      WHERE event_name = 'Subscription Renewed'
+        AND product_id LIKE '%weekly%'
+        AND refund = false
+        AND event_date >= $1::date - INTERVAL '14 days'
+        AND event_date < $1::date
+    `, [periodStartStr]);
+
+    const initialActive = parseInt(initialActiveResult.rows[0]?.initial_active || 0);
+
     // Aggregate to weekly for the chart
     // Process daily data in JavaScript instead of embedding in SQL
     const dailyByWeek = {};
@@ -2827,7 +2845,8 @@ router.get('/churn-rate', async (req, res) => {
     }
 
     // Convert to array and calculate running active subs
-    let runningActive = 0;
+    // Initialize with active subscribers from before the period
+    let runningActive = initialActive;
     const weeklyChurnRows = Object.entries(dailyByWeek)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([week_start, data]) => {
