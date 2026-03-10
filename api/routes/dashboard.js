@@ -4381,6 +4381,18 @@ router.get('/active-subscribers', async (req, res) => {
     const sparklineResult = await db.query(sparklineQuery);
     const sparkline = sparklineResult.rows.map(r => parseInt(r.active_count) || 0);
 
+    // Debug: Get product_id distribution for diagnosis
+    const productQuery = `
+      SELECT product_id, COUNT(*) as count
+      FROM events_v2
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY product_id
+      ORDER BY count DESC
+      LIMIT 10
+    `;
+    const productResult = await db.query(productQuery);
+
     res.json({
       current: {
         weekly: current.weekly,
@@ -4398,6 +4410,7 @@ router.get('/active-subscribers', async (req, res) => {
         total: totalTrend,
       },
       sparkline,
+      productBreakdown: productResult.rows,
     });
   } catch (error) {
     console.error('Active subscribers error:', error);
