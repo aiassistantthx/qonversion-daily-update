@@ -4520,4 +4520,207 @@ router.get('/planning-data', async (req, res) => {
   }
 });
 
+// ============================================================================
+// SEASONALITY PATTERNS - Day-of-week and monthly trends
+// ============================================================================
+
+router.get('/seasonality', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+
+    // Day-of-week patterns (0=Sunday, 1=Monday, ..., 6=Saturday)
+    const dayOfWeekQuery = `
+      WITH daily_metrics AS (
+        SELECT
+          DATE(event_date) as day,
+          EXTRACT(DOW FROM event_date) as dow,
+          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as revenue,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')) as conversions
+        FROM events_v2
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY DATE(event_date), EXTRACT(DOW FROM event_date)
+      ),
+      spend_by_day AS (
+        SELECT
+          date as day,
+          EXTRACT(DOW FROM date) as dow,
+          SUM(spend) as spend,
+          SUM(installs) as installs
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY date, EXTRACT(DOW FROM date)
+      )
+      SELECT
+        dm.dow,
+        AVG(COALESCE(dm.revenue, 0)) as avg_revenue,
+        AVG(COALESCE(dm.trials, 0)) as avg_trials,
+        AVG(COALESCE(dm.conversions, 0)) as avg_conversions,
+        AVG(COALESCE(sd.spend, 0)) as avg_spend,
+        AVG(COALESCE(sd.installs, 0)) as avg_installs,
+        COUNT(DISTINCT dm.day) as sample_days
+      FROM daily_metrics dm
+      LEFT JOIN spend_by_day sd ON dm.day = sd.day
+      GROUP BY dm.dow
+      ORDER BY dm.dow
+    `;
+
+    const dayOfWeekResult = await db.query(dayOfWeekQuery);
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayOfWeek = dayOfWeekResult.rows.map(row => ({
+      day: parseInt(row.dow),
+      dayName: dayNames[parseInt(row.dow)],
+      avgRevenue: parseFloat(row.avg_revenue) || 0,
+      avgTrials: parseFloat(row.avg_trials) || 0,
+      avgConversions: parseFloat(row.avg_conversions) || 0,
+      avgSpend: parseFloat(row.avg_spend) || 0,
+      avgInstalls: parseFloat(row.avg_installs) || 0,
+      sampleDays: parseInt(row.sample_days) || 0,
+    }));
+
+    // Calculate indices (100 = average)
+    const avgRevenue = dayOfWeek.reduce((s, d) => s + d.avgRevenue, 0) / 7;
+    const avgConversions = dayOfWeek.reduce((s, d) => s + d.avgConversions, 0) / 7;
+    const avgSpend = dayOfWeek.reduce((s, d) => s + d.avgSpend, 0) / 7;
+
+    const dayOfWeekWithIndex = dayOfWeek.map(d => ({
+      ...d,
+      revenueIndex: avgRevenue > 0 ? Math.round((d.avgRevenue / avgRevenue) * 100) : 100,
+      conversionsIndex: avgConversions > 0 ? Math.round((d.avgConversions / avgConversions) * 100) : 100,
+      spendIndex: avgSpend > 0 ? Math.round((d.avgSpend / avgSpend) * 100) : 100,
+    }));
+
+    // Monthly seasonality (by calendar month across years)
+    const monthlyQuery = `
+      WITH monthly_metrics AS (
+        SELECT
+          EXTRACT(MONTH FROM event_date) as month_num,
+          TO_CHAR(event_date, 'YYYY-MM') as year_month,
+          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as revenue,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')) as conversions
+        FROM events_v2
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY EXTRACT(MONTH FROM event_date), TO_CHAR(event_date, 'YYYY-MM')
+      ),
+      spend_by_month AS (
+        SELECT
+          EXTRACT(MONTH FROM date) as month_num,
+          TO_CHAR(date, 'YYYY-MM') as year_month,
+          SUM(spend) as spend,
+          SUM(installs) as installs
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY EXTRACT(MONTH FROM date), TO_CHAR(date, 'YYYY-MM')
+      )
+      SELECT
+        mm.month_num,
+        AVG(COALESCE(mm.revenue, 0)) as avg_revenue,
+        AVG(COALESCE(mm.trials, 0)) as avg_trials,
+        AVG(COALESCE(mm.conversions, 0)) as avg_conversions,
+        AVG(COALESCE(sm.spend, 0)) as avg_spend,
+        AVG(COALESCE(sm.installs, 0)) as avg_installs,
+        COUNT(DISTINCT mm.year_month) as sample_months
+      FROM monthly_metrics mm
+      LEFT JOIN spend_by_month sm ON mm.year_month = sm.year_month
+      GROUP BY mm.month_num
+      ORDER BY mm.month_num
+    `;
+
+    const monthlyResult = await db.query(monthlyQuery);
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthly = monthlyResult.rows.map(row => ({
+      month: parseInt(row.month_num),
+      monthName: monthNames[parseInt(row.month_num) - 1],
+      avgRevenue: parseFloat(row.avg_revenue) || 0,
+      avgTrials: parseFloat(row.avg_trials) || 0,
+      avgConversions: parseFloat(row.avg_conversions) || 0,
+      avgSpend: parseFloat(row.avg_spend) || 0,
+      avgInstalls: parseFloat(row.avg_installs) || 0,
+      sampleMonths: parseInt(row.sample_months) || 0,
+    }));
+
+    // Calculate monthly indices
+    const avgMonthlyRevenue = monthly.reduce((s, m) => s + m.avgRevenue, 0) / (monthly.length || 1);
+    const avgMonthlyConversions = monthly.reduce((s, m) => s + m.avgConversions, 0) / (monthly.length || 1);
+
+    const monthlyWithIndex = monthly.map(m => ({
+      ...m,
+      revenueIndex: avgMonthlyRevenue > 0 ? Math.round((m.avgRevenue / avgMonthlyRevenue) * 100) : 100,
+      conversionsIndex: avgMonthlyConversions > 0 ? Math.round((m.avgConversions / avgMonthlyConversions) * 100) : 100,
+    }));
+
+    // Week of month patterns (1-5)
+    const weekOfMonthQuery = `
+      WITH daily_metrics AS (
+        SELECT
+          DATE(event_date) as day,
+          CEIL(EXTRACT(DAY FROM event_date) / 7.0) as week_of_month,
+          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as revenue,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')) as conversions
+        FROM events_v2
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY DATE(event_date), CEIL(EXTRACT(DAY FROM event_date) / 7.0)
+      )
+      SELECT
+        week_of_month,
+        AVG(COALESCE(revenue, 0)) as avg_revenue,
+        AVG(COALESCE(conversions, 0)) as avg_conversions,
+        COUNT(DISTINCT day) as sample_days
+      FROM daily_metrics
+      WHERE week_of_month <= 5
+      GROUP BY week_of_month
+      ORDER BY week_of_month
+    `;
+
+    const weekOfMonthResult = await db.query(weekOfMonthQuery);
+
+    const weekOfMonth = weekOfMonthResult.rows.map(row => ({
+      week: parseInt(row.week_of_month),
+      weekLabel: `Week ${parseInt(row.week_of_month)}`,
+      avgRevenue: parseFloat(row.avg_revenue) || 0,
+      avgConversions: parseFloat(row.avg_conversions) || 0,
+      sampleDays: parseInt(row.sample_days) || 0,
+    }));
+
+    // Calculate week-of-month indices
+    const avgWeekRevenue = weekOfMonth.reduce((s, w) => s + w.avgRevenue, 0) / (weekOfMonth.length || 1);
+    const weekOfMonthWithIndex = weekOfMonth.map(w => ({
+      ...w,
+      revenueIndex: avgWeekRevenue > 0 ? Math.round((w.avgRevenue / avgWeekRevenue) * 100) : 100,
+    }));
+
+    // Summary insights
+    const bestDayOfWeek = [...dayOfWeekWithIndex].sort((a, b) => b.revenueIndex - a.revenueIndex)[0];
+    const worstDayOfWeek = [...dayOfWeekWithIndex].sort((a, b) => a.revenueIndex - b.revenueIndex)[0];
+    const bestMonth = [...monthlyWithIndex].sort((a, b) => b.revenueIndex - a.revenueIndex)[0];
+    const worstMonth = [...monthlyWithIndex].sort((a, b) => a.revenueIndex - b.revenueIndex)[0];
+
+    res.json({
+      dayOfWeek: dayOfWeekWithIndex,
+      monthly: monthlyWithIndex,
+      weekOfMonth: weekOfMonthWithIndex,
+      insights: {
+        bestDayOfWeek: bestDayOfWeek ? { day: bestDayOfWeek.dayName, index: bestDayOfWeek.revenueIndex } : null,
+        worstDayOfWeek: worstDayOfWeek ? { day: worstDayOfWeek.dayName, index: worstDayOfWeek.revenueIndex } : null,
+        bestMonth: bestMonth ? { month: bestMonth.monthName, index: bestMonth.revenueIndex } : null,
+        worstMonth: worstMonth ? { month: worstMonth.monthName, index: worstMonth.revenueIndex } : null,
+        weekendVsWeekday: {
+          weekend: Math.round((dayOfWeekWithIndex.filter(d => d.day === 0 || d.day === 6).reduce((s, d) => s + d.revenueIndex, 0) / 2) || 100),
+          weekday: Math.round((dayOfWeekWithIndex.filter(d => d.day >= 1 && d.day <= 5).reduce((s, d) => s + d.revenueIndex, 0) / 5) || 100),
+        },
+      },
+      metadata: {
+        months,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Seasonality error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

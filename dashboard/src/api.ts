@@ -283,6 +283,53 @@ export interface KeywordPerformance {
   roas: number | null;
 }
 
+export interface SeasonalityData {
+  dayOfWeek: Array<{
+    day: number;
+    dayName: string;
+    avgRevenue: number;
+    avgTrials: number;
+    avgConversions: number;
+    avgSpend: number;
+    avgInstalls: number;
+    sampleDays: number;
+    revenueIndex: number;
+    conversionsIndex: number;
+    spendIndex: number;
+  }>;
+  monthly: Array<{
+    month: number;
+    monthName: string;
+    avgRevenue: number;
+    avgTrials: number;
+    avgConversions: number;
+    avgSpend: number;
+    avgInstalls: number;
+    sampleMonths: number;
+    revenueIndex: number;
+    conversionsIndex: number;
+  }>;
+  weekOfMonth: Array<{
+    week: number;
+    weekLabel: string;
+    avgRevenue: number;
+    avgConversions: number;
+    sampleDays: number;
+    revenueIndex: number;
+  }>;
+  insights: {
+    bestDayOfWeek: { day: string; index: number } | null;
+    worstDayOfWeek: { day: string; index: number } | null;
+    bestMonth: { month: string; index: number } | null;
+    worstMonth: { month: string; index: number } | null;
+    weekendVsWeekday: { weekend: number; weekday: number };
+  };
+  metadata: {
+    months: number;
+    generatedAt: string;
+  };
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -300,4 +347,5 @@ export const api = {
   getTopCountriesRoas: (limit = 10) => fetchApi<{ countries: TopCountryRoas[] }>(`/dashboard/top-countries-roas?limit=${limit}`),
   getMarketing: (months = 6) => fetchApi<{ data: MarketingMetrics[] }>(`/dashboard/marketing?months=${months}`),
   getKeywords: (days = 30) => fetchApi<{ keywords: KeywordPerformance[]; summary: { spend: number; installs: number; trials: number; conversions: number; revenue: number } }>(`/dashboard/keywords?days=${days}`),
+  getSeasonality: (months = 12) => fetchApi<SeasonalityData>(`/dashboard/seasonality?months=${months}`),
 };

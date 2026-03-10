@@ -80,3 +80,6 @@ export type { CountryRoasData } from './TopCountriesWidget';
 export { TopCountriesRoasWidget } from './TopCountriesRoasWidget';
 
 export { KeywordTable } from './KeywordTable';
+
+export { SeasonalityChart } from './SeasonalityChart';
+export type { SeasonalityData } from './SeasonalityChart';

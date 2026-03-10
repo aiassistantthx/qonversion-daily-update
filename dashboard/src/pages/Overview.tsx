@@ -18,13 +18,15 @@ import {
   useSortableData,
   SortIcon,
   TrendChart,
+  SeasonalityChart,
 } from '../components';
 import { ChurnRateChart } from '../components/ChurnRateChart';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
   ActiveSubscribersData,
   TrendChartData,
-  CountryRoasData
+  CountryRoasData,
+  SeasonalityData
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
@@ -386,6 +388,11 @@ export function Overview() {
   const { data: churnRateData } = useQuery<ChurnRateData>({
     queryKey: ['churn-rate'],
     queryFn: () => fetch(`${API_URL}/dashboard/churn-rate`).then(r => r.json()),
+  });
+
+  const { data: seasonalityData, isLoading: seasonalityLoading } = useQuery<SeasonalityData>({
+    queryKey: ['seasonality'],
+    queryFn: () => api.getSeasonality(),
   });
 
   const cm = data?.currentMonth;
@@ -843,6 +850,9 @@ export function Overview() {
           </table>
         </div>
       </div>
+
+      {/* Seasonality Patterns */}
+      <SeasonalityChart data={seasonalityData} isLoading={seasonalityLoading} />
 
       <style>{`
         a[href*="/#/"]:hover {
