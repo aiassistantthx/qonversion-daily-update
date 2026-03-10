@@ -1289,28 +1289,42 @@ router.get('/forecast', async (req, res) => {
       ORDER BY cohort_month
     `);
 
-    // Current active weekly subscribers
+    // Current active subscribers by product type and source
     // Same logic as /active-subscribers endpoint - include Trial Converted, Subscription Started, Subscription Renewed
     // Exclude users whose last event was cancel/expire/refund
-    const activeWeeklyResult = await db.query(`
+    const activeSubsResult = await db.query(`
       WITH user_last_event AS (
         SELECT DISTINCT ON (q_user_id)
           q_user_id,
           event_name,
           event_date,
-          product_id
+          product_id,
+          media_source,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN 'yearly'
+            WHEN product_id LIKE '%monthly%' THEN 'monthly'
+            ELSE 'weekly'
+          END as sub_type
         FROM events_v2
         WHERE event_name IN (
           'Trial Converted', 'Subscription Started', 'Subscription Renewed',
           'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
         )
-          AND product_id LIKE '%weekly%'
-          AND event_date >= CURRENT_DATE - INTERVAL '14 days'
+          AND event_date >= CURRENT_DATE - INTERVAL '380 days'
         ORDER BY q_user_id, event_date DESC
       )
-      SELECT COUNT(*) as active_weekly
+      SELECT
+        sub_type,
+        CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END as source,
+        COUNT(*) as active_count
       FROM user_last_event
       WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND (
+          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '10 days')
+          OR (sub_type = 'monthly' AND event_date >= CURRENT_DATE - INTERVAL '33 days')
+          OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '372 days')
+        )
+      GROUP BY sub_type, CASE WHEN media_source = 'Apple AdServices' THEN 'apple_ads' ELSE 'organic' END
     `);
 
     // ============================================
@@ -1365,8 +1379,27 @@ router.get('/forecast', async (req, res) => {
       ? last3Months.reduce((s, r) => s + parseFloat(r.monthly_revenue || 0), 0) / last3Months.length
       : 300;
 
-    // Active weekly base
-    const activeWeeklyBase = parseInt(activeWeeklyResult.rows[0]?.active_weekly) || 2700;
+    // Build active subscriber breakdown
+    const activeSubs = {
+      weekly: { apple_ads: 0, organic: 0, total: 0 },
+      yearly: { apple_ads: 0, organic: 0, total: 0 },
+      monthly: { apple_ads: 0, organic: 0, total: 0 },
+      total: { apple_ads: 0, organic: 0, total: 0 },
+    };
+
+    for (const row of activeSubsResult.rows) {
+      const subType = row.sub_type;
+      const source = row.source;
+      const count = parseInt(row.active_count) || 0;
+
+      activeSubs[subType][source] = count;
+      activeSubs[subType].total += count;
+      activeSubs.total[source] += count;
+      activeSubs.total.total += count;
+    }
+
+    // Active weekly base for backward compatibility
+    const activeWeeklyBase = activeSubs.weekly.total || 2700;
 
     // ============================================
     // 3. CURRENT MONTH DATA (for extrapolation)
@@ -1600,6 +1633,7 @@ router.get('/forecast', async (req, res) => {
         avgYearlyNewSubs,
         avgYearlyRevenue: Math.round(avgYearlyRevenue),
         avgMonthlyRevenue: Math.round(avgMonthlyRevenue),
+        activeSubs,
       },
       currentMonthSubs: parseInt(currentMonthSubs.rows[0]?.subs) || 0,
       // Backward compatibility

@@ -95,31 +95,59 @@ export function Planning() {
     const forecast: ForecastPoint[] = [];
     const today = new Date();
 
-    // Start with actual current subscriber base (split 60/40 paid/organic estimate)
-    const totalWeeklyBase = currentMetrics?.activeWeeklyBase || 2200;
-    let appleAdsActive = totalWeeklyBase * 0.6;  // ~60% from paid
-    let organicActive = totalWeeklyBase * 0.4;   // ~40% organic
+    // Start with actual current subscriber base from API
+    // Use activeSubs breakdown if available, otherwise fall back to estimates
+    const activeSubs = currentMetrics?.activeSubs;
+
+    // Weekly subscribers (94% of base, high churn)
+    const weeklyAppleAds = activeSubs?.weekly?.apple_ads || 0;
+    const weeklyOrganic = activeSubs?.weekly?.organic || 0;
+
+    // Yearly subscribers (6% of base, low churn - 35% annual renewal = ~5.4% monthly churn)
+    const yearlyAppleAds = activeSubs?.yearly?.apple_ads || 0;
+    const yearlyOrganic = activeSubs?.yearly?.organic || 0;
+
+    // Initialize tracking for both product types
+    let weeklyPaidActive = weeklyAppleAds;
+    let weeklyOrganicActive = weeklyOrganic;
+    let yearlyPaidActive = yearlyAppleAds;
+    let yearlyOrganicActive = yearlyOrganic;
+
+    // Product-specific parameters
+    const weeklyMonthlyChurn = assumptions.monthlyChurn;  // ~48% monthly for weekly subs
+    const yearlyMonthlyChurn = 5.4;  // ~5.4% monthly (35% annual renewal = 65% churn/year)
+    const weeklyArpu = 38;  // $9.19/week * 4.33 weeks
+    const yearlyArpu = 5.17;  // $62/year / 12 months
 
     for (let month = 0; month < forecastMonths; month++) {
       const forecastDate = new Date(today);
       forecastDate.setMonth(forecastDate.getMonth() + month + 1);
 
-      const retention = (1 - assumptions.monthlyChurn / 100);
       const newPaidSubs = assumptions.monthlyBudget / assumptions.cacTarget;
 
-      // Apply churn to existing base, add new subscribers
-      const appleAdsRetained = appleAdsActive * retention;
-      appleAdsActive = appleAdsRetained + newPaidSubs;
+      // WEEKLY SUBSCRIBERS (high churn)
+      // New paid subs are primarily weekly (trials convert to weekly)
+      const weeklyRetention = (1 - weeklyMonthlyChurn / 100);
+      weeklyPaidActive = weeklyPaidActive * weeklyRetention + newPaidSubs;
+      // Organic subs also primarily weekly
+      weeklyOrganicActive = weeklyOrganicActive * weeklyRetention + assumptions.organicMonthly;
 
-      const organicRetained = organicActive * retention;
-      organicActive = organicRetained + assumptions.organicMonthly;
+      // YEARLY SUBSCRIBERS (low churn)
+      const yearlyRetention = (1 - yearlyMonthlyChurn / 100);
+      yearlyPaidActive = yearlyPaidActive * yearlyRetention;
+      yearlyOrganicActive = yearlyOrganicActive * yearlyRetention;
 
-      // Revenue = active subs * blended price per month
-      // ~94% weekly ($9.19 * 4.33 = $39.79/mo), ~6% yearly ($62/12 = $5.17/mo)
-      // Blended ARPU ≈ $38/month
-      const blendedArpu = 38;
-      const appleAdsRevenue = appleAdsActive * blendedArpu;
-      const organicRevenue = organicActive * blendedArpu;
+      // Revenue by product type
+      const weeklyPaidRevenue = weeklyPaidActive * weeklyArpu;
+      const weeklyOrganicRevenue = weeklyOrganicActive * weeklyArpu;
+      const yearlyPaidRevenue = yearlyPaidActive * yearlyArpu;
+      const yearlyOrganicRevenue = yearlyOrganicActive * yearlyArpu;
+
+      // Aggregate
+      const appleAdsActive = weeklyPaidActive + yearlyPaidActive;
+      const organicActive = weeklyOrganicActive + yearlyOrganicActive;
+      const appleAdsRevenue = weeklyPaidRevenue + yearlyPaidRevenue;
+      const organicRevenue = weeklyOrganicRevenue + yearlyOrganicRevenue;
 
       forecast.push({
         date: forecastDate.toISOString().slice(0, 7),
