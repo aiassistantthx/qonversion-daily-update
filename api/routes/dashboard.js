@@ -4048,22 +4048,38 @@ router.get('/payer-share', async (req, res) => {
 router.get('/active-subscribers', async (req, res) => {
   try {
     // Current active subscribers by type
+    // Logic: Find the most recent subscription event for each user and determine if still active
+    // Weekly subs: active if last event was within 10 days
+    // Yearly subs: active if last event was within 380 days
     const currentQuery = `
-      WITH recent_renewals AS (
-        SELECT DISTINCT
+      WITH last_subscription_event AS (
+        SELECT DISTINCT ON (q_user_id)
           q_user_id,
+          event_date,
+          product_id,
           CASE
             WHEN product_id LIKE '%yearly%' THEN 'yearly'
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
-        WHERE event_name = 'Subscription Renewed'
-          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND event_date >= CURRENT_DATE - INTERVAL '380 days'
+        ORDER BY q_user_id, event_date DESC
+      ),
+      active_subscribers AS (
+        SELECT
+          q_user_id,
+          sub_type
+        FROM last_subscription_event
+        WHERE (
+          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '10 days')
+          OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '380 days')
+        )
       )
       SELECT
         sub_type,
         COUNT(*) as active_count
-      FROM recent_renewals
+      FROM active_subscribers
       GROUP BY sub_type
     `;
     const currentResult = await db.query(currentQuery);
@@ -4076,22 +4092,35 @@ router.get('/active-subscribers', async (req, res) => {
 
     // Previous period (30 days before)
     const previousQuery = `
-      WITH recent_renewals AS (
-        SELECT DISTINCT
+      WITH last_subscription_event AS (
+        SELECT DISTINCT ON (q_user_id)
           q_user_id,
+          event_date,
+          product_id,
           CASE
             WHEN product_id LIKE '%yearly%' THEN 'yearly'
             ELSE 'weekly'
           END as sub_type
         FROM events_v2
-        WHERE event_name = 'Subscription Renewed'
-          AND event_date >= CURRENT_DATE - INTERVAL '60 days'
+        WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+          AND event_date >= CURRENT_DATE - INTERVAL '410 days'
           AND event_date < CURRENT_DATE - INTERVAL '30 days'
+        ORDER BY q_user_id, event_date DESC
+      ),
+      active_subscribers AS (
+        SELECT
+          q_user_id,
+          sub_type
+        FROM last_subscription_event
+        WHERE (
+          (sub_type = 'weekly' AND event_date >= CURRENT_DATE - INTERVAL '40 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
+          OR (sub_type = 'yearly' AND event_date >= CURRENT_DATE - INTERVAL '410 days' AND event_date < CURRENT_DATE - INTERVAL '30 days')
+        )
       )
       SELECT
         sub_type,
         COUNT(*) as active_count
-      FROM recent_renewals
+      FROM active_subscribers
       GROUP BY sub_type
     `;
     const previousResult = await db.query(previousQuery);
@@ -4113,15 +4142,38 @@ router.get('/active-subscribers', async (req, res) => {
       ? ((current.total - previous.total) / previous.total) * 100
       : 0;
 
-    // Sparkline data - last 30 days
+    // Sparkline data - last 30 days (daily snapshot of active subscribers)
     const sparklineQuery = `
-      WITH daily_active AS (
+      WITH date_series AS (
+        SELECT generate_series(
+          CURRENT_DATE - INTERVAL '30 days',
+          CURRENT_DATE - INTERVAL '1 day',
+          '1 day'::interval
+        )::date as day
+      ),
+      daily_active AS (
         SELECT
-          DATE_TRUNC('day', event_date)::date as day,
-          COUNT(DISTINCT q_user_id) as active_count
-        FROM events_v2
-        WHERE event_name = 'Subscription Renewed'
-          AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+          ds.day,
+          COUNT(DISTINCT CASE
+            WHEN (lse.sub_type = 'weekly' AND lse.event_date >= ds.day - INTERVAL '10 days' AND lse.event_date <= ds.day)
+              OR (lse.sub_type = 'yearly' AND lse.event_date >= ds.day - INTERVAL '380 days' AND lse.event_date <= ds.day)
+            THEN lse.q_user_id
+          END) as active_count
+        FROM date_series ds
+        CROSS JOIN LATERAL (
+          SELECT DISTINCT ON (q_user_id)
+            q_user_id,
+            event_date,
+            CASE
+              WHEN product_id LIKE '%yearly%' THEN 'yearly'
+              ELSE 'weekly'
+            END as sub_type
+          FROM events_v2
+          WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+            AND event_date <= ds.day
+            AND event_date >= ds.day - INTERVAL '380 days'
+          ORDER BY q_user_id, event_date DESC
+        ) lse
         GROUP BY 1
         ORDER BY 1
       )

@@ -56,12 +56,13 @@ export default function Keywords() {
   const { data: keywordsData, isLoading } = useQuery({
     queryKey: ['keywords', { campaignIds, adGroupIds, queryParams, page }],
     queryFn: () => getKeywords({
-      campaign_id: campaignIds.length === 1 ? campaignIds[0] : undefined,
+      campaign_id: campaignIds.length > 0 ? campaignIds[0] : undefined,
       adgroup_id: adGroupIds.length === 1 ? adGroupIds[0] : undefined,
       limit: itemsPerPage,
       offset: (page - 1) * itemsPerPage,
       ...queryParams,
     }),
+    enabled: campaignIds.length > 0 || adGroupIds.length > 0,
   });
 
   const bidMutation = useMutation({

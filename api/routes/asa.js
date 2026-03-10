@@ -982,8 +982,14 @@ router.get('/keywords', async (req, res) => {
   try {
     const { campaign_id, adgroup_id, status, limit = 100, offset = 0 } = req.query;
 
-    if (!campaign_id) {
-      return res.status(400).json({ error: 'campaign_id is required' });
+    // Parse date range
+    let { days = 7, from, to } = req.query;
+    let dateFilter;
+    if (from && to) {
+      dateFilter = { from, to };
+    } else {
+      days = parseInt(days) || 7;
+      dateFilter = { days };
     }
 
     // Check cache
@@ -997,16 +1003,6 @@ router.get('/keywords', async (req, res) => {
       return res.json(cached);
     }
 
-    // Parse date range
-    let { days = 7, from, to } = req.query;
-    let dateFilter;
-    if (from && to) {
-      dateFilter = { from, to };
-    } else {
-      days = parseInt(days) || 7;
-      dateFilter = { days };
-    }
-
     // Build date conditions (without table alias - will be used in different contexts)
     const dateCondition = dateFilter.days
       ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
@@ -1016,6 +1012,14 @@ router.get('/keywords', async (req, res) => {
     const revenueCondition = dateFilter.days
       ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
       : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
+
+    // Build campaign filter condition
+    const params = [];
+    let campaignFilter = '';
+    if (campaign_id) {
+      campaignFilter = `campaign_id = $${params.length + 1}`;
+      params.push(campaign_id);
+    }
 
     // Get keywords with dynamic performance data
     let baseQuery = `
@@ -1027,14 +1031,14 @@ router.get('/keywords', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
         FROM apple_ads_keywords
-        WHERE campaign_id = $1
+        ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         GROUP BY keyword_id
       ),
       total_impressions AS (
         SELECT
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as total_impr
         FROM apple_ads_keywords
-        WHERE campaign_id = $1
+        ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
       ),
       keyword_revenue AS (
         SELECT
@@ -1044,14 +1048,14 @@ router.get('/keywords', async (req, res) => {
         FROM events_v2
         WHERE ${revenueCondition}
           AND keyword_id IS NOT NULL
-          AND campaign_id = $1
+          ${campaignFilter ? `AND ${campaignFilter}` : ''}
         GROUP BY keyword_id
       ),
       keyword_base AS (
         SELECT DISTINCT ON (keyword_id)
           keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount
         FROM apple_ads_keywords
-        WHERE campaign_id = $1
+        ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         ORDER BY keyword_id, date DESC
       )
       SELECT
@@ -1081,7 +1085,6 @@ router.get('/keywords', async (req, res) => {
       CROSS JOIN total_impressions ti
       WHERE 1=1
     `;
-    const params = [campaign_id];
 
     if (adgroup_id) {
       baseQuery += ` AND k.adgroup_id = $${params.length + 1}`;
@@ -1094,7 +1097,7 @@ router.get('/keywords', async (req, res) => {
         SELECT DISTINCT ON (keyword_id)
           keyword_id, campaign_id, adgroup_id
         FROM apple_ads_keywords
-        WHERE campaign_id = $1
+        ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         ORDER BY keyword_id, date DESC
       )
       SELECT COUNT(*) as total
