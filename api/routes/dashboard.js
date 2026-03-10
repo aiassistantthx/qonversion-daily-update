@@ -2798,39 +2798,39 @@ router.get('/churn-rate', async (req, res) => {
     `);
 
     // Aggregate to weekly for the chart
-    const weeklyChurnResult = await db.query(`
-      WITH daily_data AS (
-        SELECT * FROM (${dailyMovementResult.rows.length > 0 ? `
-          SELECT
-            day::date,
-            new_subs::int,
-            churned::int,
-            (new_subs - churned)::int as net_change
-          FROM (VALUES ${dailyMovementResult.rows.map(r =>
-            `('${r.day}'::date, ${r.new_subs}, ${r.churned}, ${r.net_change})`
-          ).join(',')}) AS t(day, new_subs, churned, net_change)
-        ` : `SELECT NULL::date as day, 0 as new_subs, 0 as churned, 0 as net_change WHERE false`}) sub
-      ),
-      weekly_agg AS (
-        SELECT
-          DATE_TRUNC('week', day)::date as week_start,
-          SUM(new_subs) as new_subs,
-          SUM(churned) as churned,
-          SUM(net_change) as net_change
-        FROM daily_data
-        WHERE day IS NOT NULL
-        GROUP BY DATE_TRUNC('week', day)::date
-      )
-      SELECT
-        week_start,
-        new_subs,
-        churned,
-        net_change,
-        -- Active at end of week (running sum of net changes)
-        SUM(net_change) OVER (ORDER BY week_start) as active_subs
-      FROM weekly_agg
-      ORDER BY week_start
-    `);
+    // Process daily data in JavaScript instead of embedding in SQL
+    const dailyByWeek = {};
+    for (const r of dailyMovementResult.rows) {
+      const day = new Date(r.day);
+      // Get Monday of the week
+      const dayOfWeek = day.getDay();
+      const diff = day.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+      const weekStart = new Date(day.setDate(diff)).toISOString().split('T')[0];
+
+      if (!dailyByWeek[weekStart]) {
+        dailyByWeek[weekStart] = { new_subs: 0, churned: 0, net_change: 0 };
+      }
+      dailyByWeek[weekStart].new_subs += parseInt(r.new_subs) || 0;
+      dailyByWeek[weekStart].churned += parseInt(r.churned) || 0;
+      dailyByWeek[weekStart].net_change += parseInt(r.net_change) || 0;
+    }
+
+    // Convert to array and calculate running active subs
+    let runningActive = 0;
+    const weeklyChurnRows = Object.entries(dailyByWeek)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week_start, data]) => {
+        runningActive += data.net_change;
+        return {
+          week_start,
+          new_subs: data.new_subs,
+          churned: data.churned,
+          net_change: data.net_change,
+          active_subs: runningActive,
+        };
+      });
+
+    const weeklyChurnResult = { rows: weeklyChurnRows };
 
     // Yearly subscription churn: month-over-month
     const yearlyChurnResult = await db.query(`
