@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, X, ChevronDown } from 'lucide-react';
 import { CohortTable, type CohortsData } from '../components/CohortTable';
+import { RevenueByDayChart, PayerShareChart } from '../components';
+import type { RevenueByDayData, PayerShareData } from '../components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -36,6 +38,16 @@ export function Cohorts() {
       }
       return fetch(`${API_URL}/asa/cohorts?${params}`).then(r => r.json());
     },
+  });
+
+  const { data: revenueByDayData } = useQuery<RevenueByDayData>({
+    queryKey: ['revenue-by-day'],
+    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?months=12`).then(r => r.json()),
+  });
+
+  const { data: payerShareData } = useQuery<PayerShareData>({
+    queryKey: ['payer-share'],
+    queryFn: () => fetch(`${API_URL}/dashboard/payer-share?months=12`).then(r => r.json()),
   });
 
   const [isCountryOpen, setIsCountryOpen] = useState(false);
@@ -241,6 +253,12 @@ export function Cohorts() {
       )}
 
       <CohortTable data={data} />
+
+      {/* Cumulative Revenue per User */}
+      {revenueByDayData?.cohorts && <RevenueByDayChart data={revenueByDayData} />}
+
+      {/* Payer Share */}
+      {payerShareData?.cohorts && <PayerShareChart data={payerShareData} />}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

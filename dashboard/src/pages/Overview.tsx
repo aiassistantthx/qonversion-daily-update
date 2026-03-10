@@ -11,7 +11,6 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
-  RevenueByDayChart,
   TrendChart,
   SubscriptionBreakdown,
   RetentionChart,
@@ -20,9 +19,7 @@ import {
   RenewalRatesTable,
   CountriesTable,
   MRRBreakdown,
-  ScenarioModeling,
   MetricSelector,
-  PayerShareChart,
   ActiveSubscribersWidget,
   MonthlyComparisonTable,
   useSortableData,
@@ -30,9 +27,9 @@ import {
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  RevenueByDayData, TrendChartData, SubscriptionBreakdownData,
+  TrendChartData, SubscriptionBreakdownData,
   RetentionData, WeeklyChurnData, RenewalRatesData,
-  CountriesData, MRRBreakdownData, PayerShareData, ActiveSubscribersData
+  CountriesData, MRRBreakdownData, ActiveSubscribersData
 } from '../components';
 import { api } from '../api';
 import type { YoYData, ChurnRateData } from '../api';
@@ -378,11 +375,6 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/subscription-breakdown?months=12`).then(r => r.json()),
   });
 
-  const { data: revenueByDayData } = useQuery<RevenueByDayData>({
-    queryKey: ['revenue-by-day'],
-    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?months=12`).then(r => r.json()),
-  });
-
   const { data: retentionData } = useQuery<RetentionData>({
     queryKey: ['retention', dateRange],
     queryFn: () => fetch(`${API_URL}/dashboard/retention?${buildParams({ months: 12 })}`).then(r => r.json()),
@@ -411,11 +403,6 @@ export function Overview() {
   const { data: mrrBreakdownData } = useQuery<MRRBreakdownData>({
     queryKey: ['mrr-breakdown'],
     queryFn: () => fetch(`${API_URL}/dashboard/mrr?months=12`).then(r => r.json()),
-  });
-
-  const { data: payerShareData } = useQuery<PayerShareData>({
-    queryKey: ['payer-share', dateRange],
-    queryFn: () => fetch(`${API_URL}/dashboard/payer-share?${buildParams({ months: 12 })}`).then(r => r.json()),
   });
 
   const { data: activeSubscribersData } = useQuery<ActiveSubscribersData>({
@@ -540,6 +527,13 @@ export function Overview() {
         </button>
       </div>
 
+      {/* Current Month KPIs */}
+      <div style={{ marginBottom: 8 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827' }}>
+          {cm?.month || 'Current Month'}
+        </h2>
+      </div>
+
       {/* KPI Cards Row 1 */}
       <div style={styles.kpiGrid}>
         <KPICard title="Spend" value={fmtK(cm?.spend || 0)} icon={DollarSign} change={cm?.spendChange} sparklineData={spendSparkline} />
@@ -564,6 +558,54 @@ export function Overview() {
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
 
+      {/* Active Subscribers Widget */}
+      {activeSubscribersData?.current && <ActiveSubscribersWidget data={activeSubscribersData} />}
+
+      {/* Monthly Comparison Table */}
+      {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
+
+      {/* Daily Chart */}
+      <div style={styles.chartCard}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <h3 style={{ ...styles.chartTitle, marginBottom: 0 }}>
+            {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
+          </h3>
+          <MetricSelector
+            options={[
+              { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
+              { key: 'spend', label: 'Spend', color: '#ef4444' },
+              { key: 'cop', label: 'COP', color: '#10b981' },
+              { key: 'copPredicted', label: 'COP Predicted', color: '#10b981' },
+            ]}
+            onChange={handleDailyChartMetricsChange}
+            storageKey="dailyChart-selectedMetrics"
+          />
+        </div>
+        <div style={styles.chartContainer}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={dailyChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
+              <Legend />
+              {dailyChartMetrics.includes('revenue') && (
+                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
+              )}
+              {dailyChartMetrics.includes('spend') && (
+                <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
+              )}
+              {dailyChartMetrics.includes('cop') && (
+                <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
+              )}
+              {dailyChartMetrics.includes('copPredicted') && (
+                <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       {/* ROAS Evolution Chart */}
       <div style={styles.chartCard}>
@@ -625,24 +667,8 @@ export function Overview() {
       {/* MRR Breakdown */}
       {mrrBreakdownData?.current && <MRRBreakdown data={mrrBreakdownData} />}
 
-      {/* Active Subscribers Widget */}
-      {activeSubscribersData?.current && <ActiveSubscribersWidget data={activeSubscribersData} />}
-
-
-      {/* Monthly Comparison Table */}
-      {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
-
-      {/* Scenario Modeling */}
-      <ScenarioModeling />
-
-      {/* Revenue by Day Chart */}
-      {revenueByDayData?.cohorts && <RevenueByDayChart data={revenueByDayData} />}
-
       {/* Retention Chart */}
       {retentionData?.cohorts && <RetentionChart data={retentionData} />}
-
-      {/* Payer Share Chart */}
-      {payerShareData?.cohorts && <PayerShareChart data={payerShareData} />}
 
       {/* Weekly Churn Analysis */}
       {weeklyChurnData?.cohorts && <WeeklyChurnChart data={weeklyChurnData} />}
@@ -655,49 +681,6 @@ export function Overview() {
 
       {/* Countries Ranking */}
       {countriesData?.countries && <CountriesTable data={countriesData} />}
-
-      {/* Daily Chart */}
-      <div style={styles.chartCard}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <h3 style={{ ...styles.chartTitle, marginBottom: 0 }}>
-            {dateScale === 'month' ? 'Monthly' : dateScale === 'week' ? 'Weekly' : 'Last 30 Days'} - Revenue, Spend & COP
-          </h3>
-          <MetricSelector
-            options={[
-              { key: 'revenue', label: 'Revenue', color: '#3b82f6' },
-              { key: 'spend', label: 'Spend', color: '#ef4444' },
-              { key: 'cop', label: 'COP', color: '#10b981' },
-              { key: 'copPredicted', label: 'COP Predicted', color: '#10b981' },
-            ]}
-            onChange={handleDailyChartMetricsChange}
-            storageKey="dailyChart-selectedMetrics"
-          />
-        </div>
-        <div style={styles.chartContainer}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={dailyChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} />
-              <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
-              <Legend />
-              {dailyChartMetrics.includes('revenue') && (
-                <Area yAxisId="left" type="monotone" dataKey="revenue" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} name="Revenue" />
-              )}
-              {dailyChartMetrics.includes('spend') && (
-                <Area yAxisId="left" type="monotone" dataKey="spend" fill="#ef4444" fillOpacity={0.2} stroke="#ef4444" strokeWidth={2} name="Spend" />
-              )}
-              {dailyChartMetrics.includes('cop') && (
-                <Line yAxisId="right" type="monotone" dataKey="cop" stroke="#10b981" strokeWidth={2} dot={false} name="COP" connectNulls />
-              )}
-              {dailyChartMetrics.includes('copPredicted') && (
-                <Line yAxisId="right" type="monotone" dataKey="copPredicted" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} name="COP Predicted" connectNulls />
-              )}
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* Funnel Comparison */}
       {funnelData && (
