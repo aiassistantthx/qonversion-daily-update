@@ -2841,7 +2841,7 @@ router.get('/keywords/sov-trend', async (req, res) => {
  */
 router.get('/cohorts', async (req, res) => {
   try {
-    const { campaign_id, period = 'week', limit = 12, country } = req.query;
+    const { campaign_id, period = 'week', limit = 12, country, product_type } = req.query;
 
     // Build date grouping based on period
     const dateGroup = period === 'month'
@@ -2852,6 +2852,7 @@ router.get('/cohorts', async (req, res) => {
     let campaignFilter = '';
     let countryFilter = '';
     let spendCountryFilter = '';
+    let productTypeFilter = '';
     const params = [parseInt(limit) || 12];
     let paramIndex = 2;
 
@@ -2869,6 +2870,10 @@ router.get('/cohorts', async (req, res) => {
         params.push(countries);
         paramIndex++;
       }
+    }
+
+    if (product_type) {
+      productTypeFilter = `AND product_id LIKE '%${product_type}%'`;
     }
 
     // Get cohort data with ROAS by different time windows
@@ -2912,6 +2917,7 @@ router.get('/cohorts', async (req, res) => {
           AND install_date IS NOT NULL
           ${campaignFilter}
           ${countryFilter}
+          ${productTypeFilter}
         GROUP BY 1, 2
       ),
       cohort_agg AS (

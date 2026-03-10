@@ -17,6 +17,7 @@ export function Cohorts() {
   const [limit, setLimit] = useState(12);
   const [campaignId, setCampaignId] = useState<string>('');
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [productType, setProductType] = useState<'all' | 'yearly' | 'weekly'>('all');
 
   const { data: countriesData } = useQuery<{ data: Country[] }>({
     queryKey: ['countries'],
@@ -24,7 +25,7 @@ export function Cohorts() {
   });
 
   const { data, refetch, isFetching } = useQuery<CohortsData>({
-    queryKey: ['cohorts', period, limit, campaignId, selectedCountries],
+    queryKey: ['cohorts', period, limit, campaignId, selectedCountries, productType],
     queryFn: () => {
       const params = new URLSearchParams({
         period,
@@ -35,6 +36,9 @@ export function Cohorts() {
       }
       if (selectedCountries.length > 0) {
         params.set('country', selectedCountries.join(','));
+      }
+      if (productType !== 'all') {
+        params.set('product_type', productType);
       }
       return fetch(`${API_URL}/asa/cohorts?${params}`).then(r => r.json());
     },
@@ -95,6 +99,15 @@ export function Cohorts() {
             <option value={12}>Last 12</option>
             <option value={16}>Last 16</option>
             <option value={24}>Last 24</option>
+          </select>
+          <select
+            value={productType}
+            onChange={(e) => setProductType(e.target.value as 'all' | 'yearly' | 'weekly')}
+            style={styles.select}
+          >
+            <option value="all">All Subscriptions</option>
+            <option value="yearly">Yearly Only</option>
+            <option value="weekly">Weekly Only</option>
           </select>
           <div ref={countryRef} style={{ position: 'relative' }}>
             <button
