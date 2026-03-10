@@ -62,7 +62,6 @@ export default function Keywords() {
       offset: (page - 1) * itemsPerPage,
       ...queryParams,
     }),
-    enabled: campaignIds.length > 0 || adGroupIds.length > 0,
   });
 
   const bidMutation = useMutation({
@@ -726,7 +725,7 @@ export default function Keywords() {
               ) : keywords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={18} className="text-center py-8 text-gray-500">
-                    No keywords found. Select a campaign from the Campaigns page.
+                    No keywords found.
                   </TableCell>
                 </TableRow>
               ) : (

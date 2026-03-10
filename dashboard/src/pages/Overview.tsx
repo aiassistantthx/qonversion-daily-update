@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  LineChart, Line, Bar, Area, ComposedChart,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine
+  Line, Bar, Area, ComposedChart,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid
 } from 'recharts';
 import { RefreshCw, TrendingUp, DollarSign, Users, Target, Clock, Search } from 'lucide-react';
 import {
@@ -11,6 +11,7 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
+  MetricSelector,
   ActiveSubscribersWidget,
   MonthlyComparisonTable,
   useSortableData,
@@ -21,7 +22,7 @@ import type {
   ActiveSubscribersData
 } from '../components';
 import { api } from '../api';
-import type { YoYData, ChurnRateData } from '../api';
+import type { YoYData } from '../api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -29,13 +30,6 @@ const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString(u
 const fmtK = (n: number | null | undefined) => n != null ? `$${(n / 1000).toFixed(1)}K` : '—';
 const fmtPct = (n: number | null | undefined) => n != null ? `${n.toFixed(1)}%` : '—';
 const fmtMonths = (n: number | null | undefined) => n != null ? `${n}mo` : '—';
-
-// Color palette for cohort lines
-const COHORT_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
-  '#14b8a6', '#eab308'
-];
 
 interface DashboardData {
   currentMonth: {
@@ -97,17 +91,6 @@ interface MarketingData {
     predictedPaybackMonths: number | null;
     isPaidBack: boolean;
   }>;
-}
-
-interface RoasEvolutionData {
-  cohorts: Array<{
-    month: string;
-    maxAge: number;
-    spend: number;
-    roas: { d7: number | null; d14: number | null; d30: number | null; d60: number | null; d90: number | null; d120: number | null; d150: number | null; d180: number | null; total: number };
-  }>;
-  chartData: Array<{ age: number; [key: string]: number | null }>;
-  ages: number[];
 }
 
 interface KeywordsData {
@@ -396,10 +379,6 @@ export function Overview() {
     cop: m.cop,
     copPredicted: m.copPredicted,
   }));
-
-  // ROAS Evolution chart data - multiple cohort lines
-  const roasChartData = roasEvolution?.chartData || [];
-  const cohortMonths = roasEvolution?.cohorts?.map(c => c.month) || [];
 
   // Forecast chart data
   const forecastChartData = [
@@ -804,6 +783,14 @@ export function Overview() {
           </table>
         </div>
       </div>
+
+      <style>{`
+        a[href*="/#/"]:hover {
+          border-color: #3b82f6;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+          transform: translateY(-2px);
+        }
+      `}</style>
     </div>
   );
 }
@@ -920,5 +907,39 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     textAlign: 'right',
     fontFamily: "'JetBrains Mono', monospace",
+  },
+  navCardsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 16,
+    marginBottom: 16,
+  },
+  navCard: {
+    background: '#fff',
+    border: '2px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 24,
+    textDecoration: 'none',
+    transition: 'all 0.2s ease',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+  },
+  navCardIcon: {
+    fontSize: 36,
+    marginBottom: 12,
+  },
+  navCardTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#111827',
+    marginBottom: 8,
+  },
+  navCardDescription: {
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 1.5,
   },
 };
