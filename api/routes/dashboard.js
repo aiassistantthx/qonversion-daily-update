@@ -2716,6 +2716,224 @@ router.get('/weekly-churn', async (req, res) => {
 });
 
 // ============================================
+// STREAMING CHURN RATE (RevenueCat style)
+// ============================================
+router.get('/churn-rate', async (req, res) => {
+  try {
+    const { period = 'week', months = 12 } = req.query;
+
+    // Weekly subscription churn: week-over-week
+    // For each week, calculate: (active at start - renewed) / active at start
+    const weeklyChurnResult = await db.query(`
+      WITH weeks AS (
+        SELECT generate_series(
+          DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months'),
+          DATE_TRUNC('week', CURRENT_DATE),
+          '1 week'
+        )::date AS week_start
+      ),
+      -- Active weekly subs at start of each week (had renewal in prior 7-14 days)
+      weekly_active_at_start AS (
+        SELECT
+          w.week_start,
+          COUNT(DISTINCT e.q_user_id) as active_subs
+        FROM weeks w
+        JOIN events_v2 e ON
+          e.event_date >= w.week_start - INTERVAL '14 days'
+          AND e.event_date < w.week_start
+          AND e.product_id LIKE '%weekly%'
+          AND e.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+          AND e.refund = false
+        GROUP BY w.week_start
+      ),
+      -- Weekly subs that renewed during each week
+      weekly_renewed AS (
+        SELECT
+          DATE_TRUNC('week', e.event_date)::date as week_start,
+          COUNT(DISTINCT e.q_user_id) as renewed_subs
+        FROM events_v2 e
+        WHERE e.product_id LIKE '%weekly%'
+          AND e.event_name = 'Subscription Renewed'
+          AND e.refund = false
+          AND e.event_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months')
+        GROUP BY DATE_TRUNC('week', e.event_date)::date
+      ),
+      -- New weekly subs each week
+      weekly_new AS (
+        SELECT
+          DATE_TRUNC('week', e.event_date)::date as week_start,
+          COUNT(DISTINCT e.q_user_id) as new_subs
+        FROM events_v2 e
+        WHERE e.product_id LIKE '%weekly%'
+          AND e.event_name IN ('Subscription Started', 'Trial Converted')
+          AND e.refund = false
+          AND e.event_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '${months} months')
+        GROUP BY DATE_TRUNC('week', e.event_date)::date
+      )
+      SELECT
+        w.week_start,
+        COALESCE(a.active_subs, 0) as active_at_start,
+        COALESCE(r.renewed_subs, 0) as renewed,
+        COALESCE(n.new_subs, 0) as new_subs,
+        CASE WHEN COALESCE(a.active_subs, 0) > 0
+          THEN ROUND(
+            (COALESCE(a.active_subs, 0) - COALESCE(r.renewed_subs, 0))::numeric
+            / COALESCE(a.active_subs, 1)::numeric * 100, 1
+          )
+          ELSE 0
+        END as churn_rate,
+        COALESCE(a.active_subs, 0) - COALESCE(r.renewed_subs, 0) as churned
+      FROM weeks w
+      LEFT JOIN weekly_active_at_start a ON w.week_start = a.week_start
+      LEFT JOIN weekly_renewed r ON w.week_start = r.week_start
+      LEFT JOIN weekly_new n ON w.week_start = n.week_start
+      WHERE w.week_start < DATE_TRUNC('week', CURRENT_DATE)
+      ORDER BY w.week_start
+    `);
+
+    // Yearly subscription churn: month-over-month
+    const yearlyChurnResult = await db.query(`
+      WITH months AS (
+        SELECT generate_series(
+          DATE_TRUNC('month', CURRENT_DATE - INTERVAL '${months} months'),
+          DATE_TRUNC('month', CURRENT_DATE),
+          '1 month'
+        )::date AS month_start
+      ),
+      -- Users who started yearly subscription in each month
+      yearly_starts AS (
+        SELECT
+          q_user_id,
+          MIN(event_date) as first_sub_date,
+          DATE_TRUNC('month', MIN(event_date))::date as start_month
+        FROM events_v2
+        WHERE product_id LIKE '%yearly%'
+          AND event_name IN ('Subscription Started', 'Trial Converted')
+          AND refund = false
+        GROUP BY q_user_id
+      ),
+      -- Users who canceled yearly subscription
+      yearly_canceled AS (
+        SELECT
+          q_user_id,
+          MAX(event_date) as cancel_date
+        FROM events_v2
+        WHERE product_id LIKE '%yearly%'
+          AND event_name = 'Subscription Canceled'
+        GROUP BY q_user_id
+      ),
+      -- Active yearly subs at start of each month
+      -- (started before month start, not canceled before month start)
+      monthly_active AS (
+        SELECT
+          m.month_start,
+          COUNT(DISTINCT ys.q_user_id) as active_subs
+        FROM months m
+        JOIN yearly_starts ys ON ys.first_sub_date < m.month_start
+        LEFT JOIN yearly_canceled yc ON ys.q_user_id = yc.q_user_id
+        WHERE (yc.cancel_date IS NULL OR yc.cancel_date >= m.month_start)
+        GROUP BY m.month_start
+      ),
+      -- Yearly subs that canceled in each month
+      monthly_churned AS (
+        SELECT
+          DATE_TRUNC('month', yc.cancel_date)::date as month_start,
+          COUNT(DISTINCT yc.q_user_id) as churned_subs
+        FROM yearly_canceled yc
+        JOIN yearly_starts ys ON yc.q_user_id = ys.q_user_id
+        WHERE yc.cancel_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '${months} months')
+        GROUP BY DATE_TRUNC('month', yc.cancel_date)::date
+      ),
+      -- New yearly subs each month
+      monthly_new AS (
+        SELECT
+          start_month as month_start,
+          COUNT(DISTINCT q_user_id) as new_subs
+        FROM yearly_starts
+        WHERE start_month >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '${months} months')
+        GROUP BY start_month
+      )
+      SELECT
+        m.month_start,
+        COALESCE(a.active_subs, 0) as active_at_start,
+        COALESCE(c.churned_subs, 0) as churned,
+        COALESCE(n.new_subs, 0) as new_subs,
+        CASE WHEN COALESCE(a.active_subs, 0) > 0
+          THEN ROUND(
+            COALESCE(c.churned_subs, 0)::numeric
+            / COALESCE(a.active_subs, 1)::numeric * 100, 1
+          )
+          ELSE 0
+        END as churn_rate
+      FROM months m
+      LEFT JOIN monthly_active a ON m.month_start = a.month_start
+      LEFT JOIN monthly_churned c ON m.month_start = c.month_start
+      LEFT JOIN monthly_new n ON m.month_start = n.month_start
+      WHERE m.month_start < DATE_TRUNC('month', CURRENT_DATE)
+      ORDER BY m.month_start
+    `);
+
+    // Calculate summary metrics
+    const recentWeeklyChurn = weeklyChurnResult.rows.slice(-12);
+    const avgWeeklyChurn = recentWeeklyChurn.length > 0
+      ? recentWeeklyChurn.reduce((s, r) => s + parseFloat(r.churn_rate || 0), 0) / recentWeeklyChurn.length
+      : 0;
+
+    const recentYearlyChurn = yearlyChurnResult.rows.slice(-6);
+    const avgYearlyChurn = recentYearlyChurn.length > 0
+      ? recentYearlyChurn.reduce((s, r) => s + parseFloat(r.churn_rate || 0), 0) / recentYearlyChurn.length
+      : 0;
+
+    // Net subscriber movement
+    const lastWeek = weeklyChurnResult.rows[weeklyChurnResult.rows.length - 1] || {};
+    const lastMonth = yearlyChurnResult.rows[yearlyChurnResult.rows.length - 1] || {};
+
+    res.json({
+      weekly: {
+        data: weeklyChurnResult.rows.map(r => ({
+          period: r.week_start,
+          activeAtStart: parseInt(r.active_at_start),
+          renewed: parseInt(r.renewed),
+          churned: parseInt(r.churned),
+          newSubs: parseInt(r.new_subs),
+          churnRate: parseFloat(r.churn_rate),
+          netChange: parseInt(r.new_subs) - parseInt(r.churned),
+        })),
+        avgChurnRate: Math.round(avgWeeklyChurn * 10) / 10,
+        currentWeek: {
+          activeAtStart: parseInt(lastWeek.active_at_start || 0),
+          churnRate: parseFloat(lastWeek.churn_rate || 0),
+        },
+      },
+      yearly: {
+        data: yearlyChurnResult.rows.map(r => ({
+          period: r.month_start,
+          activeAtStart: parseInt(r.active_at_start),
+          churned: parseInt(r.churned),
+          newSubs: parseInt(r.new_subs),
+          churnRate: parseFloat(r.churn_rate),
+          netChange: parseInt(r.new_subs) - parseInt(r.churned),
+        })),
+        avgChurnRate: Math.round(avgYearlyChurn * 10) / 10,
+        currentMonth: {
+          activeAtStart: parseInt(lastMonth.active_at_start || 0),
+          churnRate: parseFloat(lastMonth.churn_rate || 0),
+        },
+      },
+      summary: {
+        weeklyAvgChurn: Math.round(avgWeeklyChurn * 10) / 10,
+        yearlyAvgChurn: Math.round(avgYearlyChurn * 10) / 10,
+        // Implied annual churn from weekly (1 - (1-weekly)^52)
+        impliedAnnualFromWeekly: Math.round((1 - Math.pow(1 - avgWeeklyChurn/100, 52)) * 1000) / 10,
+      },
+    });
+  } catch (error) {
+    console.error('Churn rate error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
 // COUNTRIES BREAKDOWN
 // ============================================
 router.get('/countries', async (req, res) => {

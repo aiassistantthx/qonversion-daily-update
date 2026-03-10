@@ -180,6 +180,39 @@ export interface ForecastData {
   };
 }
 
+export interface ChurnRateData {
+  weekly: {
+    data: Array<{
+      period: string;
+      activeAtStart: number;
+      renewed: number;
+      churned: number;
+      newSubs: number;
+      churnRate: number;
+      netChange: number;
+    }>;
+    avgChurnRate: number;
+    currentWeek: { activeAtStart: number; churnRate: number };
+  };
+  yearly: {
+    data: Array<{
+      period: string;
+      activeAtStart: number;
+      churned: number;
+      newSubs: number;
+      churnRate: number;
+      netChange: number;
+    }>;
+    avgChurnRate: number;
+    currentMonth: { activeAtStart: number; churnRate: number };
+  };
+  summary: {
+    weeklyAvgChurn: number;
+    yearlyAvgChurn: number;
+    impliedAnnualFromWeekly: number;
+  };
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -193,4 +226,5 @@ export const api = {
   getPayback: (months = 6) => fetchApi<{ payback: PaybackData[] }>(`/dashboard/payback?months=${months}`),
   getYoY: () => fetchApi<YoYData>('/dashboard/yoy'),
   getForecast: () => fetchApi<ForecastData>('/dashboard/forecast'),
+  getChurnRate: (months = 12) => fetchApi<ChurnRateData>(`/dashboard/churn-rate?months=${months}`),
 };

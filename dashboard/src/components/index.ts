@@ -69,3 +69,5 @@ export type { AnomalyInfo } from './AnomalyBadge';
 export { MonthlyComparisonTable } from './MonthlyComparisonTable';
 
 export { ShortcutsHelpModal } from './ShortcutsHelpModal';
+
+export { ChurnRateChart } from './ChurnRateChart';

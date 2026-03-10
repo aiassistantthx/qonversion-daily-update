@@ -16,6 +16,7 @@ import {
   SubscriptionBreakdown,
   RetentionChart,
   WeeklyChurnChart,
+  ChurnRateChart,
   RenewalRatesTable,
   CountriesTable,
   MRRBreakdown,
@@ -34,7 +35,7 @@ import type {
   CountriesData, MRRBreakdownData, PayerShareData, ActiveSubscribersData
 } from '../components';
 import { api } from '../api';
-import type { YoYData } from '../api';
+import type { YoYData, ChurnRateData } from '../api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -427,6 +428,11 @@ export function Overview() {
     queryFn: api.getYoY,
   });
 
+  const { data: churnRateData } = useQuery<ChurnRateData>({
+    queryKey: ['churn-rate'],
+    queryFn: () => api.getChurnRate(12),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -640,6 +646,9 @@ export function Overview() {
 
       {/* Weekly Churn Analysis */}
       {weeklyChurnData?.cohorts && <WeeklyChurnChart data={weeklyChurnData} />}
+
+      {/* Streaming Churn Rate */}
+      {churnRateData && <ChurnRateChart data={churnRateData} />}
 
       {/* Yearly Renewal Rates */}
       {renewalRatesData?.cohorts && <RenewalRatesTable data={renewalRatesData} />}
