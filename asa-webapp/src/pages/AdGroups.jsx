@@ -455,7 +455,7 @@ export default function AdGroups() {
       className={`cursor-pointer select-none hover:bg-gray-100 ${className}`}
       onClick={() => handleSort(field)}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-center gap-1">
         {children}
         {sortField === field && (
           sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
@@ -562,9 +562,8 @@ export default function AdGroups() {
                 if (!visibleColumns[columnId]) return null;
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
                 if (!column) return null;
-                const isRightAligned = !['campaign', 'status'].includes(columnId);
                 return (
-                  <SortHeader key={columnId} field={columnId} className={isRightAligned ? 'text-right' : ''}>
+                  <SortHeader key={columnId} field={columnId}>
                     {column.label}
                   </SortHeader>
                 );
@@ -583,31 +582,31 @@ export default function AdGroups() {
                     case 'status':
                       return <TableHeader key={columnId}>—</TableHeader>;
                     case 'spend':
-                      return <TableHeader key={columnId} className="text-right">${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                     case 'revenue':
-                      return <TableHeader key={columnId} className="text-right text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId} className="text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                     case 'roas':
-                      return <TableHeader key={columnId} className="text-right"><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{totals.roas?.toFixed(2)}x</span></TableHeader>;
+                      return <TableHeader key={columnId}><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(totals.roas * 100)?.toFixed(0)}%</span></TableHeader>;
                     case 'installs':
-                      return <TableHeader key={columnId} className="text-right">{totals.installs?.toLocaleString()}</TableHeader>;
+                      return <TableHeader key={columnId}>{totals.installs?.toLocaleString()}</TableHeader>;
                     case 'cpa':
-                      return <TableHeader key={columnId} className="text-right">${totals.cpa?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cpa?.toFixed(2)}</TableHeader>;
                     case 'cac':
-                      return <TableHeader key={columnId} className="text-right">${totals.cop?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cop?.toFixed(2)}</TableHeader>;
                     case 'kpiDiff':
                       const kpiDiff = totals.cop ? totals.cop - TARGET_CAC : null;
-                      return <TableHeader key={columnId} className="text-right"><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
+                      return <TableHeader key={columnId}><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
                     case 'roasD7':
                     case 'roasD30':
-                      return <TableHeader key={columnId} className="text-right">—</TableHeader>;
+                      return <TableHeader key={columnId}>—</TableHeader>;
                     case 'ttr':
-                      return <TableHeader key={columnId} className="text-right">{(totals.ttr * 100).toFixed(2)}%</TableHeader>;
+                      return <TableHeader key={columnId}>{(totals.ttr * 100).toFixed(2)}%</TableHeader>;
                     case 'cvr':
-                      return <TableHeader key={columnId} className="text-right">{(totals.cvr * 100).toFixed(2)}%</TableHeader>;
+                      return <TableHeader key={columnId}>{(totals.cvr * 100).toFixed(2)}%</TableHeader>;
                     case 'cpt':
-                      return <TableHeader key={columnId} className="text-right">${totals.cpt?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cpt?.toFixed(2)}</TableHeader>;
                     case 'cpm':
-                      return <TableHeader key={columnId} className="text-right">${totals.cpm?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cpm?.toFixed(2)}</TableHeader>;
                     default:
                       return <TableHeader key={columnId}>—</TableHeader>;
                   }
@@ -636,23 +635,23 @@ export default function AdGroups() {
                     case 'status':
                       return <TableCell key={columnId}><StatusBadge status={ag.status} /></TableCell>;
                     case 'spend':
-                      return <TableCell key={columnId} className="text-right">${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                      return <TableCell key={columnId}>${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'revenue':
-                      return <TableCell key={columnId} className="text-right font-medium text-green-600">${getPerf(ag, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                      return <TableCell key={columnId} className="font-medium text-green-600">${getPerf(ag, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'roas':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas').toFixed(2)}x</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(ag, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{(getPerf(ag, 'roas') * 100).toFixed(0)}%</span></TableCell>;
                     case 'installs':
-                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'installs').toLocaleString()}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(ag, 'installs').toLocaleString()}</TableCell>;
                     case 'cpa':
-                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}</TableCell>;
                     case 'cac':
-                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cop') ? `$${getPerf(ag, 'cop').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(ag, 'cop') ? `$${getPerf(ag, 'cop').toFixed(2)}` : '-'}</TableCell>;
                     case 'kpiDiff':
                       const agCac = getPerf(ag, 'cop');
                       const agKpiDiff = agCac ? agCac - TARGET_CAC : null;
                       const agIsOnTarget = agKpiDiff !== null && agKpiDiff <= 0;
                       return (
-                        <TableCell key={columnId} className="text-right">
+                        <TableCell key={columnId}>
                           {agKpiDiff !== null ? (
                             <span className={`font-medium ${agIsOnTarget ? 'text-green-600' : 'text-red-600'}`}>
                               {agKpiDiff >= 0 ? '+' : ''}{agKpiDiff.toFixed(2)}
@@ -661,17 +660,17 @@ export default function AdGroups() {
                         </TableCell>
                       );
                     case 'roasD7':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas_d7') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d7') ? getPerf(ag, 'roas_d7').toFixed(2) + 'x' : '-'}</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(ag, 'roas_d7') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d7') ? (getPerf(ag, 'roas_d7') * 100).toFixed(0) + '%' : '-'}</span></TableCell>;
                     case 'roasD30':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas_d30') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d30') ? getPerf(ag, 'roas_d30').toFixed(2) + 'x' : '-'}</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(ag, 'roas_d30') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d30') ? (getPerf(ag, 'roas_d30') * 100).toFixed(0) + '%' : '-'}</span></TableCell>;
                     case 'ttr':
-                      return <TableCell key={columnId} className="text-right">{(getPerf(ag, 'ttr') * 100).toFixed(2)}%</TableCell>;
+                      return <TableCell key={columnId}>{(getPerf(ag, 'ttr') * 100).toFixed(2)}%</TableCell>;
                     case 'cvr':
-                      return <TableCell key={columnId} className="text-right">{(getPerf(ag, 'cvr') * 100).toFixed(2)}%</TableCell>;
+                      return <TableCell key={columnId}>{(getPerf(ag, 'cvr') * 100).toFixed(2)}%</TableCell>;
                     case 'cpt':
-                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(ag, 'cpt') ? `$${getPerf(ag, 'cpt').toFixed(2)}` : '-'}</TableCell>;
                     case 'cpm':
-                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(ag, 'cpm') ? `$${getPerf(ag, 'cpm').toFixed(2)}` : '-'}</TableCell>;
                     default:
                       return null;
                   }

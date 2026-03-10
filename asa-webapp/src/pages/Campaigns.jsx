@@ -164,7 +164,7 @@ function SortHeader({ field, children, className = '', onClick, sortField, sortD
       onDrop={onDrop}
       onDragEnd={onDragEnd}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-center gap-1">
         {children}
         {sortField === field && (
           sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
@@ -551,8 +551,6 @@ export default function Campaigns() {
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
                 if (!column) return null;
 
-                const isRightAligned = !['status', 'deliveryStatus', 'health', 'trend'].includes(columnId);
-
                 if (columnId === 'health' || columnId === 'trend') {
                   return (
                     <TableHeader
@@ -576,7 +574,6 @@ export default function Campaigns() {
                     onClick={() => handleSort(columnId)}
                     sortField={sortField}
                     sortDirection={sortDirection}
-                    className={isRightAligned ? 'text-right' : ''}
                     draggable
                     onDragStart={(e) => handleDragStart(e, columnId)}
                     onDragOver={handleDragOver}
@@ -605,35 +602,35 @@ export default function Campaigns() {
                     case 'trend':
                       return <TableHeader key={columnId}>—</TableHeader>;
                     case 'spend':
-                      return <TableHeader key={columnId} className="text-right">${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                     case 'revenue':
-                      return <TableHeader key={columnId} className="text-right text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId} className="text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                     case 'roas':
-                      return <TableHeader key={columnId} className="text-right"><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{totals.roas?.toFixed(2)}x</span></TableHeader>;
+                      return <TableHeader key={columnId}><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(totals.roas * 100)?.toFixed(0)}%</span></TableHeader>;
                     case 'installs':
-                      return <TableHeader key={columnId} className="text-right">{totals.installs?.toLocaleString()}</TableHeader>;
+                      return <TableHeader key={columnId}>{totals.installs?.toLocaleString()}</TableHeader>;
                     case 'cpa':
-                      return <TableHeader key={columnId} className="text-right">${totals.cpa?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cpa?.toFixed(2)}</TableHeader>;
                     case 'cac':
-                      return <TableHeader key={columnId} className="text-right">${totals.cop?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${totals.cop?.toFixed(2)}</TableHeader>;
                     case 'kpiDiff':
                       const kpiDiff = totals.cop ? totals.cop - TARGET_CAC : null;
-                      return <TableHeader key={columnId} className="text-right"><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
+                      return <TableHeader key={columnId}><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
                     case 'roasD7':
                     case 'roasD30':
-                      return <TableHeader key={columnId} className="text-right">—</TableHeader>;
+                      return <TableHeader key={columnId}>—</TableHeader>;
                     case 'ttr':
                       const avgTtr = totals.impressions > 0 ? (totals.taps / totals.impressions) * 100 : 0;
-                      return <TableHeader key={columnId} className="text-right">{avgTtr.toFixed(2)}%</TableHeader>;
+                      return <TableHeader key={columnId}>{avgTtr.toFixed(2)}%</TableHeader>;
                     case 'cvr':
                       const avgCvr = totals.taps > 0 ? (totals.installs / totals.taps) * 100 : 0;
-                      return <TableHeader key={columnId} className="text-right">{avgCvr.toFixed(2)}%</TableHeader>;
+                      return <TableHeader key={columnId}>{avgCvr.toFixed(2)}%</TableHeader>;
                     case 'cpt':
                       const avgCpt = totals.taps > 0 ? totals.spend / totals.taps : 0;
-                      return <TableHeader key={columnId} className="text-right">${avgCpt.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${avgCpt.toFixed(2)}</TableHeader>;
                     case 'cpm':
                       const avgCpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
-                      return <TableHeader key={columnId} className="text-right">${avgCpm.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>${avgCpm.toFixed(2)}</TableHeader>;
                     default:
                       return <TableHeader key={columnId}>—</TableHeader>;
                   }
@@ -670,23 +667,23 @@ export default function Campaigns() {
                     case 'trend':
                       return <TableCell key={columnId}><Sparkline data={campaign.performance?.trend_7d || []} /></TableCell>;
                     case 'spend':
-                      return <TableCell key={columnId} className="text-right">${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                      return <TableCell key={columnId}>${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'revenue':
-                      return <TableCell key={columnId} className="text-right font-medium text-green-600">${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                      return <TableCell key={columnId} className="font-medium text-green-600">${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'roas':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas').toFixed(2)}x</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(campaign, 'roas') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{(getPerf(campaign, 'roas') * 100).toFixed(0)}%</span></TableCell>;
                     case 'installs':
-                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'installs').toLocaleString()}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(campaign, 'installs').toLocaleString()}</TableCell>;
                     case 'cpa':
-                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(campaign, 'cpa') ? `$${getPerf(campaign, 'cpa').toFixed(2)}` : '-'}</TableCell>;
                     case 'cac':
-                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cop') ? `$${getPerf(campaign, 'cop').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(campaign, 'cop') ? `$${getPerf(campaign, 'cop').toFixed(2)}` : '-'}</TableCell>;
                     case 'kpiDiff':
                       const campaignCac = getPerf(campaign, 'cop');
                       const kpiDiff = campaignCac ? campaignCac - TARGET_CAC : null;
                       const isOnTarget = kpiDiff !== null && kpiDiff <= 0;
                       return (
-                        <TableCell key={columnId} className="text-right">
+                        <TableCell key={columnId}>
                           {kpiDiff !== null ? (
                             <span className={`font-medium ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
                               {kpiDiff >= 0 ? '+' : ''}{kpiDiff.toFixed(2)}
@@ -695,17 +692,17 @@ export default function Campaigns() {
                         </TableCell>
                       );
                     case 'roasD7':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(campaign, 'roas_d7') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas_d7') ? getPerf(campaign, 'roas_d7').toFixed(2) + 'x' : '-'}</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(campaign, 'roas_d7') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas_d7') ? (getPerf(campaign, 'roas_d7') * 100).toFixed(0) + '%' : '-'}</span></TableCell>;
                     case 'roasD30':
-                      return <TableCell key={columnId} className="text-right"><span className={getPerf(campaign, 'roas_d30') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas_d30') ? getPerf(campaign, 'roas_d30').toFixed(2) + 'x' : '-'}</span></TableCell>;
+                      return <TableCell key={columnId}><span className={getPerf(campaign, 'roas_d30') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(campaign, 'roas_d30') ? (getPerf(campaign, 'roas_d30') * 100).toFixed(0) + '%' : '-'}</span></TableCell>;
                     case 'ttr':
-                      return <TableCell key={columnId} className="text-right">{(getPerf(campaign, 'ttr') * 100).toFixed(2)}%</TableCell>;
+                      return <TableCell key={columnId}>{(getPerf(campaign, 'ttr') * 100).toFixed(2)}%</TableCell>;
                     case 'cvr':
-                      return <TableCell key={columnId} className="text-right">{(getPerf(campaign, 'cvr') * 100).toFixed(2)}%</TableCell>;
+                      return <TableCell key={columnId}>{(getPerf(campaign, 'cvr') * 100).toFixed(2)}%</TableCell>;
                     case 'cpt':
-                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpt') ? `$${getPerf(campaign, 'cpt').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(campaign, 'cpt') ? `$${getPerf(campaign, 'cpt').toFixed(2)}` : '-'}</TableCell>;
                     case 'cpm':
-                      return <TableCell key={columnId} className="text-right">{getPerf(campaign, 'cpm') ? `$${getPerf(campaign, 'cpm').toFixed(2)}` : '-'}</TableCell>;
+                      return <TableCell key={columnId}>{getPerf(campaign, 'cpm') ? `$${getPerf(campaign, 'cpm').toFixed(2)}` : '-'}</TableCell>;
                     default:
                       return null;
                   }

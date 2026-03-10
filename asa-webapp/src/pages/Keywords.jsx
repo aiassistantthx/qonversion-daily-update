@@ -628,7 +628,7 @@ export default function Keywords() {
       className={`cursor-pointer select-none hover:bg-gray-100 ${className}`}
       onClick={() => handleSort(field)}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-center gap-1">
         {children}
         {sortField === field && (
           sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
@@ -931,9 +931,8 @@ export default function Keywords() {
                   if (!visibleColumns[columnId]) return null;
                   const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
                   if (!column) return null;
-                  const isRightAligned = columnId !== 'matchType';
                   return (
-                    <SortHeader key={columnId} field={columnId} className={isRightAligned ? 'text-right' : ''}>
+                    <SortHeader key={columnId} field={columnId}>
                       {column.label}
                     </SortHeader>
                   );
@@ -953,36 +952,36 @@ export default function Keywords() {
                       case 'sov':
                         return <TableHeader key={columnId}>—</TableHeader>;
                       case 'spend':
-                        return <TableHeader key={columnId} className="text-right">${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                        return <TableHeader key={columnId}>${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                       case 'impressions':
-                        return <TableHeader key={columnId} className="text-right">{totals.impressions?.toLocaleString()}</TableHeader>;
+                        return <TableHeader key={columnId}>{totals.impressions?.toLocaleString()}</TableHeader>;
                       case 'taps':
-                        return <TableHeader key={columnId} className="text-right">{totals.taps?.toLocaleString()}</TableHeader>;
+                        return <TableHeader key={columnId}>{totals.taps?.toLocaleString()}</TableHeader>;
                       case 'installs':
-                        return <TableHeader key={columnId} className="text-right">{totals.installs?.toLocaleString()}</TableHeader>;
+                        return <TableHeader key={columnId}>{totals.installs?.toLocaleString()}</TableHeader>;
                       case 'revenue':
-                        return <TableHeader key={columnId} className="text-right text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                        return <TableHeader key={columnId} className="text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
                       case 'roas':
-                        return <TableHeader key={columnId} className="text-right"><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{totals.roas?.toFixed(2)}x</span></TableHeader>;
+                        return <TableHeader key={columnId}><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(totals.roas * 100)?.toFixed(0)}%</span></TableHeader>;
                       case 'cpa':
-                        return <TableHeader key={columnId} className="text-right">${totals.cpa?.toFixed(2)}</TableHeader>;
+                        return <TableHeader key={columnId}>${totals.cpa?.toFixed(2)}</TableHeader>;
                       case 'cac':
                       case 'cop':
-                        return <TableHeader key={columnId} className="text-right">${totals.cop?.toFixed(2)}</TableHeader>;
+                        return <TableHeader key={columnId}>${totals.cop?.toFixed(2)}</TableHeader>;
                       case 'kpiDiff':
                         const kpiDiff = totals.cop ? totals.cop - TARGET_CAC : null;
-                        return <TableHeader key={columnId} className="text-right"><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
+                        return <TableHeader key={columnId}><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
                       case 'roasD7':
                       case 'roasD30':
-                        return <TableHeader key={columnId} className="text-right">—</TableHeader>;
+                        return <TableHeader key={columnId}>—</TableHeader>;
                       case 'ttr':
-                        return <TableHeader key={columnId} className="text-right">{(totals.ttr * 100).toFixed(2)}%</TableHeader>;
+                        return <TableHeader key={columnId}>{(totals.ttr * 100).toFixed(2)}%</TableHeader>;
                       case 'cvr':
-                        return <TableHeader key={columnId} className="text-right">{(totals.cvr * 100).toFixed(2)}%</TableHeader>;
+                        return <TableHeader key={columnId}>{(totals.cvr * 100).toFixed(2)}%</TableHeader>;
                       case 'cpt':
-                        return <TableHeader key={columnId} className="text-right">${totals.cpt?.toFixed(2)}</TableHeader>;
+                        return <TableHeader key={columnId}>${totals.cpt?.toFixed(2)}</TableHeader>;
                       case 'cpm':
-                        return <TableHeader key={columnId} className="text-right">${totals.cpm?.toFixed(2)}</TableHeader>;
+                        return <TableHeader key={columnId}>${totals.cpm?.toFixed(2)}</TableHeader>;
                       default:
                         return <TableHeader key={columnId}>—</TableHeader>;
                     }
@@ -1024,9 +1023,9 @@ export default function Keywords() {
                         );
                       case 'bid':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                         {editingKeywordId === kw.keyword_id ? (
-                          <div className="flex items-center gap-1 justify-end">
+                          <div className="flex items-center gap-1 justify-center">
                             <Input
                               type="number"
                               value={newBid}
@@ -1057,7 +1056,7 @@ export default function Keywords() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1 justify-end">
+                          <div className="flex items-center gap-1 justify-center">
                             ${parseFloat(bid).toFixed(2)}
                             <button
                               onClick={() => {
@@ -1074,9 +1073,9 @@ export default function Keywords() {
                         );
                       case 'bidVsCpa':
                         return (
-                      <TableCell key={columnId} className="text-right">
+                      <TableCell key={columnId}>
                         {cpa > 0 ? (
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-center gap-2">
                             {isOverpaying && (
                               <AlertTriangle size={14} className="text-orange-500" title="Bid significantly higher than CPA" />
                             )}
@@ -1096,93 +1095,93 @@ export default function Keywords() {
                         );
                       case 'spend':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             ${spend.toFixed(2)}
                           </TableCell>
                         );
                       case 'impressions':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {parseInt(kw.impressions_7d || 0).toLocaleString()}
                           </TableCell>
                         );
                       case 'sov':
                         return (
-                          <TableCell key={columnId} className="text-right font-medium text-blue-600">
+                          <TableCell key={columnId} className="font-medium text-blue-600">
                             {parseFloat(kw.sov || 0).toFixed(2)}%
                           </TableCell>
                         );
                       case 'taps':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {parseInt(kw.taps_7d || 0).toLocaleString()}
                           </TableCell>
                         );
                       case 'ttr':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {(parseFloat(kw.ttr_7d || 0) * 100).toFixed(2)}%
                           </TableCell>
                         );
                       case 'installs':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {parseInt(kw.installs_7d || 0)}
                           </TableCell>
                         );
                       case 'cvr':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {(parseFloat(kw.cvr_7d || 0) * 100).toFixed(2)}%
                           </TableCell>
                         );
                       case 'cpa':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kw.cpa_7d ? `$${parseFloat(kw.cpa_7d).toFixed(2)}` : '-'}
                           </TableCell>
                         );
                       case 'cpt':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kw.cpt_7d ? `$${parseFloat(kw.cpt_7d).toFixed(2)}` : '-'}
                           </TableCell>
                         );
                       case 'cpm':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kw.cpm_7d ? `$${parseFloat(kw.cpm_7d).toFixed(2)}` : '-'}
                           </TableCell>
                         );
                       case 'revenue':
                         return (
-                          <TableCell key={columnId} className="text-right text-green-600">
+                          <TableCell key={columnId} className="text-green-600">
                             ${revenue.toFixed(2)}
                           </TableCell>
                         );
                       case 'roas':
                         return (
-                          <TableCell key={columnId} className={`text-right font-medium ${roas >= 1 ? 'text-green-600' : roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {roas > 0 ? `${roas.toFixed(2)}x` : '-'}
+                          <TableCell key={columnId} className={`font-medium ${roas >= 1 ? 'text-green-600' : roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roas > 0 ? `${(roas * 100).toFixed(0)}%` : '-'}
                           </TableCell>
                         );
                       case 'roasD7':
                         const roasD7 = parseFloat(kw.roas_d7 || 0);
                         return (
-                          <TableCell key={columnId} className={`text-right font-medium ${roasD7 >= 1 ? 'text-green-600' : roasD7 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {roasD7 > 0 ? `${roasD7.toFixed(2)}x` : '-'}
+                          <TableCell key={columnId} className={`font-medium ${roasD7 >= 1 ? 'text-green-600' : roasD7 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roasD7 > 0 ? `${(roasD7 * 100).toFixed(0)}%` : '-'}
                           </TableCell>
                         );
                       case 'roasD30':
                         const roasD30 = parseFloat(kw.roas_d30 || 0);
                         return (
-                          <TableCell key={columnId} className={`text-right font-medium ${roasD30 >= 1 ? 'text-green-600' : roasD30 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {roasD30 > 0 ? `${roasD30.toFixed(2)}x` : '-'}
+                          <TableCell key={columnId} className={`font-medium ${roasD30 >= 1 ? 'text-green-600' : roasD30 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roasD30 > 0 ? `${(roasD30 * 100).toFixed(0)}%` : '-'}
                           </TableCell>
                         );
                       case 'cac':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
                           </TableCell>
                         );
@@ -1191,7 +1190,7 @@ export default function Keywords() {
                         const kwKpiDiff = kwCac ? kwCac - TARGET_CAC : null;
                         const kwIsOnTarget = kwKpiDiff !== null && kwKpiDiff <= 0;
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kwKpiDiff !== null ? (
                               <span className={`font-medium ${kwIsOnTarget ? 'text-green-600' : 'text-red-600'}`}>
                                 {kwKpiDiff >= 0 ? '+' : ''}{kwKpiDiff.toFixed(2)}
@@ -1201,7 +1200,7 @@ export default function Keywords() {
                         );
                       case 'cop':
                         return (
-                          <TableCell key={columnId} className="text-right">
+                          <TableCell key={columnId}>
                             {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
                           </TableCell>
                         );

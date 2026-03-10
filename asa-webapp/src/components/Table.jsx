@@ -35,11 +35,16 @@ export function TableRow({ children, className = '', onClick }) {
   );
 }
 
-export function TableHeader({ children, className = '', onClick, sticky = false }) {
+export function TableHeader({ children, className = '', onClick, sticky = false, draggable, onDragStart, onDragOver, onDrop, onDragEnd }) {
   return (
     <th
-      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${sticky ? 'sticky-col' : ''} ${className}`}
+      className={`px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider ${sticky ? 'sticky-col' : ''} ${className}`}
       onClick={onClick}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
     >
       {children}
     </th>
@@ -48,7 +53,7 @@ export function TableHeader({ children, className = '', onClick, sticky = false 
 
 export function TableCell({ children, className = '', sticky = false }) {
   return (
-    <td className={`px-4 py-3 whitespace-nowrap text-sm ${sticky ? 'sticky-col' : ''} ${className}`}>
+    <td className={`px-4 py-3 whitespace-nowrap text-sm text-center ${sticky ? 'sticky-col' : ''} ${className}`}>
       {children}
     </td>
   );
