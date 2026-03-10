@@ -3019,6 +3019,9 @@ router.get('/churn-rate', async (req, res) => {
         yearlyAvgChurn: Math.round(avgYearlyChurn * 10) / 10,
         // Implied annual churn from weekly (1 - (1-weekly)^52)
         impliedAnnualFromWeekly: Math.round((1 - Math.pow(1 - avgWeeklyChurn/100, 52)) * 1000) / 10,
+        // Debug info
+        initialActive,
+        periodStart: periodStartStr,
       },
     });
   } catch (error) {
