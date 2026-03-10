@@ -73,3 +73,8 @@ export { MonthlyComparisonTable } from './MonthlyComparisonTable';
 export { ShortcutsHelpModal } from './ShortcutsHelpModal';
 
 export { ChurnRateChart } from './ChurnRateChart';
+
+export { TopCountriesWidget } from './TopCountriesWidget';
+export type { CountryRoasData } from './TopCountriesWidget';
+
+export { TopCountriesRoasWidget } from './TopCountriesRoasWidget';

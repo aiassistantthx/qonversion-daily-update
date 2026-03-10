@@ -213,6 +213,16 @@ export interface ChurnRateData {
   };
 }
 
+export interface TopCountryRoas {
+  country: string;
+  users: number;
+  subscribers: number;
+  revenue: number;
+  spend: number;
+  cop: number | null;
+  roas: number | null;
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -227,4 +237,5 @@ export const api = {
   getYoY: () => fetchApi<YoYData>('/dashboard/yoy'),
   getForecast: () => fetchApi<ForecastData>('/dashboard/forecast'),
   getChurnRate: (months = 12) => fetchApi<ChurnRateData>(`/dashboard/churn-rate?months=${months}`),
+  getTopCountriesRoas: (limit = 10) => fetchApi<{ countries: TopCountryRoas[] }>(`/dashboard/top-countries-roas?limit=${limit}`),
 };

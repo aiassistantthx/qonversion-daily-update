@@ -5,6 +5,7 @@ import { CopWaterfall } from '../components/CopWaterfall';
 import { RevenueSourceBar } from '../components/RevenueSourceBar';
 import { CampaignTable } from '../components/CampaignTable';
 import { MetricCard, detectAnomaly } from '../components/MetricCard';
+import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 
 export function MarketingDashboard() {
   const { data: copData } = useQuery({
@@ -28,6 +29,12 @@ export function MarketingDashboard() {
   const { data: dailyData } = useQuery({
     queryKey: ['daily'],
     queryFn: api.getDaily,
+    refetchInterval: 60000,
+  });
+
+  const { data: topCountriesRoas } = useQuery({
+    queryKey: ['top-countries-roas'],
+    queryFn: () => api.getTopCountriesRoas(10),
     refetchInterval: 60000,
   });
 

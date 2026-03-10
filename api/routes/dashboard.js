@@ -3198,6 +3198,25 @@ router.get('/countries', async (req, res) => {
           AND ${countryCondition}
         GROUP BY q_user_id, country, media_source, install_date
       ),
+      country_installs AS (
+        SELECT
+          COALESCE(country, 'Unknown') as country,
+          COUNT(DISTINCT q_user_id) as installs
+        FROM events_v2
+        WHERE ${dateCondition}
+          AND ${countryCondition}
+          AND media_source = 'Apple AdServices'
+        GROUP BY country
+      ),
+      total_spend AS (
+        SELECT COALESCE(SUM(spend), 0) as total_spend
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition.replace('install_date', 'date')}
+      ),
+      total_installs AS (
+        SELECT COALESCE(SUM(installs), 0) as total_installs
+        FROM (SELECT COUNT(DISTINCT q_user_id) as installs FROM events_v2 WHERE ${dateCondition} AND ${countryCondition} AND media_source = 'Apple AdServices') t
+      ),
       country_metrics AS (
         SELECT
           uc.country,
@@ -3215,14 +3234,6 @@ router.get('/countries', async (req, res) => {
         WHERE ${sourceCondition.replace('media_source', 'uc.media_source')}
         GROUP BY uc.country,
           CASE WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END
-      ),
-      campaign_spend AS (
-        SELECT
-          c.campaign_id,
-          SUM(c.spend) as spend
-        FROM apple_ads_campaigns c
-        WHERE ${dateCondition.replace('install_date', 'c.date')}
-        GROUP BY c.campaign_id
       )
       SELECT
         cm.country,
@@ -3231,10 +3242,26 @@ router.get('/countries', async (req, res) => {
         cm.trials,
         cm.subscribers,
         ROUND(cm.revenue::numeric, 2) as revenue,
-        0 as spend,
-        NULL as cop,
-        NULL as roas
+        CASE
+          WHEN cm.source = 'Apple Ads' AND ti.total_installs > 0 THEN
+            ROUND((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 2)
+          ELSE 0
+        END as spend,
+        CASE
+          WHEN cm.source = 'Apple Ads' AND cm.subscribers > 0 AND ti.total_installs > 0 THEN
+            ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.subscribers, 0), 2)
+          ELSE NULL
+        END as cop,
+        CASE
+          WHEN cm.source = 'Apple Ads' AND ti.total_installs > 0 AND
+               ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0 THEN
+            ROUND(cm.revenue / NULLIF((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 0), 2)
+          ELSE NULL
+        END as roas
       FROM country_metrics cm
+      LEFT JOIN country_installs ci ON cm.country = ci.country
+      CROSS JOIN total_spend ts
+      CROSS JOIN total_installs ti
       ORDER BY ${sortColumn} DESC NULLS LAST
       LIMIT ${parseInt(limit)}
     `);
@@ -3245,6 +3272,86 @@ router.get('/countries', async (req, res) => {
     });
   } catch (error) {
     console.error('Countries error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// TOP COUNTRIES BY ROAS
+// ============================================
+router.get('/top-countries-roas', async (req, res) => {
+  try {
+    const { from, to, limit = 10 } = req.query;
+
+    // Date filter - default to last 30 days
+    let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
+    if (from && to) {
+      dateCondition = `install_date >= '${from}' AND install_date <= '${to}'`;
+    }
+
+    const result = await db.query(`
+      WITH country_installs AS (
+        SELECT
+          COALESCE(country, 'Unknown') as country,
+          COUNT(DISTINCT q_user_id) as installs
+        FROM events_v2
+        WHERE ${dateCondition}
+          AND media_source = 'Apple AdServices'
+        GROUP BY country
+      ),
+      total_spend AS (
+        SELECT COALESCE(SUM(spend), 0) as total_spend
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition.replace('install_date', 'date')}
+      ),
+      total_installs AS (
+        SELECT COALESCE(SUM(installs), 1) as total_installs
+        FROM (SELECT COUNT(DISTINCT q_user_id) as installs FROM events_v2 WHERE ${dateCondition} AND media_source = 'Apple AdServices') t
+      ),
+      country_metrics AS (
+        SELECT
+          COALESCE(e.country, 'Unknown') as country,
+          COUNT(DISTINCT e.q_user_id) as users,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted')
+            AND e.product_id LIKE '%yearly%' AND e.refund = false THEN e.q_user_id END) as subscribers,
+          COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue
+        FROM events_v2 e
+        WHERE ${dateCondition.replace('install_date', 'e.install_date')}
+          AND e.media_source = 'Apple AdServices'
+        GROUP BY e.country
+      )
+      SELECT
+        cm.country,
+        cm.users,
+        cm.subscribers,
+        ROUND(cm.revenue::numeric, 2) as revenue,
+        ROUND((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 2) as spend,
+        CASE
+          WHEN cm.subscribers > 0 THEN
+            ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.subscribers, 0), 2)
+          ELSE NULL
+        END as cop,
+        CASE
+          WHEN ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0 THEN
+            ROUND(cm.revenue / NULLIF((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 0), 2)
+          ELSE NULL
+        END as roas
+      FROM country_metrics cm
+      LEFT JOIN country_installs ci ON cm.country = ci.country
+      CROSS JOIN total_spend ts
+      CROSS JOIN total_installs ti
+      WHERE cm.subscribers > 0
+        AND ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0
+      ORDER BY roas DESC NULLS LAST
+      LIMIT ${parseInt(limit)}
+    `);
+
+    res.json({
+      countries: result.rows,
+      filters: { from, to, limit: parseInt(limit) }
+    });
+  } catch (error) {
+    console.error('Top countries ROAS error:', error);
     res.status(500).json({ error: error.message });
   }
 });

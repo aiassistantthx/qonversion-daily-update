@@ -14,6 +14,7 @@ import {
   MetricSelector,
   ActiveSubscribersWidget,
   MonthlyComparisonTable,
+  TopCountriesWidget,
   useSortableData,
   SortIcon,
   TrendChart,
@@ -21,7 +22,8 @@ import {
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
   ActiveSubscribersData,
-  TrendChartData
+  TrendChartData,
+  CountryRoasData
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
@@ -344,6 +346,11 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`).then(r => r.json()),
   });
 
+  const { data: topCountriesData } = useQuery<{ countries: CountryRoasData[] }>({
+    queryKey: ['top-countries-roas', dateRange],
+    queryFn: () => fetch(`${API_URL}/dashboard/top-countries-roas?from=${dateRange.from}&to=${dateRange.to}&limit=10`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -467,6 +474,9 @@ export function Overview() {
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
+
+      {/* Top Countries by ROAS Widget */}
+      {topCountriesData && <TopCountriesWidget data={topCountriesData} />}
 
       {/* Navigation Cards to Detailed Tabs */}
       <div style={styles.navCardsGrid}>
