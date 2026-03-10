@@ -8,6 +8,7 @@ import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { ColumnPicker } from '../components/ColumnPicker';
+import { PresetViews } from '../components/PresetViews';
 import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -41,6 +42,82 @@ const COLUMN_DEFINITIONS = [
   { id: 'cvr', label: 'CVR' },
   { id: 'cpt', label: 'CPT' },
   { id: 'cpm', label: 'CPM' },
+];
+
+const PRESET_VIEWS = [
+  {
+    name: 'performance',
+    label: 'Performance',
+    columns: {
+      campaign: true,
+      status: true,
+      spend: true,
+      revenue: true,
+      roas: true,
+      installs: true,
+      cpa: true,
+      ttr: false,
+      cvr: false,
+      cpt: false,
+      cpm: false,
+    }
+  },
+  {
+    name: 'budget',
+    label: 'Budget',
+    columns: {
+      campaign: true,
+      status: true,
+      spend: true,
+      revenue: false,
+      roas: false,
+      installs: false,
+      cpa: false,
+      ttr: false,
+      cvr: false,
+      cpt: false,
+      cpm: false,
+    }
+  },
+  {
+    name: 'conversion',
+    label: 'Conversion',
+    columns: {
+      campaign: true,
+      status: true,
+      spend: false,
+      revenue: false,
+      roas: false,
+      installs: true,
+      cpa: true,
+      ttr: true,
+      cvr: true,
+      cpt: true,
+      cpm: false,
+    }
+  },
+  {
+    name: 'full',
+    label: 'Full',
+    columns: {
+      campaign: true,
+      status: true,
+      spend: true,
+      revenue: true,
+      roas: true,
+      installs: true,
+      cpa: true,
+      ttr: true,
+      cvr: true,
+      cpt: true,
+      cpm: true,
+    }
+  },
+  {
+    name: 'custom',
+    label: 'Custom',
+    columns: DEFAULT_COLUMNS
+  }
 ];
 
 export default function AdGroups() {
