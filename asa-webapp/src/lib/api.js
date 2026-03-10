@@ -14,6 +14,7 @@ export const createCampaign = (data) => api.post('/campaigns', data).then(res =>
 export const copyCampaign = (id, data) => api.post(`/campaigns/${id}/copy`, data).then(res => res.data);
 export const updateCampaignStatus = (id, status) => api.patch(`/campaigns/${id}/status`, { status }).then(res => res.data);
 export const updateCampaignBudget = (id, dailyBudget) => api.patch(`/campaigns/${id}/budget`, { dailyBudget }).then(res => res.data);
+export const deleteCampaign = (id) => api.delete(`/campaigns/${id}`).then(res => res.data);
 
 // Ad Groups
 export const getAdGroups = (campaignId, params = {}) => api.get(`/campaigns/${campaignId}/adgroups`, { params }).then(res => res.data);
@@ -21,6 +22,8 @@ export const updateAdGroupStatus = (campaignId, adGroupId, status) =>
   api.patch(`/campaigns/${campaignId}/adgroups/${adGroupId}/status`, { status }).then(res => res.data);
 export const updateAdGroupBid = (campaignId, adGroupId, bidAmount) =>
   api.patch(`/campaigns/${campaignId}/adgroups/${adGroupId}/bid`, { bidAmount }).then(res => res.data);
+export const deleteAdGroup = (campaignId, adGroupId) =>
+  api.delete(`/campaigns/${campaignId}/adgroups/${adGroupId}`).then(res => res.data);
 
 // Keywords
 export const getKeywords = (params) => api.get('/keywords', { params }).then(res => res.data);

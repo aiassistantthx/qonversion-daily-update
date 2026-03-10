@@ -2749,46 +2749,42 @@ router.get('/churn-rate', async (req, res) => {
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
         GROUP BY DATE(event_date)
       ),
-      -- Find WEEKLY subscription renewal events
-      -- Each renewal represents an "active subscription period" that could churn
-      weekly_renewals AS (
+      -- Find each user's LAST weekly subscription activity
+      -- A user churns when they don't renew their last weekly subscription
+      user_last_weekly AS (
         SELECT
           q_user_id,
-          event_date as renewal_date,
-          product_id,
-          -- Expected next renewal: current renewal + 7 days
-          event_date + INTERVAL '7 days' as expected_next_renewal
+          MAX(event_date) as last_renewal_date
         FROM events_v2
         WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
           AND product_id LIKE '%weekly%'
           AND refund = false
-          AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '14 days'
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '30 days'
+        GROUP BY q_user_id
       ),
-      -- Identify churned subscriptions: expected renewal date passed with no actual renewal
-      -- Grace period: 7 days after expected renewal (Apple billing retry)
+      -- User churned when: last_renewal + 7 days passed and no subsequent renewal
+      -- Only count churns past grace period (7 days after expected renewal)
       churned_subscriptions AS (
-        SELECT DISTINCT ON (wr.q_user_id, wr.renewal_date)
-          wr.q_user_id,
-          wr.renewal_date,
-          DATE(wr.expected_next_renewal) as churned_date
-        FROM weekly_renewals wr
-        WHERE wr.expected_next_renewal >= CURRENT_DATE - INTERVAL '${months} months'
-          -- Only count if grace period passed (7 days after expected renewal)
-          AND wr.expected_next_renewal < CURRENT_DATE - INTERVAL '7 days'
-          -- No renewal within the expected window (up to 14 days after expected date)
+        SELECT
+          ulw.q_user_id,
+          DATE(ulw.last_renewal_date + INTERVAL '7 days') as churned_date
+        FROM user_last_weekly ulw
+        WHERE ulw.last_renewal_date + INTERVAL '7 days' >= CURRENT_DATE - INTERVAL '${months} months'
+          -- Grace period: wait 7 days after expected renewal before counting as churned
+          AND ulw.last_renewal_date + INTERVAL '14 days' < CURRENT_DATE
+          -- No renewal after the last one
           AND NOT EXISTS (
             SELECT 1 FROM events_v2 e2
-            WHERE e2.q_user_id = wr.q_user_id
+            WHERE e2.q_user_id = ulw.q_user_id
               AND e2.event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
               AND e2.product_id LIKE '%weekly%'
-              AND e2.event_date > wr.renewal_date
-              AND e2.event_date <= wr.expected_next_renewal + INTERVAL '14 days'
+              AND e2.event_date > ulw.last_renewal_date
           )
       ),
       daily_churned AS (
         SELECT
           churned_date as day,
-          COUNT(*) as churned
+          COUNT(DISTINCT q_user_id) as churned
         FROM churned_subscriptions
         GROUP BY churned_date
       ),

@@ -11,7 +11,7 @@ import { ColumnPicker } from '../components/ColumnPicker';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
-import { getCampaigns, updateCampaignStatus } from '../lib/api';
+import { getCampaigns, updateCampaignStatus, deleteCampaign } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import {
@@ -314,6 +314,14 @@ export default function Campaigns() {
     for (const id of selectedIds) {
       await statusMutation.mutateAsync({ id, status: 'ENABLED' });
     }
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    for (const id of selectedIds) {
+      await deleteCampaign(id);
+    }
+    queryClient.invalidateQueries(['campaigns']);
     setSelectedIds(new Set());
   };
 
@@ -644,6 +652,7 @@ export default function Campaigns() {
         onDeselectAll={() => setSelectedIds(new Set())}
         onPause={handleBulkPause}
         onEnable={handleBulkEnable}
+        onDelete={handleBulkDelete}
         entityType="campaigns"
         canAdjustBid={false}
       />

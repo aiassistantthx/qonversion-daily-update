@@ -7,7 +7,7 @@ import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
-import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid } from '../lib/api';
+import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
@@ -218,6 +218,15 @@ export default function AdGroups() {
         amount: newBid,
         currency: adGroup.defaultBidAmount.currency,
       });
+    }
+    queryClient.invalidateQueries(['adgroups']);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    for (const key of selectedIds) {
+      const [campaignId, adGroupId] = key.split('-');
+      await deleteAdGroup(parseInt(campaignId), parseInt(adGroupId));
     }
     queryClient.invalidateQueries(['adgroups']);
     setSelectedIds(new Set());
@@ -485,6 +494,7 @@ export default function AdGroups() {
         onPause={handleBulkPause}
         onEnable={handleBulkEnable}
         onAdjustBid={handleBulkAdjustBid}
+        onDelete={handleBulkDelete}
         entityType="ad groups"
         canAdjustBid={true}
       />
