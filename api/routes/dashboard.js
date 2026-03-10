@@ -3302,7 +3302,7 @@ router.get('/countries', async (req, res) => {
       total_spend AS (
         SELECT COALESCE(SUM(spend), 0) as total_spend
         FROM apple_ads_campaigns
-        WHERE ${dateCondition.replace('install_date', 'date')}
+        WHERE ${dateCondition.replaceAll('install_date', 'date')}
       ),
       total_installs AS (
         SELECT COALESCE(SUM(installs), 0) as total_installs
@@ -3322,7 +3322,7 @@ router.get('/countries', async (req, res) => {
           COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue
         FROM user_countries uc
         LEFT JOIN events_v2 e ON uc.q_user_id = e.q_user_id
-        WHERE ${sourceCondition.replace('media_source', 'uc.media_source')}
+        WHERE ${sourceCondition.replaceAll('media_source', 'uc.media_source')}
         GROUP BY uc.country,
           CASE WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END
       )
@@ -3368,6 +3368,223 @@ router.get('/countries', async (req, res) => {
 });
 
 // ============================================
+// COUNTRIES MONTHLY BREAKDOWN (Historical Analysis with ROAS Predictions)
+// ============================================
+router.get('/countries-monthly', async (req, res) => {
+  try {
+    const { from, to, source, countries, sortBy = 'revenue' } = req.query;
+
+    // Date filter - default to last 12 months
+    let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '12 months'`;
+    if (from && to) {
+      dateCondition = `install_date >= '${from}' AND install_date <= '${to}'`;
+    }
+
+    // Source filter
+    let sourceCondition = '1=1';
+    if (source === 'apple_ads') {
+      sourceCondition = `media_source = 'Apple AdServices'`;
+    } else if (source === 'organic') {
+      sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
+    }
+
+    // Country filter
+    let countryCondition = '1=1';
+    if (countries && countries.trim()) {
+      const countryList = countries.split(',').map(c => c.trim()).filter(Boolean);
+      if (countryList.length > 0) {
+        const quotedCountries = countryList.map(c => `'${c}'`).join(',');
+        countryCondition = `country IN (${quotedCountries})`;
+      }
+    }
+
+    const result = await db.query(`
+      WITH user_countries AS (
+        SELECT
+          q_user_id,
+          COALESCE(country, 'Unknown') as country,
+          media_source,
+          install_date,
+          TO_CHAR(install_date, 'YYYY-MM') as install_month
+        FROM events_v2
+        WHERE ${dateCondition}
+          AND ${countryCondition}
+        GROUP BY q_user_id, country, media_source, install_date
+      ),
+      monthly_country_installs AS (
+        SELECT
+          COALESCE(country, 'Unknown') as country,
+          TO_CHAR(install_date, 'YYYY-MM') as month,
+          COUNT(DISTINCT q_user_id) as installs
+        FROM events_v2
+        WHERE ${dateCondition}
+          AND ${countryCondition}
+          AND media_source = 'Apple AdServices'
+        GROUP BY country, TO_CHAR(install_date, 'YYYY-MM')
+      ),
+      monthly_spend AS (
+        SELECT
+          TO_CHAR(date, 'YYYY-MM') as month,
+          COALESCE(SUM(spend), 0) as spend
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition.replaceAll('install_date', 'date')}
+        GROUP BY TO_CHAR(date, 'YYYY-MM')
+      ),
+      monthly_total_installs AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as month,
+          COUNT(DISTINCT q_user_id) as installs
+        FROM events_v2
+        WHERE ${dateCondition}
+          AND ${countryCondition}
+          AND media_source = 'Apple AdServices'
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM')
+      ),
+      country_monthly_metrics AS (
+        SELECT
+          uc.country,
+          uc.install_month as month,
+          CASE
+            WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads'
+            ELSE 'Organic'
+          END as source,
+          COUNT(DISTINCT uc.q_user_id) as users,
+          COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.q_user_id END) as trials,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted')
+            AND e.product_id LIKE '%yearly%' AND e.refund = false THEN e.q_user_id END) as subscribers,
+          COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue,
+          DATE_PART('day', CURRENT_DATE - MIN(uc.install_date))::int as cohort_age
+        FROM user_countries uc
+        LEFT JOIN events_v2 e ON uc.q_user_id = e.q_user_id
+        WHERE ${sourceCondition.replaceAll('media_source', 'uc.media_source')}
+        GROUP BY uc.country, uc.install_month,
+          CASE WHEN uc.media_source = 'Apple AdServices' THEN 'Apple Ads' ELSE 'Organic' END
+      )
+      SELECT
+        cmm.country,
+        cmm.month,
+        cmm.source,
+        cmm.users,
+        cmm.trials,
+        cmm.subscribers,
+        ROUND(cmm.revenue::numeric, 2) as revenue,
+        cmm.cohort_age,
+        CASE
+          WHEN cmm.source = 'Apple Ads' AND mti.installs > 0 THEN
+            ROUND((COALESCE(mci.installs, 0)::numeric / NULLIF(mti.installs, 0)) * ms.spend, 2)
+          ELSE 0
+        END as spend,
+        CASE
+          WHEN cmm.source = 'Apple Ads' AND cmm.subscribers > 0 AND mti.installs > 0 THEN
+            ROUND(((COALESCE(mci.installs, 0)::numeric / NULLIF(mti.installs, 0)) * ms.spend) / NULLIF(cmm.subscribers, 0), 2)
+          ELSE NULL
+        END as cop,
+        CASE
+          WHEN cmm.source = 'Apple Ads' AND mti.installs > 0 AND
+               ((COALESCE(mci.installs, 0)::numeric / NULLIF(mti.installs, 0)) * ms.spend) > 0 THEN
+            ROUND(cmm.revenue / NULLIF((COALESCE(mci.installs, 0)::numeric / NULLIF(mti.installs, 0)) * ms.spend, 0), 2)
+          ELSE NULL
+        END as roas
+      FROM country_monthly_metrics cmm
+      LEFT JOIN monthly_country_installs mci ON cmm.country = mci.country AND cmm.month = mci.month
+      LEFT JOIN monthly_spend ms ON cmm.month = ms.month
+      LEFT JOIN monthly_total_installs mti ON cmm.month = mti.month
+      ORDER BY cmm.month DESC, cmm.country
+    `);
+
+    // Calculate predicted ROAS and payback for each country-month
+    const enrichedData = result.rows.map(row => {
+      const cohortAge = parseInt(row.cohort_age) || 0;
+      const currentRoas = parseFloat(row.roas) || null;
+      const spend = parseFloat(row.spend) || 0;
+
+      let predictedRoas = null;
+      let paybackDays = null;
+
+      if (currentRoas && cohortAge > 0 && row.source === 'Apple Ads' && spend > 0) {
+        const roasDecayFactor = getRoasDecayFactor(cohortAge);
+        predictedRoas = roasDecayFactor > 0 ? Math.round((currentRoas / roasDecayFactor) * 100) / 100 : null;
+
+        if (predictedRoas) {
+          paybackDays = findPaybackDays(currentRoas, cohortAge, predictedRoas);
+        }
+      }
+
+      return {
+        ...row,
+        revenue: parseFloat(row.revenue),
+        spend: parseFloat(row.spend),
+        cop: row.cop ? parseFloat(row.cop) : null,
+        roas: currentRoas,
+        predicted_roas: predictedRoas,
+        payback_days: paybackDays,
+        payback_months: paybackDays ? Math.round(paybackDays / 30) : null
+      };
+    });
+
+    // Group by country with monthly trend
+    const countriesMap = {};
+    enrichedData.forEach(row => {
+      if (!countriesMap[row.country]) {
+        countriesMap[row.country] = {
+          country: row.country,
+          source: row.source,
+          total_revenue: 0,
+          total_spend: 0,
+          total_subscribers: 0,
+          monthly: []
+        };
+      }
+      countriesMap[row.country].total_revenue += row.revenue;
+      countriesMap[row.country].total_spend += row.spend;
+      countriesMap[row.country].total_subscribers += parseInt(row.subscribers) || 0;
+      countriesMap[row.country].monthly.push({
+        month: row.month,
+        users: parseInt(row.users),
+        trials: parseInt(row.trials),
+        subscribers: parseInt(row.subscribers),
+        revenue: row.revenue,
+        spend: row.spend,
+        cop: row.cop,
+        roas: row.roas,
+        predicted_roas: row.predicted_roas,
+        payback_days: row.payback_days,
+        payback_months: row.payback_months,
+        cohort_age: row.cohort_age
+      });
+    });
+
+    // Convert to array and calculate overall metrics
+    const countries = Object.values(countriesMap).map(c => ({
+      ...c,
+      total_roas: c.total_spend > 0 ? Math.round((c.total_revenue / c.total_spend) * 100) / 100 : null,
+      total_cop: c.total_subscribers > 0 ? Math.round((c.total_spend / c.total_subscribers) * 100) / 100 : null,
+      monthly: c.monthly.sort((a, b) => b.month.localeCompare(a.month))
+    }));
+
+    // Sort by the specified column
+    const sortMap = {
+      revenue: (a, b) => b.total_revenue - a.total_revenue,
+      spend: (a, b) => b.total_spend - a.total_spend,
+      roas: (a, b) => (b.total_roas || 0) - (a.total_roas || 0),
+      cop: (a, b) => (a.total_cop || 999999) - (b.total_cop || 999999),
+      subscribers: (a, b) => b.total_subscribers - a.total_subscribers,
+      country: (a, b) => a.country.localeCompare(b.country)
+    };
+    const sortFn = sortMap[sortBy] || sortMap.revenue;
+    countries.sort(sortFn);
+
+    res.json({
+      countries,
+      filters: { from, to, source, countries: req.query.countries, sortBy }
+    });
+  } catch (error) {
+    console.error('Countries monthly error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
 // TOP COUNTRIES BY ROAS
 // ============================================
 router.get('/top-countries-roas', async (req, res) => {
@@ -3393,7 +3610,7 @@ router.get('/top-countries-roas', async (req, res) => {
       total_spend AS (
         SELECT COALESCE(SUM(spend), 0) as total_spend
         FROM apple_ads_campaigns
-        WHERE ${dateCondition.replace('install_date', 'date')}
+        WHERE ${dateCondition.replaceAll('install_date', 'date')}
       ),
       total_installs AS (
         SELECT COALESCE(SUM(installs), 1) as total_installs
@@ -3407,7 +3624,7 @@ router.get('/top-countries-roas', async (req, res) => {
             AND e.product_id LIKE '%yearly%' AND e.refund = false THEN e.q_user_id END) as subscribers,
           COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue
         FROM events_v2 e
-        WHERE ${dateCondition.replace('install_date', 'e.install_date')}
+        WHERE ${dateCondition.replaceAll('install_date', 'e.install_date')}
           AND e.media_source = 'Apple AdServices'
         GROUP BY e.country
       )
