@@ -984,7 +984,10 @@ export default function Keywords() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                        );
+                      case 'bidVsCpa':
+                        return (
+                      <TableCell key={columnId} className="text-right">
                         {cpa > 0 ? (
                           <div className="flex items-center justify-end gap-2">
                             {isOverpaying && (

@@ -2,7 +2,7 @@ import {
   Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
   ComposedChart, Bar, ReferenceLine, Line
 } from 'recharts';
-import { Download, TrendingDown, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Download, TrendingDown, TrendingUp, AlertTriangle, Info } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
 
 interface ChurnPeriodData {
@@ -29,6 +29,9 @@ interface ChurnRateData {
   summary: {
     weeklyAvgChurn: number;
     yearlyAvgChurn: number;
+    monthlyAvgChurn: number;
+    monthlyChurnFromWeekly: number;
+    monthlyChurnFromYearly: number;
     impliedAnnualFromWeekly: number;
   };
 }
@@ -39,6 +42,8 @@ interface ChurnRateChartProps {
 }
 
 export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateChartProps) {
+  const [showTooltip, setShowTooltip] = React.useState(false);
+
   if (!data) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
@@ -87,10 +92,14 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
   }));
 
   // Determine health status
-  const getHealthStatus = (churnRate: number, type: 'weekly' | 'yearly') => {
+  const getHealthStatus = (churnRate: number, type: 'weekly' | 'yearly' | 'monthly') => {
     if (type === 'weekly') {
       if (churnRate < 15) return { color: '#10b981', label: 'Excellent', bg: '#ecfdf5' };
       if (churnRate < 25) return { color: '#f59e0b', label: 'Normal', bg: '#fef3c7' };
+      return { color: '#ef4444', label: 'High', bg: '#fef2f2' };
+    } else if (type === 'monthly') {
+      if (churnRate < 10) return { color: '#10b981', label: 'Excellent', bg: '#ecfdf5' };
+      if (churnRate < 15) return { color: '#f59e0b', label: 'Normal', bg: '#fef3c7' };
       return { color: '#ef4444', label: 'High', bg: '#fef2f2' };
     } else {
       if (churnRate < 3) return { color: '#10b981', label: 'Excellent', bg: '#ecfdf5' };
@@ -101,6 +110,7 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
 
   const weeklyHealth = getHealthStatus(data.weekly.avgChurnRate, 'weekly');
   const yearlyHealth = getHealthStatus(data.yearly.avgChurnRate, 'yearly');
+  const monthlyHealth = getHealthStatus(data.summary.monthlyAvgChurn, 'monthly');
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
@@ -116,7 +126,7 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
       </div>
 
       {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: showWeekly && showYearly ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: showWeekly && showYearly ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {showWeekly && (
           <div style={{ background: weeklyHealth.bg, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 12, color: weeklyHealth.color, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -129,6 +139,18 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
             <div style={{ fontSize: 11, color: '#6b7280' }}>12-week avg</div>
           </div>
         )}
+        <div style={{ background: monthlyHealth.bg, borderRadius: 8, padding: 12, position: 'relative' }}>
+          <div style={{ fontSize: 12, color: monthlyHealth.color, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <TrendingDown size={14} />
+            Monthly Churn
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: monthlyHealth.color }}>
+            {data.summary.monthlyAvgChurn.toFixed(1)}%
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7280' }} title={`From weekly: ${data.summary.monthlyChurnFromWeekly.toFixed(1)}% | From yearly: ${data.summary.monthlyChurnFromYearly.toFixed(1)}%`}>
+            Calculated avg
+          </div>
+        </div>
         {showYearly && (
           <div style={{ background: yearlyHealth.bg, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 12, color: yearlyHealth.color, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>

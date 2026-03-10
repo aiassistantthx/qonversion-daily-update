@@ -2989,6 +2989,20 @@ router.get('/churn-rate', async (req, res) => {
     const lastWeek = weeklyData[weeklyData.length - 1] || {};
     const lastMonth = yearlyChurnResult.rows[yearlyChurnResult.rows.length - 1] || {};
 
+    // Calculate monthly churn from weekly and yearly
+    // Monthly from Weekly: 1 - (1 - weekly_churn)^4.33
+    const monthlyChurnFromWeekly = avgWeeklyChurn > 0
+      ? (1 - Math.pow(1 - avgWeeklyChurn/100, 4.33)) * 100
+      : 0;
+
+    // Monthly from Yearly: 1 - (1 - yearly_churn)^(1/12)
+    const monthlyChurnFromYearly = avgYearlyChurn > 0
+      ? (1 - Math.pow(1 - avgYearlyChurn/100, 1/12)) * 100
+      : 0;
+
+    // Average of both methods (weighted average could be used if one source is more reliable)
+    const avgMonthlyChurn = (monthlyChurnFromWeekly + monthlyChurnFromYearly) / 2;
+
     // Also include daily data for granular view
     const dailyData = dailyMovementResult.rows.map(r => ({
       date: r.day,
@@ -3026,6 +3040,9 @@ router.get('/churn-rate', async (req, res) => {
       summary: {
         weeklyAvgChurn: Math.round(avgWeeklyChurn * 10) / 10,
         yearlyAvgChurn: Math.round(avgYearlyChurn * 10) / 10,
+        monthlyAvgChurn: Math.round(avgMonthlyChurn * 10) / 10,
+        monthlyChurnFromWeekly: Math.round(monthlyChurnFromWeekly * 10) / 10,
+        monthlyChurnFromYearly: Math.round(monthlyChurnFromYearly * 10) / 10,
         // Implied annual churn from weekly (1 - (1-weekly)^52)
         impliedAnnualFromWeekly: Math.round((1 - Math.pow(1 - avgWeeklyChurn/100, 52)) * 1000) / 10,
         // Debug info

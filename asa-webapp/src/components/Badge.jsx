@@ -34,3 +34,33 @@ export function StatusBadge({ status }) {
     </Badge>
   );
 }
+
+export function DeliveryStatusBadge({ status }) {
+  const statusVariants = {
+    RUNNING: 'success',
+    PAUSED: 'warning',
+    ENDED: 'default',
+    COMPLETED: 'default',
+    BUDGET_EXHAUSTED: 'error',
+    CAMPAIGN_NOT_STARTED: 'info',
+    ARCHIVED: 'default',
+    ON_HOLD: 'warning',
+  };
+
+  const displayLabels = {
+    RUNNING: 'Running',
+    PAUSED: 'Paused',
+    ENDED: 'Ended',
+    COMPLETED: 'Completed',
+    BUDGET_EXHAUSTED: 'Budget Exhausted',
+    CAMPAIGN_NOT_STARTED: 'Not Started',
+    ARCHIVED: 'Archived',
+    ON_HOLD: 'On Hold',
+  };
+
+  return (
+    <Badge variant={statusVariants[status] || 'default'}>
+      {displayLabels[status] || status}
+    </Badge>
+  );
+}

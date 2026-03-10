@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
-import { StatusBadge } from '../components/Badge';
+import { StatusBadge, DeliveryStatusBadge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { ColumnPicker } from '../components/ColumnPicker';
@@ -21,6 +21,7 @@ import {
 
 const DEFAULT_COLUMNS = {
   status: true,
+  deliveryStatus: true,
   health: true,
   trend: true,
   spend: true,
@@ -37,6 +38,7 @@ const DEFAULT_COLUMNS = {
 
 const COLUMN_DEFINITIONS = [
   { id: 'status', label: 'Status' },
+  { id: 'deliveryStatus', label: 'Delivery Status' },
   { id: 'health', label: 'Health' },
   { id: 'trend', label: 'Trend' },
   { id: 'spend', label: 'Spend' },
@@ -57,6 +59,7 @@ const PRESET_VIEWS = [
     label: 'Performance',
     columns: {
       status: true,
+      deliveryStatus: true,
       health: true,
       trend: true,
       spend: false,
@@ -76,6 +79,7 @@ const PRESET_VIEWS = [
     label: 'Budget',
     columns: {
       status: true,
+      deliveryStatus: true,
       health: false,
       trend: false,
       spend: true,
@@ -95,6 +99,7 @@ const PRESET_VIEWS = [
     label: 'Conversion',
     columns: {
       status: true,
+      deliveryStatus: false,
       health: false,
       trend: false,
       spend: false,
@@ -114,6 +119,7 @@ const PRESET_VIEWS = [
     label: 'Full',
     columns: {
       status: true,
+      deliveryStatus: true,
       health: true,
       trend: true,
       spend: true,
@@ -503,7 +509,7 @@ export default function Campaigns() {
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
                 if (!column) return null;
 
-                const isRightAligned = !['status', 'health', 'trend'].includes(columnId);
+                const isRightAligned = !['status', 'deliveryStatus', 'health', 'trend'].includes(columnId);
 
                 if (columnId === 'health' || columnId === 'trend') {
                   return (
@@ -564,6 +570,8 @@ export default function Campaigns() {
                   switch (columnId) {
                     case 'status':
                       return <TableCell key={columnId}><StatusBadge status={campaign.status} /></TableCell>;
+                    case 'deliveryStatus':
+                      return <TableCell key={columnId}><DeliveryStatusBadge status={campaign.displayStatus || campaign.servingStatus || 'RUNNING'} /></TableCell>;
                     case 'health':
                       return <TableCell key={columnId}><TrafficLight predictedRoas={predictedRoas} size="sm" /></TableCell>;
                     case 'trend':
