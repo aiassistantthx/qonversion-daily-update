@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Line } from 'recharts';
 import { Download, TrendingUp, TrendingDown, Target } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -76,6 +76,16 @@ export function Planning() {
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/dashboard/planning-data`);
       if (!response.ok) throw new Error('Failed to fetch planning data');
+      return response.json();
+    },
+  });
+
+  // Fetch cohort-based forecast from API
+  const { data: forecastApiData, isLoading: forecastLoading } = useQuery({
+    queryKey: ['forecast'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/dashboard/forecast`);
+      if (!response.ok) throw new Error('Failed to fetch forecast');
       return response.json();
     },
   });
@@ -290,13 +300,29 @@ export function Planning() {
     </div>
   );
 
-  if (isLoading) {
+  if (isLoading || forecastLoading) {
     return (
       <div className="p-6 flex items-center justify-center">
         <div className="text-terminal-muted">Loading planning data...</div>
       </div>
     );
   }
+
+  // Transform forecast API data for chart
+  const forecastChartData = [
+    ...(forecastApiData?.historical.map((h: any) => ({
+      month: h.month,
+      actual: h.revenue,
+      type: 'historical',
+    })) || []),
+    ...(forecastApiData?.renewalForecast.map((f: any) => ({
+      month: f.month,
+      forecast: f.totalRevenue,
+      optimistic: f.totalRevenueOptimistic,
+      pessimistic: f.totalRevenuePessimistic,
+      type: 'forecast',
+    })) || []),
+  ];
 
   const summary = forecastData[forecastData.length - 1];
   const totalRevenue = forecastData.reduce((sum, d) => sum + d.totalRevenue, 0);
@@ -310,7 +336,7 @@ export function Planning() {
         <div>
           <h1 className="text-2xl font-bold text-terminal-text mb-1">Planning Tool</h1>
           <p className="text-sm text-terminal-muted">
-            Scenario-based revenue forecasting with historical cohort analysis
+            Revenue forecasting with cohort-based model and scenario planning
           </p>
         </div>
         <button
@@ -322,8 +348,161 @@ export function Planning() {
         </button>
       </div>
 
-      {/* Scenario Selector */}
-      <div className="flex gap-4">
+      {/* Revenue Forecast (Cohort-based Model) */}
+      {forecastApiData && (
+        <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <div className="text-sm text-terminal-muted mb-1">Revenue Forecast (12 Months)</div>
+              <div className="text-xs text-terminal-muted">
+                Cohort-based model with {forecastApiData.modelParameters.yearlyRenewalRate * 100}% renewal rate, {(forecastApiData.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}% weekly retention
+              </div>
+            </div>
+            {forecastApiData.validation?.avgError && (
+              <div className="text-xs text-terminal-muted">
+                Avg forecast error: ±{forecastApiData.validation.avgError}%
+              </div>
+            )}
+          </div>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={forecastChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                <XAxis
+                  dataKey="month"
+                  stroke="#8b949e"
+                  fontSize={11}
+                  tickLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis
+                  stroke="#8b949e"
+                  fontSize={12}
+                  tickLine={false}
+                  tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#161b22',
+                    border: '1px solid #30363d',
+                    borderRadius: '8px',
+                    color: '#e6edf3'
+                  }}
+                  formatter={(value) => [`$${(Number(value) / 1000).toFixed(1)}k`, '']}
+                  labelFormatter={(label) => `Month: ${label}`}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="optimistic"
+                  fill="#00ff8820"
+                  stroke="none"
+                  name="Optimistic (+20%)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="pessimistic"
+                  fill="#ff444420"
+                  stroke="none"
+                  name="Pessimistic (-15%)"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="actual"
+                  stroke="#8b949e"
+                  strokeWidth={2}
+                  dot={{ fill: '#8b949e', r: 3 }}
+                  name="Historical"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  stroke="#00d4ff"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ fill: '#00d4ff', r: 3 }}
+                  name="Base Forecast"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 flex gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-terminal-cyan rounded"></div>
+              <span className="text-terminal-muted">Base Case (Cohort Model)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-terminal-green/30 border border-terminal-green rounded"></div>
+              <span className="text-terminal-muted">Optimistic (+20% acquisition, +2pp retention)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-terminal-red/30 border border-terminal-red rounded"></div>
+              <span className="text-terminal-muted">Pessimistic (-15% acquisition, -3pp retention)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forecast Validation */}
+      {forecastApiData?.validation?.results && forecastApiData.validation.results.length > 0 && (
+        <div className="bg-terminal-card border border-terminal-border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-terminal-border">
+            <div className="text-sm text-terminal-muted">Model Validation (Last 3 Months)</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-terminal-muted border-b border-terminal-border">
+                  <th className="text-left px-4 py-2 font-medium">Month</th>
+                  <th className="text-right px-4 py-2 font-medium">Actual</th>
+                  <th className="text-right px-4 py-2 font-medium">Forecasted</th>
+                  <th className="text-right px-4 py-2 font-medium">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecastApiData.validation.results.map((result: any) => {
+                  const errorNum = parseFloat(result.errorPercent);
+                  const errorColor = Math.abs(errorNum) < 5 ? 'text-terminal-green' :
+                                     Math.abs(errorNum) < 10 ? 'text-terminal-yellow' :
+                                     'text-terminal-red';
+                  return (
+                    <tr key={result.month} className="border-b border-terminal-border/50">
+                      <td className="px-4 py-3 font-mono text-terminal-text">{result.month}</td>
+                      <td className="px-4 py-3 text-right font-mono text-terminal-text">
+                        ${(result.actual / 1000).toFixed(1)}k
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-terminal-muted">
+                        ${(result.forecasted / 1000).toFixed(1)}k
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono ${errorColor}`}>
+                        {errorNum > 0 ? '+' : ''}{result.errorPercent}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Scenario Modeling Section */}
+      <div className="border-t border-terminal-border pt-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-terminal-text mb-1">Scenario Modeling</h2>
+          <p className="text-sm text-terminal-muted mb-2">
+            What-if analysis with custom assumptions for budget planning
+          </p>
+          <div className="bg-terminal-bg border border-terminal-border rounded p-3 text-xs text-terminal-muted">
+            <strong>Note:</strong> The cohort-based forecast above uses actual historical retention ({(forecastApiData?.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}%)
+            and renewal rates ({(forecastApiData?.modelParameters.yearlyRenewalRate * 100)}%) from your data.
+            Scenario modeling below lets you test different assumptions for planning purposes.
+          </div>
+        </div>
+
+        {/* Scenario Selector */}
+        <div className="flex gap-4">
         {scenarios.map((scenario) => {
           const Icon = scenario.icon;
           const isSelected = scenario.name === currentScenario?.name;
@@ -525,6 +704,8 @@ export function Planning() {
             </tbody>
           </table>
         </div>
+      </div>
+
       </div>
 
       {/* COP Breakdown */}
