@@ -4660,6 +4660,7 @@ router.get('/active-subscribers', async (req, res) => {
     const productResult = await db.query(productQuery);
 
     res.json({
+      _version: 'v3-368days',  // Debug: verify deploy
       current: {
         weekly: current.weekly,
         monthly: current.monthly,
