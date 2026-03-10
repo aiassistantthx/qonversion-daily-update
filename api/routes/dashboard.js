@@ -3033,13 +3033,17 @@ router.get('/churn-rate', async (req, res) => {
       ? (1 - Math.pow(1 - avgWeeklyChurn/100, 4.33)) * 100
       : 0;
 
-    // Monthly from Yearly: 1 - (1 - yearly_churn)^(1/12)
-    const monthlyChurnFromYearly = avgYearlyChurn > 0
-      ? (1 - Math.pow(1 - avgYearlyChurn/100, 1/12)) * 100
-      : 0;
+    // For yearly: use projected annual churn (65% based on 35% renewal rate)
+    // Monthly from Yearly: 1 - (1 - annual_churn)^(1/12)
+    // If avgYearlyChurn is 0 (no data yet), use projected 65% annual churn
+    const yearlyAnnualChurn = avgYearlyChurn > 0 ? avgYearlyChurn : 65; // 65% = 1 - 35% renewal
+    const monthlyChurnFromYearly = (1 - Math.pow(1 - yearlyAnnualChurn/100, 1/12)) * 100;
 
-    // Average of both methods (weighted average could be used if one source is more reliable)
-    const avgMonthlyChurn = (monthlyChurnFromWeekly + monthlyChurnFromYearly) / 2;
+    // Weighted average by subscriber mix (75% weekly, 25% yearly based on historical data)
+    // TODO: Get actual subscriber counts from active-subscribers endpoint
+    const weeklyWeight = 0.75;
+    const yearlyWeight = 0.25;
+    const avgMonthlyChurn = (monthlyChurnFromWeekly * weeklyWeight) + (monthlyChurnFromYearly * yearlyWeight);
 
     // Also include daily data for granular view
     const dailyData = dailyMovementResult.rows.map(r => ({
