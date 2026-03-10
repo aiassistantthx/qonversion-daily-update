@@ -25,7 +25,7 @@ interface TrendChartProps {
   data: TrendChartData | undefined;
 }
 
-type MetricType = 'spend' | 'revenue' | 'totalRevenue' | 'roas' | 'totalRoas';
+type MetricType = 'spend' | 'revenue' | 'totalRevenue' | 'roas' | 'totalRoas' | 'cop';
 type ChartMode = 'financial' | 'conversions';
 
 export function TrendChart({ data }: TrendChartProps) {
@@ -51,6 +51,7 @@ export function TrendChart({ data }: TrendChartProps) {
     installs: d.installs,
     trials: d.trials,
     paid_users: d.paid_users,
+    cop: d.cop,
   }));
 
   const getMetricConfig = (metric: MetricType) => {
@@ -94,6 +95,14 @@ export function TrendChart({ data }: TrendChartProps) {
           formatter: (v: number) => `${v.toFixed(0)}%`,
           yAxisFormatter: (v: number) => `${v.toFixed(0)}%`,
           tooltipLabel: 'Total ROAS',
+        };
+      case 'cop':
+        return {
+          title: 'COP',
+          color: '#f59e0b',
+          formatter: (v: number) => `$${v?.toFixed(0) || '—'}`,
+          yAxisFormatter: (v: number) => `$${v?.toFixed(0) || '0'}`,
+          tooltipLabel: 'COP',
         };
     }
   };
@@ -220,6 +229,21 @@ export function TrendChart({ data }: TrendChartProps) {
               >
                 Cohort ROAS
               </button>
+              <button
+                onClick={() => setSelectedMetric('cop')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #e5e7eb',
+                  background: selectedMetric === 'cop' ? '#f59e0b' : '#fff',
+                  color: selectedMetric === 'cop' ? '#fff' : '#9ca3af',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                COP
+              </button>
             </>
           )}
         </div>
@@ -250,6 +274,7 @@ export function TrendChart({ data }: TrendChartProps) {
                 strokeWidth={2}
                 dot={{ r: 3 }}
                 name={config.title}
+                connectNulls
               />
             </LineChart>
           ) : (
