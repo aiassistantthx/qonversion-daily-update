@@ -2763,17 +2763,18 @@ router.get('/churn-rate', async (req, res) => {
           AND event_date >= CURRENT_DATE - INTERVAL '${months} months' - INTERVAL '30 days'
         GROUP BY q_user_id
       ),
-      -- User churned when: last_renewal + 7 days passed and no subsequent renewal
-      -- Churn date = when subscription should have renewed (last_renewal + 7 days)
+      -- User churned when: no renewal within 14 days of last renewal
+      -- Threshold: 14 days covers Apple billing retry period (3-16 days)
+      -- Churn date = last_renewal + 14 days (when we're sure they churned)
       churned_subscriptions AS (
         SELECT
           ulw.q_user_id,
-          DATE(ulw.last_renewal_date + INTERVAL '7 days') as churned_date
+          DATE(ulw.last_renewal_date + INTERVAL '14 days') as churned_date
         FROM user_last_weekly ulw
-        WHERE ulw.last_renewal_date + INTERVAL '7 days' >= CURRENT_DATE - INTERVAL '${months} months'
-          -- Grace period: wait 7 days after expected renewal before counting as churned
+        WHERE ulw.last_renewal_date + INTERVAL '14 days' >= CURRENT_DATE - INTERVAL '${months} months'
+          -- Only count if 14 days have passed since last renewal
           AND ulw.last_renewal_date + INTERVAL '14 days' < CURRENT_DATE
-          -- No renewal after the last one
+          -- No renewal after the last one (within any timeframe)
           AND NOT EXISTS (
             SELECT 1 FROM events_v2 e2
             WHERE e2.q_user_id = ulw.q_user_id
