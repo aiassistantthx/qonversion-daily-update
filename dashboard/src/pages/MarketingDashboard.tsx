@@ -9,25 +9,25 @@ import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
-  const { data: copData } = useQuery({
+  const { data: copData, isLoading: copLoading } = useQuery({
     queryKey: ['cop'],
     queryFn: () => api.getCop(30),
     refetchInterval: 60000,
   });
 
-  const { data: campaignsData } = useQuery({
+  const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
     queryKey: ['cop-by-campaign'],
     queryFn: () => api.getCopByCampaign(30),
     refetchInterval: 60000,
   });
 
-  const { data: revenueSource } = useQuery({
+  const { data: revenueSource, isLoading: revenueLoading } = useQuery({
     queryKey: ['revenue-by-source'],
     queryFn: () => api.getRevenueBySource(30),
     refetchInterval: 60000,
   });
 
-  const { data: dailyData } = useQuery({
+  const { data: dailyData, isLoading: dailyLoading } = useQuery({
     queryKey: ['daily'],
     queryFn: api.getDaily,
     refetchInterval: 60000,
@@ -39,7 +39,7 @@ export function MarketingDashboard() {
     refetchInterval: 60000,
   });
 
-  const { data: marketingData } = useQuery({
+  const { data: marketingData, isLoading: marketingLoading, error: marketingError } = useQuery({
     queryKey: ['marketing'],
     queryFn: () => api.getMarketing(6),
     refetchInterval: 60000,
@@ -50,6 +50,29 @@ export function MarketingDashboard() {
     queryFn: () => api.getKeywords(30),
     refetchInterval: 60000,
   });
+
+  const isLoading = copLoading || campaignsLoading || revenueLoading || dailyLoading || marketingLoading;
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">Loading marketing data...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (marketingError) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="text-red-800 font-medium mb-1">Error loading marketing data</div>
+          <div className="text-red-600 text-sm">{marketingError.message}</div>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate CPA metrics
   const todayCpa = dailyData?.metrics?.[0]?.cpa;
@@ -69,7 +92,7 @@ export function MarketingDashboard() {
   const revenueAnomaly = totalRevenue > 0 ? detectAnomaly(totalRevenue, historicalRevenue, 'Revenue') : undefined;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-white">
       {/* Top metrics */}
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
@@ -98,32 +121,32 @@ export function MarketingDashboard() {
         />
       </div>
 
-      {/* Spend vs Revenue and CPA Trend */}
+      {/* Spend vs Revenue and ROAS Trend */}
       {marketingData && marketingData.data.length > 0 && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-            <div className="text-sm text-terminal-muted mb-4">Spend vs Revenue (Monthly)</div>
-            <div className="h-48">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="text-sm text-gray-600 mb-4 font-medium">Spend vs Revenue (Monthly)</div>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>
                   <XAxis
                     dataKey="month"
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
                   />
                   <YAxis
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
                     tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#161b22',
-                      border: '1px solid #30363d',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      color: '#e6edf3'
+                      color: '#111827'
                     }}
                     formatter={(value, name) => [
                       `$${Number(value)?.toFixed(0) || 0}`,
@@ -133,52 +156,54 @@ export function MarketingDashboard() {
                   <Line
                     type="monotone"
                     dataKey="spend"
-                    stroke="#ff6b6b"
+                    stroke="#ef4444"
                     strokeWidth={2}
                     dot={false}
+                    name="Spend"
                   />
                   <Line
                     type="monotone"
                     dataKey={(m) => m.revenue.total}
-                    stroke="#00ff88"
+                    stroke="#10b981"
                     strokeWidth={2}
                     dot={false}
+                    name="Revenue"
                   />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-            <div className="text-sm text-terminal-muted mb-4">CPA Trend (Monthly)</div>
-            <div className="h-48">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="text-sm text-gray-600 mb-4 font-medium">ROAS Trend (d7, Monthly)</div>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>
                   <XAxis
                     dataKey="month"
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
                   />
                   <YAxis
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
-                    tickFormatter={(val) => `$${val}`}
+                    tickFormatter={(val) => `${val.toFixed(1)}x`}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#161b22',
-                      border: '1px solid #30363d',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      color: '#e6edf3'
+                      color: '#111827'
                     }}
-                    formatter={(value) => [`$${Number(value)?.toFixed(2) || '—'}`, 'CPA (d7)']}
+                    formatter={(value) => [`${Number(value)?.toFixed(2) || '—'}x`, 'ROAS (d7)']}
                   />
                   <Line
                     type="monotone"
-                    dataKey={(m) => m.cop.d7}
-                    stroke="#00d4ff"
+                    dataKey={(m) => m.roas.d7}
+                    stroke="#3b82f6"
                     strokeWidth={2}
                     dot={true}
                     connectNulls
@@ -196,15 +221,15 @@ export function MarketingDashboard() {
           <CopWaterfall data={copData.current} targetCop={50} />
         )}
 
-        <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-          <div className="text-sm text-terminal-muted mb-4">COP Trend (d7)</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <div className="text-sm text-gray-600 mb-4 font-medium">COP Trend (d7)</div>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={copData?.trend || []}>
                 <XAxis
                   dataKey="date"
-                  stroke="#8b949e"
-                  fontSize={10}
+                  stroke="#6b7280"
+                  fontSize={12}
                   tickLine={false}
                   tickFormatter={(val) => {
                     const date = new Date(val);
@@ -212,25 +237,25 @@ export function MarketingDashboard() {
                   }}
                 />
                 <YAxis
-                  stroke="#8b949e"
-                  fontSize={10}
+                  stroke="#6b7280"
+                  fontSize={12}
                   tickLine={false}
                   tickFormatter={(val) => `$${val}`}
                   domain={['dataMin - 10', 'dataMax + 10']}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#161b22',
-                    border: '1px solid #30363d',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e5e7eb',
                     borderRadius: '8px',
-                    color: '#e6edf3'
+                    color: '#111827'
                   }}
                   formatter={(value) => [`$${Number(value)?.toFixed(2) || '—'}`, 'COP']}
                 />
                 <Line
                   type="monotone"
                   dataKey="cop"
-                  stroke="#00d4ff"
+                  stroke="#3b82f6"
                   strokeWidth={2}
                   dot={false}
                   connectNulls
@@ -239,7 +264,7 @@ export function MarketingDashboard() {
                 <Line
                   type="monotone"
                   dataKey={() => 50}
-                  stroke="#ffcc00"
+                  stroke="#f59e0b"
                   strokeWidth={1}
                   strokeDasharray="5 5"
                   dot={false}
@@ -260,15 +285,15 @@ export function MarketingDashboard() {
             paidPercent={revenueSource.summary.paidPercent}
           />
 
-          <div className="bg-terminal-card border border-terminal-border rounded-lg p-4">
-            <div className="text-sm text-terminal-muted mb-4">Revenue by Source (Daily)</div>
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="text-sm text-gray-600 mb-4 font-medium">Revenue by Source (Daily)</div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={revenueSource.daily}>
                   <XAxis
                     dataKey="date"
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
                     tickFormatter={(val) => {
                       const date = new Date(val);
@@ -276,17 +301,17 @@ export function MarketingDashboard() {
                     }}
                   />
                   <YAxis
-                    stroke="#8b949e"
-                    fontSize={10}
+                    stroke="#6b7280"
+                    fontSize={12}
                     tickLine={false}
                     tickFormatter={(val) => `$${val}`}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#161b22',
-                      border: '1px solid #30363d',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      color: '#e6edf3'
+                      color: '#111827'
                     }}
                     formatter={(value, name) => [
                       `$${Number(value)?.toFixed(0) || 0}`,
@@ -296,16 +321,18 @@ export function MarketingDashboard() {
                   <Line
                     type="monotone"
                     dataKey="organic"
-                    stroke="#00ff88"
+                    stroke="#10b981"
                     strokeWidth={2}
                     dot={false}
+                    name="Organic"
                   />
                   <Line
                     type="monotone"
                     dataKey="paid"
-                    stroke="#a371f7"
+                    stroke="#8b5cf6"
                     strokeWidth={2}
                     dot={false}
+                    name="Paid"
                   />
                 </LineChart>
               </ResponsiveContainer>
