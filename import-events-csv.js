@@ -70,7 +70,7 @@ async function main() {
   let skippedCount = 0;
   let errorCount = 0;
   const batch = [];
-  const BATCH_SIZE = 1000;
+  const BATCH_SIZE = 200;
 
   const processBatch = async () => {
     if (batch.length === 0) return;
@@ -109,22 +109,23 @@ async function main() {
     }
 
     // Map CSV columns to DB columns
-    // 0: Event Date, 3: Event Name, 7: Product ID, 12: Price USD, 14: Refund
-    // 15: Q User ID, 5: Platform, 20: Country, 22: Install Date
-    // 23: Media source, 24: Campaign, 17: Device, 27: App version
+    // 0: Event Date, 1: Transaction ID, 3: Event Name, 5: Platform, 7: Product ID
+    // 12: Price USD, 14: Refund, 15: Q User ID, 17: Device, 20: Country
+    // 22: Install Date, 23: Media source, 24: Campaign, 27: App version
 
     const eventDate = fields[0];
+    const transactionId = fields[1] || null;
     const eventName = fields[3];
+    const platform = fields[5];
     const productId = fields[7];
     const priceUsd = parseFloat(fields[12]) || 0;
     const refund = fields[14]?.toLowerCase() === 'true' || fields[14] === '1';
     const qUserId = fields[15];
-    const platform = fields[5];
+    const device = fields[17] || null;
     const country = fields[20];
     const installDate = fields[22] || null;
     const mediaSource = fields[23] || null;
     const campaignName = fields[24] || null;
-    const device = fields[17] || null;
     const appVersion = fields[27] || null;
 
     if (!qUserId || !eventDate) {
@@ -133,6 +134,7 @@ async function main() {
     }
 
     batch.push({
+      transaction_id: transactionId,
       event_date: eventDate,
       event_name: eventName,
       q_user_id: qUserId,

@@ -641,8 +641,9 @@ router.post('/import', async (req, res) => {
       let idx = 1;
 
       for (const e of batch) {
-        placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+        placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
         values.push(
+          e.transaction_id || null,
           e.event_date,
           e.event_name,
           e.q_user_id,
@@ -662,10 +663,10 @@ router.post('/import', async (req, res) => {
       try {
         await db.query(`
           INSERT INTO events_v2 (
-            event_date, event_name, q_user_id, product_id, price_usd, refund,
+            transaction_id, event_date, event_name, q_user_id, product_id, price_usd, refund,
             platform, country, install_date, media_source, campaign_name, device, app_version
           ) VALUES ${placeholders.join(', ')}
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (transaction_id) DO NOTHING
         `, values);
         inserted += batch.length;
       } catch (err) {
