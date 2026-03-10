@@ -829,6 +829,7 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
         FROM events_v2
         WHERE ${revenueCondition}
+          AND campaign_id = $1
           AND adgroup_id IS NOT NULL
         GROUP BY adgroup_id
       ) r ON k.adgroup_id::TEXT = r.adgroup_id::TEXT
