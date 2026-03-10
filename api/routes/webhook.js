@@ -661,16 +661,17 @@ router.post('/import', async (req, res) => {
       }
 
       try {
-        await db.query(`
+        const result = await db.query(`
           INSERT INTO events_v2 (
             transaction_id, event_date, event_name, q_user_id, product_id, price_usd, refund,
             platform, country, install_date, media_source, campaign_name, device, app_version
           ) VALUES ${placeholders.join(', ')}
           ON CONFLICT (transaction_id) DO NOTHING
+          RETURNING id
         `, values);
-        inserted += batch.length;
+        inserted += result.rowCount || 0;
       } catch (err) {
-        console.error('Batch error:', err.message);
+        console.error('Batch error:', err.message, 'First event:', JSON.stringify(batch[0]));
         errors += batch.length;
       }
     }
