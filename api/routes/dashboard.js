@@ -162,19 +162,19 @@ router.get('/main', async (req, res) => {
   try {
     // Get date range from query params (defaults to last 30 days)
     const from = req.query.from || daysAgo(30);
-    // Always cap 'to' at yesterday (current day data is incomplete)
-    const yesterday = daysAgo(1);
-    const requestedTo = req.query.to || yesterday;
-    const to = requestedTo > yesterday ? yesterday : requestedTo;
+    // Always cap 'to' at 2 days ago (webhooks have 1-2 day delay for revenue data)
+    const twoDaysAgo = daysAgo(2);
+    const requestedTo = req.query.to || twoDaysAgo;
+    const to = requestedTo > twoDaysAgo ? twoDaysAgo : requestedTo;
     const scale = req.query.scale || 'day'; // 'day', 'week', or 'month'
     const { campaigns } = req.query;
 
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    // Use yesterday for metrics (current day is incomplete)
-    // On day 1, use 1 to avoid division by zero (metrics will be from previous month end)
-    const currentDay = Math.max(1, today.getDate() - 1);
+    // Use 2 days ago for metrics (webhooks have 1-2 day delay)
+    // On day 1-2, use 1 to avoid division by zero
+    const currentDay = Math.max(1, today.getDate() - 2);
 
     // Previous month for comparison
     const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -191,38 +191,38 @@ router.get('/main', async (req, res) => {
       }
     }
 
-    // ---- CURRENT MONTH METRICS (excluding today - incomplete data) ----
+    // ---- CURRENT MONTH METRICS (excluding last 2 days - webhook delay) ----
 
-    // Spend this month (from apple_ads_campaigns), excluding today
+    // Spend this month (from apple_ads_campaigns), excluding last 2 days
     const spendQuery = `
       SELECT COALESCE(SUM(spend), 0) as spend
       FROM apple_ads_campaigns
       WHERE TO_CHAR(date, 'YYYY-MM') = $1
-        AND date < CURRENT_DATE
+        AND date < CURRENT_DATE - INTERVAL '1 day'
         AND ${campaignCondition}
     `;
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
-    // Revenue this month (only actual revenue events) - total revenue, excluding today
+    // Revenue this month (only actual revenue events) - total revenue, excluding last 2 days
     const revenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-        AND DATE(event_date) < CURRENT_DATE
+        AND DATE(event_date) < CURRENT_DATE - INTERVAL '1 day'
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
     const revenueResult = await db.query(revenueQuery, [currentMonth]);
     const monthRevenue = parseFloat(revenueResult.rows[0]?.revenue) || 0;
 
-    // Cohort revenue from Apple Ads users (for ROAS calculation), excluding today
+    // Cohort revenue from Apple Ads users (for ROAS calculation), excluding last 2 days
     // Revenue from users who installed THIS month AND came from Apple Ads
     const cohortRevenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-        AND DATE(event_date) < CURRENT_DATE
+        AND DATE(event_date) < CURRENT_DATE - INTERVAL '1 day'
         AND media_source = 'Apple AdServices'
         AND ${campaignCondition}
         AND refund = false
@@ -231,12 +231,12 @@ router.get('/main', async (req, res) => {
     const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
     const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
-    // New subscribers this month (trial_converted + subscription_started for yearly), excluding today
+    // New subscribers this month (trial_converted + subscription_started for yearly), excluding last 2 days
     const subscribersQuery = `
       SELECT COUNT(DISTINCT q_user_id) as subscribers
       FROM events_v2
       WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-        AND DATE(event_date) < CURRENT_DATE
+        AND DATE(event_date) < CURRENT_DATE - INTERVAL '1 day'
         AND (
           event_name = 'Trial Converted'
           OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
