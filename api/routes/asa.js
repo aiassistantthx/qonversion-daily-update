@@ -2233,14 +2233,41 @@ router.get('/countries', async (req, res) => {
       : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
 
     const query = `
-      WITH country_spend AS (
+      WITH campaign_totals AS (
         SELECT
-          UNNEST(c.countries_or_regions) as country,
-          SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
-          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
-        FROM apple_ads_campaigns c
-        WHERE countries_or_regions IS NOT NULL
-        GROUP BY 1
+          campaign_id,
+          SUM(spend) as total_spend,
+          SUM(installs) as total_installs
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition}
+        GROUP BY campaign_id
+      ),
+      country_attribution AS (
+        SELECT
+          country,
+          campaign_id,
+          COUNT(DISTINCT q_user_id) as installs
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND country IS NOT NULL
+          AND campaign_id IS NOT NULL
+          AND event_name = 'First Session'
+        GROUP BY country, campaign_id
+      ),
+      country_spend AS (
+        SELECT
+          ca.country,
+          SUM(
+            CASE
+              WHEN ct.total_installs > 0
+              THEN (ca.installs::DECIMAL / ct.total_installs) * ct.total_spend
+              ELSE 0
+            END
+          ) as spend,
+          SUM(ca.installs) as installs
+        FROM country_attribution ca
+        JOIN campaign_totals ct ON ca.campaign_id = ct.campaign_id
+        GROUP BY ca.country
       ),
       country_revenue AS (
         SELECT
