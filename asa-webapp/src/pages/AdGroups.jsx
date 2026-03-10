@@ -16,14 +16,21 @@ import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
 } from 'lucide-react';
 
+// Target CAC from yearly payback calculation
+const TARGET_CAC = 88.75;
+
 const DEFAULT_COLUMNS = {
   campaign: true,
   status: true,
   spend: true,
   revenue: true,
   roas: true,
+  roasD7: false,
+  roasD30: false,
   installs: true,
   cpa: true,
+  cac: false,
+  kpiDiff: false,
   ttr: false,
   cvr: false,
   cpt: false,
@@ -36,8 +43,12 @@ const COLUMN_DEFINITIONS = [
   { id: 'spend', label: 'Spend' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'roas', label: 'ROAS' },
+  { id: 'roasD7', label: 'ROAS D7' },
+  { id: 'roasD30', label: 'ROAS D30' },
   { id: 'installs', label: 'Installs' },
   { id: 'cpa', label: 'CPA' },
+  { id: 'cac', label: 'CAC' },
+  { id: 'kpiDiff', label: 'KPI Diff' },
   { id: 'ttr', label: 'TTR' },
   { id: 'cvr', label: 'CVR' },
   { id: 'cpt', label: 'CPT' },
@@ -237,6 +248,22 @@ export default function AdGroups() {
         case 'cpa':
           aVal = getPerf(a, 'cpa') || 999999;
           bVal = getPerf(b, 'cpa') || 999999;
+          break;
+        case 'cac':
+          aVal = getPerf(a, 'cop') || 999999;
+          bVal = getPerf(b, 'cop') || 999999;
+          break;
+        case 'kpiDiff':
+          aVal = (getPerf(a, 'cop') || 999999) - TARGET_CAC;
+          bVal = (getPerf(b, 'cop') || 999999) - TARGET_CAC;
+          break;
+        case 'roasD7':
+          aVal = getPerf(a, 'roas_d7');
+          bVal = getPerf(b, 'roas_d7');
+          break;
+        case 'roasD30':
+          aVal = getPerf(a, 'roas_d30');
+          bVal = getPerf(b, 'roas_d30');
           break;
         case 'ttr':
           aVal = getPerf(a, 'ttr');
@@ -552,6 +579,25 @@ export default function AdGroups() {
                       return <TableCell key={columnId} className="text-right">{getPerf(ag, 'installs').toLocaleString()}</TableCell>;
                     case 'cpa':
                       return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cpa') ? `$${getPerf(ag, 'cpa').toFixed(2)}` : '-'}</TableCell>;
+                    case 'cac':
+                      return <TableCell key={columnId} className="text-right">{getPerf(ag, 'cop') ? `$${getPerf(ag, 'cop').toFixed(2)}` : '-'}</TableCell>;
+                    case 'kpiDiff':
+                      const agCac = getPerf(ag, 'cop');
+                      const agKpiDiff = agCac ? agCac - TARGET_CAC : null;
+                      const agIsOnTarget = agKpiDiff !== null && agKpiDiff <= 0;
+                      return (
+                        <TableCell key={columnId} className="text-right">
+                          {agKpiDiff !== null ? (
+                            <span className={`font-medium ${agIsOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+                              {agKpiDiff >= 0 ? '+' : ''}{agKpiDiff.toFixed(2)}
+                            </span>
+                          ) : '-'}
+                        </TableCell>
+                      );
+                    case 'roasD7':
+                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas_d7') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d7') ? getPerf(ag, 'roas_d7').toFixed(2) + 'x' : '-'}</span></TableCell>;
+                    case 'roasD30':
+                      return <TableCell key={columnId} className="text-right"><span className={getPerf(ag, 'roas_d30') >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>{getPerf(ag, 'roas_d30') ? getPerf(ag, 'roas_d30').toFixed(2) + 'x' : '-'}</span></TableCell>;
                     case 'ttr':
                       return <TableCell key={columnId} className="text-right">{(getPerf(ag, 'ttr') * 100).toFixed(2)}%</TableCell>;
                     case 'cvr':

@@ -15,7 +15,51 @@ import {
   MousePointer,
   Download,
   BarChart3,
+  Target,
 } from 'lucide-react';
+
+// Target KPI from yearly payback calculation
+// LTV = average annual revenue per paid user (approx. yearly subscription price)
+const TARGET_CAC = 88.75; // Based on yearly payback calculation
+
+function KpiCard({ currentCac, targetCac }) {
+  const kpiDiff = currentCac - targetCac;
+  const isOnTarget = kpiDiff <= 0;
+  const percentDiff = targetCac > 0 ? (kpiDiff / targetCac) * 100 : 0;
+
+  return (
+    <Card className={`border-2 ${isOnTarget ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
+      <CardContent>
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${isOnTarget ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+            <Target className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm text-gray-600">KPI Target CAC</p>
+            <p className="text-xl font-bold">${targetCac.toFixed(2)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-600">Current CAC</p>
+            <p className={`text-xl font-bold ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+              ${currentCac.toFixed(2)}
+            </p>
+          </div>
+        </div>
+        <div className={`mt-3 pt-3 border-t ${isOnTarget ? 'border-green-200' : 'border-red-200'}`}>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">KPI Diff:</span>
+            <span className={`text-lg font-bold ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+              {kpiDiff >= 0 ? '+' : ''}{kpiDiff.toFixed(2)} ({percentDiff >= 0 ? '+' : ''}{percentDiff.toFixed(0)}%)
+            </span>
+          </div>
+          <p className={`text-xs mt-1 ${isOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+            {isOnTarget ? 'On target for yearly payback' : 'Above target - needs optimization'}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
   const colors = {
@@ -169,7 +213,7 @@ export default function Dashboard() {
           color="blue"
         />
         <MetricCard
-          title="COP"
+          title="CAC"
           value={cop.toFixed(2)}
           prevValue={prevCop > 0 ? prevCop.toFixed(2) : null}
           prefix="$"
@@ -178,6 +222,11 @@ export default function Dashboard() {
           subtext={`${totalPaidUsers} paid users`}
         />
         </div>
+      </div>
+
+      {/* KPI Target Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <KpiCard currentCac={cop} targetCac={TARGET_CAC} />
       </div>
 
       {/* Secondary Metrics */}

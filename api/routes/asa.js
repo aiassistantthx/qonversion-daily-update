@@ -250,10 +250,38 @@ router.get('/campaigns', async (req, res) => {
     `);
     const alertsMap = new Map(alertsQuery.rows.map(a => [String(a.campaign_id), a]));
 
+    // Get cohort ROAS (D7, D30) for each campaign
+    const cohortRoasQuery = await db.query(`
+      WITH spend_by_campaign AS (
+        SELECT campaign_id::TEXT as campaign_id, SUM(spend) as total_spend
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition}
+        GROUP BY campaign_id
+      ),
+      cohort_revenue AS (
+        SELECT
+          campaign_id::TEXT as campaign_id,
+          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND campaign_id IS NOT NULL
+        GROUP BY campaign_id
+      )
+      SELECT
+        s.campaign_id,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d7, 0) / s.total_spend ELSE 0 END as roas_d7,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d30, 0) / s.total_spend ELSE 0 END as roas_d30
+      FROM spend_by_campaign s
+      LEFT JOIN cohort_revenue r ON s.campaign_id = r.campaign_id
+    `);
+    const cohortRoasMap = new Map(cohortRoasQuery.rows.map(c => [String(c.campaign_id), c]));
+
     // Enrich campaigns with performance data and budget alerts
     const enriched = filtered.map(campaign => {
       const perf = performanceMap.get(String(campaign.id));
       const alert = alertsMap.get(String(campaign.id));
+      const cohortRoas = cohortRoasMap.get(String(campaign.id));
 
       // Calculate budget usage percentage
       let budgetUsedPct = null;
@@ -279,7 +307,9 @@ router.get('/campaigns', async (req, res) => {
         performance: perf ? {
           ...perf,
           predicted_roas_365: predictedRoas365,
-          trend_7d: trend7d
+          trend_7d: trend7d,
+          roas_d7: cohortRoas ? parseFloat(cohortRoas.roas_d7) || 0 : 0,
+          roas_d30: cohortRoas ? parseFloat(cohortRoas.roas_d30) || 0 : 0
         } : null,
         budgetAlert: alert ? {
           level: alert.alert_level,
@@ -991,9 +1021,38 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
 
     const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.adgroup_id), p]));
 
+    // Get cohort ROAS (D7, D30) for each adgroup
+    const cohortRoasQuery = await db.query(`
+      WITH spend_by_adgroup AS (
+        SELECT adgroup_id::TEXT as adgroup_id, SUM(spend) as total_spend
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1 AND ${dateCondition}
+        GROUP BY adgroup_id
+      ),
+      cohort_revenue AS (
+        SELECT
+          adgroup_id::TEXT as adgroup_id,
+          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND campaign_id = $1
+          AND adgroup_id IS NOT NULL
+        GROUP BY adgroup_id
+      )
+      SELECT
+        s.adgroup_id,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d7, 0) / s.total_spend ELSE 0 END as roas_d7,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d30, 0) / s.total_spend ELSE 0 END as roas_d30
+      FROM spend_by_adgroup s
+      LEFT JOIN cohort_revenue r ON s.adgroup_id = r.adgroup_id
+    `, [campaignId]);
+    const cohortRoasMap = new Map(cohortRoasQuery.rows.map(c => [String(c.adgroup_id), c]));
+
     // Enrich ad groups with performance
     const enriched = adGroups.map(ag => {
       const perf = performanceMap.get(String(ag.id)) || {};
+      const cohortRoas = cohortRoasMap.get(String(ag.id));
       const spend = parseFloat(perf.spend || 0);
       const impressions = parseInt(perf.impressions || 0);
       const taps = parseInt(perf.taps || 0);
@@ -1013,6 +1072,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           paid_users: paidUsers,
           cpa: installs > 0 ? spend / installs : null,
           roas: spend > 0 ? revenue / spend : 0,
+          roas_d7: cohortRoas ? parseFloat(cohortRoas.roas_d7) || 0 : 0,
+          roas_d30: cohortRoas ? parseFloat(cohortRoas.roas_d30) || 0 : 0,
           cop: paidUsers > 0 ? spend / paidUsers : null,
           ttr: impressions > 0 ? taps / impressions : 0,
           cvr: taps > 0 ? installs / taps : 0,
@@ -1211,7 +1272,9 @@ router.get('/keywords', async (req, res) => {
         SELECT
           keyword_id,
           SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
-          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
+          COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users,
+          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND keyword_id IS NOT NULL
@@ -1240,6 +1303,8 @@ router.get('/keywords', async (req, res) => {
         COALESCE(r.paid_users, 0) as paid_users_7d,
         CASE WHEN COALESCE(p.installs, 0) > 0 THEN COALESCE(p.spend, 0) / p.installs ELSE NULL END as cpa_7d,
         CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue, 0) / p.spend ELSE 0 END as roas_7d,
+        CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue_d7, 0) / p.spend ELSE 0 END as roas_d7,
+        CASE WHEN COALESCE(p.spend, 0) > 0 THEN COALESCE(r.revenue_d30, 0) / p.spend ELSE 0 END as roas_d30,
         CASE WHEN COALESCE(r.paid_users, 0) > 0 THEN COALESCE(p.spend, 0) / r.paid_users ELSE NULL END as cop_7d,
         CASE WHEN COALESCE(p.impressions, 0) > 0 THEN COALESCE(p.taps, 0)::float / p.impressions ELSE 0 END as ttr_7d,
         CASE WHEN COALESCE(p.taps, 0) > 0 THEN COALESCE(p.installs, 0)::float / p.taps ELSE 0 END as cvr_7d,
@@ -3266,6 +3331,66 @@ router.get('/search-terms', async (req, res) => {
     });
   } catch (error) {
     console.error('Search terms endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug endpoint for cohort ROAS
+router.get('/debug/cohort-roas', async (req, res) => {
+  try {
+    const days = 7;
+    const dateCondition = `date >= CURRENT_DATE - INTERVAL '${days} days'`;
+    const revenueCondition = `install_date >= CURRENT_DATE - INTERVAL '${days} days'`;
+
+    const cohortRoasQuery = await db.query(`
+      WITH spend_by_campaign AS (
+        SELECT campaign_id::TEXT as campaign_id, SUM(spend) as total_spend
+        FROM apple_ads_campaigns
+        WHERE ${dateCondition}
+        GROUP BY campaign_id
+      ),
+      cohort_revenue AS (
+        SELECT
+          campaign_id::TEXT as campaign_id,
+          SUM(CASE WHEN event_date - install_date <= 7 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 30 AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30,
+          COUNT(*) as event_count
+        FROM events_v2
+        WHERE ${revenueCondition}
+          AND campaign_id IS NOT NULL
+        GROUP BY campaign_id
+      )
+      SELECT
+        s.campaign_id,
+        s.total_spend,
+        r.revenue_d7,
+        r.revenue_d30,
+        r.event_count,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d7, 0) / s.total_spend ELSE 0 END as roas_d7,
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d30, 0) / s.total_spend ELSE 0 END as roas_d30
+      FROM spend_by_campaign s
+      LEFT JOIN cohort_revenue r ON s.campaign_id = r.campaign_id
+      LIMIT 10
+    `);
+
+    // Also check raw events_v2 data
+    const eventsCheck = await db.query(`
+      SELECT
+        COUNT(*) as total_events,
+        COUNT(DISTINCT campaign_id) as campaigns_with_events,
+        COUNT(CASE WHEN install_date IS NOT NULL THEN 1 END) as with_install_date,
+        COUNT(CASE WHEN event_date IS NOT NULL THEN 1 END) as with_event_date,
+        MIN(install_date) as min_install_date,
+        MAX(install_date) as max_install_date
+      FROM events_v2
+      WHERE campaign_id IS NOT NULL
+    `);
+
+    res.json({
+      cohortRoas: cohortRoasQuery.rows,
+      eventsStats: eventsCheck.rows[0]
+    });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

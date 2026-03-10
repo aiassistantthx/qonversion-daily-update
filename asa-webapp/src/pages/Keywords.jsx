@@ -17,6 +17,9 @@ import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
 
+// Target CAC from yearly payback calculation
+const TARGET_CAC = 88.75;
+
 const DEFAULT_COLUMNS = {
   matchType: true,
   bid: true,
@@ -29,10 +32,14 @@ const DEFAULT_COLUMNS = {
   installs: true,
   cvr: false,
   cpa: true,
+  cac: false,
+  kpiDiff: false,
   cpt: false,
   cpm: false,
   revenue: true,
   roas: true,
+  roasD7: false,
+  roasD30: false,
   cop: false,
 };
 
@@ -48,10 +55,14 @@ const COLUMN_DEFINITIONS = [
   { id: 'installs', label: 'Installs' },
   { id: 'cvr', label: 'CVR' },
   { id: 'cpa', label: 'CPA' },
+  { id: 'cac', label: 'CAC' },
+  { id: 'kpiDiff', label: 'KPI Diff' },
   { id: 'cpt', label: 'CPT' },
   { id: 'cpm', label: 'CPM' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'roas', label: 'ROAS' },
+  { id: 'roasD7', label: 'ROAS D7' },
+  { id: 'roasD30', label: 'ROAS D30' },
   { id: 'cop', label: 'COP' },
 ];
 
@@ -323,6 +334,14 @@ export default function Keywords() {
           aVal = parseFloat(a.cpa_7d || 999999);
           bVal = parseFloat(b.cpa_7d || 999999);
           break;
+        case 'cac':
+          aVal = parseFloat(a.cop_7d || 999999);
+          bVal = parseFloat(b.cop_7d || 999999);
+          break;
+        case 'kpiDiff':
+          aVal = (parseFloat(a.cop_7d) || 999999) - TARGET_CAC;
+          bVal = (parseFloat(b.cop_7d) || 999999) - TARGET_CAC;
+          break;
         case 'revenue':
           aVal = parseFloat(a.revenue_7d || 0);
           bVal = parseFloat(b.revenue_7d || 0);
@@ -334,6 +353,14 @@ export default function Keywords() {
           const bSpend = parseFloat(b.spend_7d || 0);
           const bRev = parseFloat(b.revenue_7d || 0);
           bVal = bSpend > 0 ? bRev / bSpend : 0;
+          break;
+        case 'roasD7':
+          aVal = parseFloat(a.roas_d7 || 0);
+          bVal = parseFloat(b.roas_d7 || 0);
+          break;
+        case 'roasD30':
+          aVal = parseFloat(a.roas_d30 || 0);
+          bVal = parseFloat(b.roas_d30 || 0);
           break;
         case 'cop':
           aVal = parseFloat(a.cop_7d || 999999);
@@ -1077,6 +1104,39 @@ export default function Keywords() {
                         return (
                           <TableCell key={columnId} className={`text-right font-medium ${roas >= 1 ? 'text-green-600' : roas > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                             {roas > 0 ? `${roas.toFixed(2)}x` : '-'}
+                          </TableCell>
+                        );
+                      case 'roasD7':
+                        const roasD7 = parseFloat(kw.roas_d7 || 0);
+                        return (
+                          <TableCell key={columnId} className={`text-right font-medium ${roasD7 >= 1 ? 'text-green-600' : roasD7 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roasD7 > 0 ? `${roasD7.toFixed(2)}x` : '-'}
+                          </TableCell>
+                        );
+                      case 'roasD30':
+                        const roasD30 = parseFloat(kw.roas_d30 || 0);
+                        return (
+                          <TableCell key={columnId} className={`text-right font-medium ${roasD30 >= 1 ? 'text-green-600' : roasD30 > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {roasD30 > 0 ? `${roasD30.toFixed(2)}x` : '-'}
+                          </TableCell>
+                        );
+                      case 'cac':
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kw.cop_7d ? `$${parseFloat(kw.cop_7d).toFixed(2)}` : '-'}
+                          </TableCell>
+                        );
+                      case 'kpiDiff':
+                        const kwCac = parseFloat(kw.cop_7d);
+                        const kwKpiDiff = kwCac ? kwCac - TARGET_CAC : null;
+                        const kwIsOnTarget = kwKpiDiff !== null && kwKpiDiff <= 0;
+                        return (
+                          <TableCell key={columnId} className="text-right">
+                            {kwKpiDiff !== null ? (
+                              <span className={`font-medium ${kwIsOnTarget ? 'text-green-600' : 'text-red-600'}`}>
+                                {kwKpiDiff >= 0 ? '+' : ''}{kwKpiDiff.toFixed(2)}
+                              </span>
+                            ) : '-'}
                           </TableCell>
                         );
                       case 'cop':
