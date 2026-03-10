@@ -805,13 +805,23 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
     const performanceQuery = await db.query(`
       SELECT
         k.adgroup_id,
-        SUM(CASE WHEN ${dateCondition} THEN k.spend ELSE 0 END) as spend,
-        SUM(CASE WHEN ${dateCondition} THEN k.impressions ELSE 0 END) as impressions,
-        SUM(CASE WHEN ${dateCondition} THEN k.taps ELSE 0 END) as taps,
-        SUM(CASE WHEN ${dateCondition} THEN k.installs ELSE 0 END) as installs,
+        k.spend,
+        k.impressions,
+        k.taps,
+        k.installs,
         COALESCE(r.revenue, 0) as revenue,
         COALESCE(r.paid_users, 0) as paid_users
-      FROM apple_ads_keywords k
+      FROM (
+        SELECT
+          adgroup_id,
+          SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
+          SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
+          SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
+        FROM apple_ads_keywords
+        WHERE campaign_id = $1
+        GROUP BY adgroup_id
+      ) k
       LEFT JOIN (
         SELECT
           adgroup_id,
@@ -822,8 +832,6 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           AND adgroup_id IS NOT NULL
         GROUP BY adgroup_id
       ) r ON k.adgroup_id::TEXT = r.adgroup_id::TEXT
-      WHERE k.campaign_id = $1
-      GROUP BY k.adgroup_id, r.revenue, r.paid_users
     `, [campaignId]);
 
     const performanceMap = new Map(performanceQuery.rows.map(p => [String(p.adgroup_id), p]));
