@@ -4426,7 +4426,7 @@ router.get('/planning-data', async (req, res) => {
           media_source,
           COUNT(DISTINCT q_user_id) as subscribers,
           COALESCE(SUM(price_usd), 0) as revenue,
-          DATE_PART('day', CURRENT_DATE - DATE(install_date)) as age_days
+          (CURRENT_DATE - install_date::date) as age_days
         FROM events_v2
         WHERE install_date >= CURRENT_DATE - INTERVAL '12 months'
           AND (
