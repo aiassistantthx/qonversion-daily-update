@@ -28,6 +28,7 @@ export default function Keywords() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [matchTypeFilter, setMatchTypeFilter] = useState('');
+  const [campaignFilter, setCampaignFilter] = useState('');
   const [sortField, setSortField] = useState('spend');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -55,13 +56,25 @@ export default function Keywords() {
   // Get keywords with filters
   const { data: keywordsData, isLoading } = useQuery({
     queryKey: ['keywords', { campaignIds, adGroupIds, queryParams, page }],
-    queryFn: () => getKeywords({
-      campaign_id: campaignIds.length > 0 ? campaignIds[0] : undefined,
-      adgroup_id: adGroupIds.length === 1 ? adGroupIds[0] : undefined,
-      limit: itemsPerPage,
-      offset: (page - 1) * itemsPerPage,
-      ...queryParams,
-    }),
+    queryFn: () => {
+      const params = {
+        limit: itemsPerPage,
+        offset: (page - 1) * itemsPerPage,
+        ...queryParams,
+      };
+
+      // Only add campaign_id if exactly one campaign is selected
+      if (campaignIds.length === 1) {
+        params.campaign_id = campaignIds[0];
+      }
+
+      // Only add adgroup_id if exactly one ad group is selected
+      if (adGroupIds.length === 1) {
+        params.adgroup_id = adGroupIds[0];
+      }
+
+      return getKeywords(params);
+    },
   });
 
   const bidMutation = useMutation({
@@ -115,6 +128,10 @@ export default function Keywords() {
     // Filter by adgroup IDs if multiple
     if (adGroupIds.length > 1) {
       result = result.filter(k => adGroupIds.includes(String(k.adgroup_id)));
+    }
+
+    if (campaignFilter) {
+      result = result.filter(k => String(k.campaign_id) === campaignFilter);
     }
 
     if (matchTypeFilter) {
@@ -217,7 +234,7 @@ export default function Keywords() {
     });
 
     return result;
-  }, [allKeywordsData, campaignIds, adGroupIds, matchTypeFilter, searchQuery, sortField, sortDirection]);
+  }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, searchQuery, sortField, sortDirection]);
 
   const totalPages = Math.ceil(totalKeywords / itemsPerPage);
 
@@ -669,6 +686,22 @@ export default function Keywords() {
             className="pl-10"
           />
         </div>
+
+        <select
+          value={campaignFilter}
+          onChange={(e) => {
+            setCampaignFilter(e.target.value);
+            setPage(1);
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        >
+          <option value="">All Campaigns</option>
+          {Array.from(campaignMap.values()).map(campaign => (
+            <option key={campaign.id} value={String(campaign.id)}>
+              {campaign.name}
+            </option>
+          ))}
+        </select>
 
         <select
           value={matchTypeFilter}
