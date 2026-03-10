@@ -12,6 +12,7 @@ interface PredictionParams {
   cpi: number;
   trialRate: number;
   conversionRate: number;
+  organicSubscribers: number;
   weeklyPrice: number;
   yearlyPrice: number;
   weeklyChurnMonthly: number;
@@ -50,6 +51,7 @@ const defaultParams: PredictionParams = {
   cpi: 1.83,
   trialRate: 32,
   conversionRate: 22,
+  organicSubscribers: 500,
   weeklyPrice: 6.99,
   yearlyPrice: 49.99,
   weeklyChurnMonthly: 51,
@@ -97,13 +99,17 @@ export function Prediction() {
       const monthCpi = override.cpi ?? params.cpi;
       const isOverridden = override.spend !== undefined || override.cpi !== undefined;
 
-      // New users from spend
+      // New users from paid spend
       const installs = monthCpi > 0 ? monthSpend / monthCpi : 0;
       const trials = installs * (params.trialRate / 100);
-      const conversions = trials * (params.conversionRate / 100);
+      const paidConversions = trials * (params.conversionRate / 100);
 
-      const newWeekly = conversions * (params.weeklyShare / 100);
-      const newYearly = conversions * (1 - params.weeklyShare / 100);
+      // Add organic subscribers (split by weekly share)
+      const organicWeekly = params.organicSubscribers * (params.weeklyShare / 100);
+      const organicYearly = params.organicSubscribers * (1 - params.weeklyShare / 100);
+
+      const newWeekly = paidConversions * (params.weeklyShare / 100) + organicWeekly;
+      const newYearly = paidConversions * (1 - params.weeklyShare / 100) + organicYearly;
 
       // Apply churn to existing base
       activeWeekly = activeWeekly * monthlyWeeklyRetention + newWeekly;
@@ -266,6 +272,11 @@ export function Prediction() {
             <ParamInput label="Trial Rate (%)" value={params.trialRate} onChange={v => setParams(p => ({ ...p, trialRate: v }))} step={1} />
             <ParamInput label="Conversion Rate (%)" value={params.conversionRate} onChange={v => setParams(p => ({ ...p, conversionRate: v }))} step={1} />
             <ParamInput label="Weekly Share (%)" value={params.weeklyShare} onChange={v => setParams(p => ({ ...p, weeklyShare: v }))} step={1} />
+          </div>
+
+          <div style={styles.paramSection}>
+            <div style={styles.paramLabel}>Organic</div>
+            <ParamInput label="New Subs/month" value={params.organicSubscribers} onChange={v => setParams(p => ({ ...p, organicSubscribers: v }))} step={50} />
           </div>
 
           <div style={styles.paramSection}>
