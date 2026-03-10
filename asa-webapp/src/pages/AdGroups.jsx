@@ -7,11 +7,41 @@ import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
+import { ColumnPicker } from '../components/ColumnPicker';
 import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useColumnSettings } from '../hooks/useColumnSettings';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
 } from 'lucide-react';
+
+const DEFAULT_COLUMNS = {
+  campaign: true,
+  status: true,
+  spend: true,
+  revenue: true,
+  roas: true,
+  installs: true,
+  cpa: true,
+  ttr: false,
+  cvr: false,
+  cpt: false,
+  cpm: false,
+};
+
+const COLUMN_DEFINITIONS = [
+  { id: 'campaign', label: 'Campaign' },
+  { id: 'status', label: 'Status' },
+  { id: 'spend', label: 'Spend' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'roas', label: 'ROAS' },
+  { id: 'installs', label: 'Installs' },
+  { id: 'cpa', label: 'CPA' },
+  { id: 'ttr', label: 'TTR' },
+  { id: 'cvr', label: 'CVR' },
+  { id: 'cpt', label: 'CPT' },
+  { id: 'cpm', label: 'CPM' },
+];
 
 export default function AdGroups() {
   const navigate = useNavigate();
@@ -27,6 +57,12 @@ export default function AdGroups() {
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const { visibleColumns, columnOrder, toggleColumn, resetToDefault } = useColumnSettings(
+    'adgroups-columns',
+    DEFAULT_COLUMNS,
+    Object.keys(DEFAULT_COLUMNS)
+  );
 
   // Get campaigns with performance data
   const { data: campaignsData } = useQuery({
@@ -302,6 +338,8 @@ export default function AdGroups() {
     </TableHeader>
   );
 
+  const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 3;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -314,9 +352,17 @@ export default function AdGroups() {
           </div>
           <p className="text-gray-500 ml-9">{dateLabel}</p>
         </div>
-        <Button variant="secondary" onClick={exportCSV}>
-          <Download size={16} /> Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <ColumnPicker
+            columns={COLUMN_DEFINITIONS}
+            visibleColumns={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetToDefault}
+          />
+          <Button variant="secondary" onClick={exportCSV}>
+            <Download size={16} /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Campaign Filters */}
@@ -386,17 +432,17 @@ export default function AdGroups() {
                 />
               </TableHeader>
               <SortHeader field="name">Ad Group</SortHeader>
-              <SortHeader field="campaign">Campaign</SortHeader>
-              <SortHeader field="status">Status</SortHeader>
-              <SortHeader field="spend" className="text-right">Spend</SortHeader>
-              <SortHeader field="revenue" className="text-right">Revenue</SortHeader>
-              <SortHeader field="roas" className="text-right">ROAS</SortHeader>
-              <SortHeader field="installs" className="text-right">Installs</SortHeader>
-              <SortHeader field="cpa" className="text-right">CPA</SortHeader>
-              <SortHeader field="ttr" className="text-right">TTR</SortHeader>
-              <SortHeader field="cvr" className="text-right">CVR</SortHeader>
-              <SortHeader field="cpt" className="text-right">CPT</SortHeader>
-              <SortHeader field="cpm" className="text-right">CPM</SortHeader>
+              {columnOrder.map((columnId) => {
+                if (!visibleColumns[columnId]) return null;
+                const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
+                if (!column) return null;
+                const isRightAligned = !['campaign', 'status'].includes(columnId);
+                return (
+                  <SortHeader key={columnId} field={columnId} className={isRightAligned ? 'text-right' : ''}>
+                    {column.label}
+                  </SortHeader>
+                );
+              })}
               <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
           </TableHead>

@@ -32,6 +32,7 @@ const DEFAULT_COLUMNS = {
   cvr: false,
   cpt: false,
   cpm: false,
+  soi: false,
 };
 
 const COLUMN_DEFINITIONS = [
@@ -47,6 +48,7 @@ const COLUMN_DEFINITIONS = [
   { id: 'cvr', label: 'CVR' },
   { id: 'cpt', label: 'CPT' },
   { id: 'cpm', label: 'CPM' },
+  { id: 'soi', label: 'SOI' },
 ];
 
 const PRESET_VIEWS = [
@@ -66,6 +68,7 @@ const PRESET_VIEWS = [
       cvr: false,
       cpt: false,
       cpm: false,
+      soi: false,
     }
   },
   {
@@ -84,6 +87,7 @@ const PRESET_VIEWS = [
       cvr: false,
       cpt: false,
       cpm: false,
+      soi: false,
     }
   },
   {
@@ -102,6 +106,7 @@ const PRESET_VIEWS = [
       cvr: true,
       cpt: true,
       cpm: false,
+      soi: false,
     }
   },
   {
@@ -120,6 +125,7 @@ const PRESET_VIEWS = [
       cvr: true,
       cpt: true,
       cpm: true,
+      soi: true,
     }
   },
   {

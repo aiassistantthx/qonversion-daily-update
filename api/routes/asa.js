@@ -811,6 +811,7 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
         k.impressions,
         k.taps,
         k.installs,
+        k.impression_share,
         COALESCE(r.revenue, 0) as revenue,
         COALESCE(r.paid_users, 0) as paid_users
       FROM (
@@ -819,7 +820,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
-          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
+          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share
         FROM apple_ads_keywords
         WHERE campaign_id = $1
         GROUP BY adgroup_id
@@ -848,6 +850,7 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       const installs = parseInt(perf.installs || 0);
       const revenue = parseFloat(perf.revenue || 0);
       const paidUsers = parseInt(perf.paid_users || 0);
+      const impressionShare = parseFloat(perf.impression_share) || null;
 
       return {
         ...ag,
@@ -865,6 +868,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           cvr: taps > 0 ? installs / taps : 0,
           cpt: taps > 0 ? spend / taps : null,
           cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+          impression_share: impressionShare,
+          soi: impressionShare,
         }
       };
     });
@@ -1040,7 +1045,8 @@ router.get('/keywords', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) as spend,
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
-          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs
+          SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
+          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share
         FROM apple_ads_keywords
         ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         GROUP BY keyword_id
@@ -1089,7 +1095,8 @@ router.get('/keywords', async (req, res) => {
         CASE WHEN COALESCE(p.taps, 0) > 0 THEN COALESCE(p.installs, 0)::float / p.taps ELSE 0 END as cvr_7d,
         CASE WHEN COALESCE(p.taps, 0) > 0 THEN COALESCE(p.spend, 0) / p.taps ELSE NULL END as cpt_7d,
         CASE WHEN COALESCE(p.impressions, 0) > 0 THEN (COALESCE(p.spend, 0) / p.impressions) * 1000 ELSE NULL END as cpm_7d,
-        CASE WHEN ti.total_impr > 0 THEN (COALESCE(p.impressions, 0)::float / ti.total_impr) * 100 ELSE 0 END as sov
+        CASE WHEN ti.total_impr > 0 THEN (COALESCE(p.impressions, 0)::float / ti.total_impr) * 100 ELSE 0 END as sov,
+        p.impression_share as soi
       FROM keyword_base k
       LEFT JOIN keyword_perf p ON k.keyword_id = p.keyword_id
       LEFT JOIN keyword_revenue r ON k.keyword_id::TEXT = r.keyword_id::TEXT
