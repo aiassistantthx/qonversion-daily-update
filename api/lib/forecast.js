@@ -158,39 +158,43 @@ function generateForecast({ cohorts, assumptions, forecastMonths = 12, startDate
 
 /**
  * Calculate COP breakdown (overall vs paid-only)
+ * Average over last 6 months, excluding last 7 days
  * @param {object} db - Database connection
- * @param {string} month - Month in YYYY-MM format
+ * @param {string} month - Month in YYYY-MM format (unused, kept for compatibility)
  * @returns {object} COP breakdown
  */
 async function calculateCopBreakdown(db, month) {
-  // Total spend for the month
+  // Total spend for last 6 months, excluding last 7 days
   const spendQuery = `
     SELECT COALESCE(SUM(spend), 0) as total_spend
     FROM apple_ads_campaigns
-    WHERE TO_CHAR(date, 'YYYY-MM') = $1
+    WHERE date >= CURRENT_DATE - INTERVAL '6 months'
+      AND date < CURRENT_DATE - INTERVAL '7 days'
   `;
-  const spendResult = await db.query(spendQuery, [month]);
+  const spendResult = await db.query(spendQuery);
   const totalSpend = parseFloat(spendResult.rows[0]?.total_spend) || 0;
 
-  // Total subscribers (paid + organic)
+  // Total subscribers (paid + organic) for last 6 months, excluding last 7 days
   const totalSubsQuery = `
     SELECT COUNT(DISTINCT q_user_id) as count
     FROM events_v2
-    WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+    WHERE install_date >= CURRENT_DATE - INTERVAL '6 months'
+      AND install_date < CURRENT_DATE - INTERVAL '7 days'
       AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
   `;
-  const totalSubsResult = await db.query(totalSubsQuery, [month]);
+  const totalSubsResult = await db.query(totalSubsQuery);
   const totalSubs = parseInt(totalSubsResult.rows[0]?.count) || 0;
 
   // Paid subscribers only (Apple Ads)
   const paidSubsQuery = `
     SELECT COUNT(DISTINCT q_user_id) as count
     FROM events_v2
-    WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+    WHERE install_date >= CURRENT_DATE - INTERVAL '6 months'
+      AND install_date < CURRENT_DATE - INTERVAL '7 days'
       AND media_source = 'Apple AdServices'
       AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
   `;
-  const paidSubsResult = await db.query(paidSubsQuery, [month]);
+  const paidSubsResult = await db.query(paidSubsQuery);
   const paidSubs = parseInt(paidSubsResult.rows[0]?.count) || 0;
 
   const organicSubs = totalSubs - paidSubs;
