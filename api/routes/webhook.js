@@ -759,4 +759,66 @@ router.post('/import', async (req, res) => {
   }
 });
 
+// POST /webhook/import-attribution - batch update adgroup_id by campaign/adset names
+router.post('/import-attribution', async (req, res) => {
+  try {
+    const { records } = req.body;
+
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: 'records array required' });
+    }
+
+    let updated = 0;
+    let notFound = 0;
+
+    for (const record of records) {
+      const { qUserId, campaignName, adSetName } = record;
+
+      if (!qUserId || !campaignName) continue;
+
+      // Lookup campaign
+      const campaignResult = await db.query(
+        'SELECT campaign_id FROM apple_ads_campaigns WHERE campaign_name = $1 LIMIT 1',
+        [campaignName]
+      );
+
+      if (!campaignResult.rows[0]) {
+        notFound++;
+        continue;
+      }
+
+      const campaignId = campaignResult.rows[0].campaign_id;
+
+      // Lookup adgroup if adSetName provided
+      let adgroupId = null;
+      if (adSetName) {
+        const adgroupResult = await db.query(
+          'SELECT adgroup_id FROM apple_ads_adgroups WHERE campaign_id = $1 AND adgroup_name = $2 LIMIT 1',
+          [campaignId, adSetName]
+        );
+        adgroupId = adgroupResult.rows[0]?.adgroup_id || null;
+      }
+
+      // Update events_v2
+      const updateResult = await db.query(`
+        UPDATE events_v2
+        SET campaign_id = COALESCE(campaign_id, $2),
+            adgroup_id = COALESCE(adgroup_id, $3)
+        WHERE q_user_id = $1
+          AND (campaign_id IS NULL OR adgroup_id IS NULL)
+      `, [qUserId, campaignId, adgroupId]);
+
+      if (updateResult.rowCount > 0) {
+        updated += updateResult.rowCount;
+      }
+    }
+
+    res.json({ updated, notFound, total: records.length });
+
+  } catch (error) {
+    console.error('Import attribution error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
