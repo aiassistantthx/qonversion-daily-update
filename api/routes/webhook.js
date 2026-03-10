@@ -47,6 +47,11 @@ function parseWebhookPayload(payload) {
     environment,
     created_at,
     asa_attribution,  // Apple Search Ads attribution at root level
+    // Attribution fields from Qonversion (names, not IDs)
+    media_source,
+    campaign,
+    ad_set,
+    ad,
   } = payload;
 
   // Revenue in USD - Qonversion sends revenue as object with value_usd
@@ -72,6 +77,11 @@ function parseWebhookPayload(payload) {
     createdAt: created_at ? new Date(created_at * 1000) : new Date(),
     rawPayload: payload,
     asaAttribution: asa_attribution,  // Pass ASA attribution directly
+    // Attribution by name (for lookup)
+    mediaSource: media_source,
+    campaignName: campaign,
+    adSetName: ad_set,
+    adName: ad,
   };
 }
 
@@ -99,6 +109,46 @@ function extractAttribution(asaAttribution) {
   }
 
   return attribution;
+}
+
+// Lookup campaign and adgroup IDs by name (for attribution from Qonversion export format)
+async function lookupAttributionByName(campaignName, adSetName) {
+  if (!campaignName) return null;
+
+  try {
+    // First find campaign by name
+    const campaignResult = await db.query(
+      'SELECT campaign_id FROM apple_ads_campaigns WHERE campaign_name = $1 LIMIT 1',
+      [campaignName]
+    );
+
+    if (!campaignResult.rows[0]) {
+      return null;
+    }
+
+    const campaignId = campaignResult.rows[0].campaign_id;
+    let adgroupId = null;
+
+    // If we have ad set name, find the adgroup
+    if (adSetName) {
+      const adgroupResult = await db.query(
+        'SELECT adgroup_id FROM apple_ads_adgroups WHERE campaign_id = $1 AND adgroup_name = $2 LIMIT 1',
+        [campaignId, adSetName]
+      );
+
+      if (adgroupResult.rows[0]) {
+        adgroupId = adgroupResult.rows[0].adgroup_id;
+      }
+    }
+
+    return {
+      campaignId: String(campaignId),
+      adgroupId: adgroupId ? String(adgroupId) : null,
+    };
+  } catch (e) {
+    console.error('Error looking up attribution by name:', e);
+    return null;
+  }
 }
 
 // Save event to database
@@ -224,6 +274,22 @@ async function saveToEventsV2(eventData, attribution) {
           adgroupId: attrResult.rows[0].adgroup_id,
           keywordId: attrResult.rows[0].keyword_id,
         };
+      }
+    } catch (e) {
+      // Ignore lookup errors
+    }
+  }
+
+  // If still no adgroupId, try to lookup by campaign/ad_set name from Qonversion
+  if (!finalAttribution?.adgroupId && eventData.campaignName) {
+    try {
+      const nameAttribution = await lookupAttributionByName(eventData.campaignName, eventData.adSetName);
+      if (nameAttribution) {
+        if (!finalAttribution) {
+          finalAttribution = nameAttribution;
+        } else if (!finalAttribution.adgroupId && nameAttribution.adgroupId) {
+          finalAttribution.adgroupId = nameAttribution.adgroupId;
+        }
       }
     } catch (e) {
       // Ignore lookup errors

@@ -190,7 +190,7 @@ router.get('/campaigns', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
-          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share,
+          NULL as impression_share -- TODO: Enable after running migration,
           CASE WHEN SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) > 0
                THEN SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) /
                     SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END)
@@ -971,7 +971,7 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
-          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share
+          NULL as impression_share -- TODO: Enable after running migration
         FROM apple_ads_keywords
         WHERE campaign_id = $1
         GROUP BY adgroup_id
@@ -1197,7 +1197,7 @@ router.get('/keywords', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
-          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share
+          NULL as impression_share -- TODO: Enable after running migration
         FROM apple_ads_keywords
         ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         GROUP BY keyword_id

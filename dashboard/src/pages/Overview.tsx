@@ -19,6 +19,7 @@ import {
   SortIcon,
   TrendChart,
 } from '../components';
+import { ChurnRateChart } from '../components/ChurnRateChart';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
   ActiveSubscribersData,
@@ -174,6 +175,37 @@ interface FunnelData {
     crToPaid: number | null;
   }>;
   days: number;
+}
+
+interface ChurnPeriodData {
+  period: string;
+  activeAtStart: number;
+  renewed?: number;
+  churned: number;
+  newSubs: number;
+  churnRate: number;
+  netChange: number;
+}
+
+interface ChurnRateData {
+  weekly: {
+    data: ChurnPeriodData[];
+    avgChurnRate: number;
+    currentWeek: { activeAtStart: number; churnRate: number };
+  };
+  yearly: {
+    data: ChurnPeriodData[];
+    avgChurnRate: number;
+    currentMonth: { activeAtStart: number; churnRate: number };
+  };
+  summary: {
+    weeklyAvgChurn: number;
+    yearlyAvgChurn: number;
+    monthlyAvgChurn: number;
+    monthlyChurnFromWeekly: number;
+    monthlyChurnFromYearly: number;
+    impliedAnnualFromWeekly: number;
+  };
 }
 
 
@@ -351,6 +383,11 @@ export function Overview() {
     queryFn: () => fetch(`${API_URL}/dashboard/top-countries-roas?from=${dateRange.from}&to=${dateRange.to}&limit=10`).then(r => r.json()),
   });
 
+  const { data: churnRateData } = useQuery<ChurnRateData>({
+    queryKey: ['churn-rate'],
+    queryFn: () => fetch(`${API_URL}/dashboard/churn-rate`).then(r => r.json()),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
   const monthly = [...(data?.monthly || [])].sort((a, b) => b.month.localeCompare(a.month));
@@ -477,6 +514,9 @@ export function Overview() {
 
       {/* Top Countries by ROAS Widget */}
       {topCountriesData && <TopCountriesWidget data={topCountriesData} />}
+
+      {/* Churn Rate Analysis */}
+      {churnRateData && <ChurnRateChart data={churnRateData} />}
 
       {/* Navigation Cards to Detailed Tabs */}
       <div style={styles.navCardsGrid}>
