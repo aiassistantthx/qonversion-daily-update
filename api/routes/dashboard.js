@@ -1289,13 +1289,28 @@ router.get('/forecast', async (req, res) => {
       ORDER BY cohort_month
     `);
 
-    // Current active weekly subscribers (renewed in last 14 days)
+    // Current active weekly subscribers
+    // Same logic as /active-subscribers endpoint - include Trial Converted, Subscription Started, Subscription Renewed
+    // Exclude users whose last event was cancel/expire/refund
     const activeWeeklyResult = await db.query(`
-      SELECT COUNT(DISTINCT q_user_id) as active_weekly
-      FROM events_v2
-      WHERE event_date >= CURRENT_DATE - INTERVAL '14 days'
-        AND event_name = 'Subscription Renewed'
-        AND product_id LIKE '%weekly%'
+      WITH user_last_event AS (
+        SELECT DISTINCT ON (q_user_id)
+          q_user_id,
+          event_name,
+          event_date,
+          product_id
+        FROM events_v2
+        WHERE event_name IN (
+          'Trial Converted', 'Subscription Started', 'Subscription Renewed',
+          'Subscription Canceled', 'Subscription Expired', 'Subscription Refunded'
+        )
+          AND product_id LIKE '%weekly%'
+          AND event_date >= CURRENT_DATE - INTERVAL '14 days'
+        ORDER BY q_user_id, event_date DESC
+      )
+      SELECT COUNT(*) as active_weekly
+      FROM user_last_event
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
     `);
 
     // ============================================
