@@ -2763,15 +2763,17 @@ router.get('/churn-rate', async (req, res) => {
         GROUP BY q_user_id
       ),
       -- User churned when: last_renewal + 7 days passed and no subsequent renewal
-      -- Only count churns past grace period (7 days after expected renewal)
+      -- Only count churns past full grace period (16 days = Apple's max billing retry)
+      -- Churn date = when subscription should have renewed (last_renewal + 7 days)
       churned_subscriptions AS (
         SELECT
           ulw.q_user_id,
           DATE(ulw.last_renewal_date + INTERVAL '7 days') as churned_date
         FROM user_last_weekly ulw
         WHERE ulw.last_renewal_date + INTERVAL '7 days' >= CURRENT_DATE - INTERVAL '${months} months'
-          -- Grace period: wait 7 days after expected renewal before counting as churned
-          AND ulw.last_renewal_date + INTERVAL '14 days' < CURRENT_DATE
+          -- Grace period: wait 16 days after expected renewal before counting as churned
+          -- (Apple billing retry can be 3-16 days)
+          AND ulw.last_renewal_date + INTERVAL '23 days' < CURRENT_DATE
           -- No renewal after the last one
           AND NOT EXISTS (
             SELECT 1 FROM events_v2 e2
