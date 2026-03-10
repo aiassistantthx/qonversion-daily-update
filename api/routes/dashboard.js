@@ -3555,7 +3555,7 @@ router.get('/countries-monthly', async (req, res) => {
     });
 
     // Convert to array and calculate overall metrics
-    const countries = Object.values(countriesMap).map(c => ({
+    const countriesList = Object.values(countriesMap).map(c => ({
       ...c,
       total_roas: c.total_spend > 0 ? Math.round((c.total_revenue / c.total_spend) * 100) / 100 : null,
       total_cop: c.total_subscribers > 0 ? Math.round((c.total_spend / c.total_subscribers) * 100) / 100 : null,
@@ -3572,10 +3572,10 @@ router.get('/countries-monthly', async (req, res) => {
       country: (a, b) => a.country.localeCompare(b.country)
     };
     const sortFn = sortMap[sortBy] || sortMap.revenue;
-    countries.sort(sortFn);
+    countriesList.sort(sortFn);
 
     res.json({
-      countries,
+      countries: countriesList,
       filters: { from, to, source, countries: req.query.countries, sortBy }
     });
   } catch (error) {
