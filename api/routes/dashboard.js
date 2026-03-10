@@ -4406,6 +4406,30 @@ router.get('/active-subscribers', async (req, res) => {
 });
 
 // ============================================================================
+// DEBUG: Product ID distribution
+// ============================================================================
+
+router.get('/debug/products', async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        product_id,
+        COUNT(*) as count
+      FROM events_v2
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND event_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY product_id
+      ORDER BY count DESC
+      LIMIT 30
+    `;
+    const result = await db.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
 // PLANNING TOOL - Historical cohort data and forecasting
 // ============================================================================
 
