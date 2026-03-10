@@ -611,4 +611,85 @@ router.get('/debug-campaigns', async (req, res) => {
   }
 });
 
+// ============================================
+// BULK IMPORT ENDPOINT
+// ============================================
+
+/**
+ * POST /webhook/import
+ * Bulk import events from CSV export
+ * Body: { events: [...] }
+ */
+router.post('/import', async (req, res) => {
+  try {
+    const { events } = req.body;
+
+    if (!events || !Array.isArray(events)) {
+      return res.status(400).json({ error: 'events array required' });
+    }
+
+    console.log(`Importing ${events.length} events...`);
+
+    let inserted = 0;
+    let errors = 0;
+    const BATCH_SIZE = 500;
+
+    for (let i = 0; i < events.length; i += BATCH_SIZE) {
+      const batch = events.slice(i, i + BATCH_SIZE);
+      const values = [];
+      const placeholders = [];
+      let idx = 1;
+
+      for (const e of batch) {
+        placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+        values.push(
+          e.event_date,
+          e.event_name,
+          e.q_user_id,
+          e.product_id || null,
+          e.price_usd || 0,
+          e.refund || false,
+          e.platform || null,
+          e.country || null,
+          e.install_date || null,
+          e.media_source || null,
+          e.campaign_name || null,
+          e.device || null,
+          e.app_version || null
+        );
+      }
+
+      try {
+        await db.query(`
+          INSERT INTO events_v2 (
+            event_date, event_name, q_user_id, product_id, price_usd, refund,
+            platform, country, install_date, media_source, campaign_name, device, app_version
+          ) VALUES ${placeholders.join(', ')}
+          ON CONFLICT DO NOTHING
+        `, values);
+        inserted += batch.length;
+      } catch (err) {
+        console.error('Batch error:', err.message);
+        errors += batch.length;
+      }
+    }
+
+    // Get new stats
+    const stats = await db.query(`
+      SELECT MIN(event_date) as min_date, MAX(event_date) as max_date, COUNT(*) as total
+      FROM events_v2
+    `);
+
+    res.json({
+      success: true,
+      inserted,
+      errors,
+      stats: stats.rows[0]
+    });
+  } catch (error) {
+    console.error('Import error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
