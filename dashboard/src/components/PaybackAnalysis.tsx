@@ -61,7 +61,13 @@ export function PaybackAnalysis() {
 
   const mostRecentCohortDate = paybackData?.payback[0]?.cohortMonth;
 
-  if (!paybackData) {
+  if (!paybackData || !paybackData.payback || paybackData.payback.length === 0) {
+    return null;
+  }
+
+  const hasValidData = avgCac > 0 && avgLtv > 0 && ltvCacRatio > 0;
+
+  if (!hasValidData) {
     return null;
   }
 
