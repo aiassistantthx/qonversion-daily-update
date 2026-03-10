@@ -6,8 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface Assumptions {
   cacTarget: number;
-  monthlyChurnRate: number;  // Weekly subs churn per month (%)
-  yearlyChurnRate: number;   // Yearly subs churn per month (%)
+  monthlyChurn: number;      // Blended monthly churn rate (%)
   monthlyBudget: number;
   organicMonthly: number;    // New organic subscribers per month
 }
@@ -41,33 +40,29 @@ interface ForecastPoint {
 }
 
 export function Planning() {
-  // Actual churn rates (same across all scenarios)
-  const actualWeeklyChurn = 51;  // Weekly subs monthly churn %
-  const actualYearlyChurn = 5.4; // Yearly subs monthly churn % (65% annual = ~5.4%/mo)
+  // Default values (same across all scenarios, only CAC varies)
+  const actualMonthlyChurn = 48;  // Blended monthly churn % (94% weekly @ 51% + 6% yearly @ 5%)
   const defaultBudget = 40000;
-  const defaultOrganicMonthly = 500; // New organic subscribers per month
+  const defaultOrganicMonthly = 500;
 
   // Scenario assumptions - only CAC varies
   const [baseAssumptions, setBaseAssumptions] = useState<Assumptions>({
-    cacTarget: 65,
-    monthlyChurnRate: actualWeeklyChurn,
-    yearlyChurnRate: actualYearlyChurn,
+    cacTarget: 59,  // Current paid-only COP
+    monthlyChurn: actualMonthlyChurn,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
 
   const [optimisticAssumptions, setOptimisticAssumptions] = useState<Assumptions>({
-    cacTarget: 50,
-    monthlyChurnRate: actualWeeklyChurn,
-    yearlyChurnRate: actualYearlyChurn,
+    cacTarget: 45,
+    monthlyChurn: actualMonthlyChurn,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
 
   const [conservativeAssumptions, setConservativeAssumptions] = useState<Assumptions>({
-    cacTarget: 80,
-    monthlyChurnRate: actualWeeklyChurn,
-    yearlyChurnRate: actualYearlyChurn,
+    cacTarget: 75,
+    monthlyChurn: actualMonthlyChurn,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
@@ -95,52 +90,36 @@ export function Planning() {
     },
   });
 
-  // Calculate forecast based on scenarios
-  const calculateForecast = (assumptions: Assumptions, cohorts: CohortData[]): ForecastPoint[] => {
+  // Calculate forecast based on scenarios using actual current base
+  const calculateForecast = (assumptions: Assumptions, currentMetrics: any): ForecastPoint[] => {
     const forecast: ForecastPoint[] = [];
     const today = new Date();
-    const avgWeeklyPrice = 9.99;
-    const avgYearlyPrice = 99.99;
 
-    const appleAdsCohorts = cohorts.filter(c => c.source === 'apple_ads');
-    const organicCohorts = cohorts.filter(c => c.source === 'organic');
-
-    let appleAdsActive = appleAdsCohorts.reduce((sum, c) => {
-      const weeksSinceInstall = c.age / 7;
-      const monthlyRetention = (1 - assumptions.monthlyChurnRate / 100);
-      const yearlyRetention = (1 - assumptions.yearlyChurnRate / 100);
-      const weeklyActive = c.subscribers * 0.94 * Math.pow(monthlyRetention, weeksSinceInstall / 4);
-      const yearlyActive = c.subscribers * 0.06 * Math.pow(yearlyRetention, weeksSinceInstall / 52);
-      return sum + weeklyActive + yearlyActive;
-    }, 0);
-
-    let organicActive = organicCohorts.reduce((sum, c) => {
-      const weeksSinceInstall = c.age / 7;
-      const monthlyRetention = (1 - assumptions.monthlyChurnRate / 100);
-      const yearlyRetention = (1 - assumptions.yearlyChurnRate / 100);
-      const weeklyActive = c.subscribers * 0.94 * Math.pow(monthlyRetention, weeksSinceInstall / 4);
-      const yearlyActive = c.subscribers * 0.06 * Math.pow(yearlyRetention, weeksSinceInstall / 52);
-      return sum + weeklyActive + yearlyActive;
-    }, 0);
+    // Start with actual current subscriber base (split 60/40 paid/organic estimate)
+    const totalWeeklyBase = currentMetrics?.activeWeeklyBase || 2200;
+    let appleAdsActive = totalWeeklyBase * 0.6;  // ~60% from paid
+    let organicActive = totalWeeklyBase * 0.4;   // ~40% organic
 
     for (let month = 0; month < forecastMonths; month++) {
       const forecastDate = new Date(today);
       forecastDate.setMonth(forecastDate.getMonth() + month + 1);
 
-      const monthlyRetention = (1 - assumptions.monthlyChurnRate / 100);
-      const yearlyRetention = (1 - assumptions.yearlyChurnRate / 100);
+      const retention = (1 - assumptions.monthlyChurn / 100);
       const newPaidSubs = assumptions.monthlyBudget / assumptions.cacTarget;
 
-      const appleAdsWeekly = appleAdsActive * 0.94 * monthlyRetention;
-      const appleAdsYearly = appleAdsActive * 0.06 * yearlyRetention;
-      appleAdsActive = appleAdsWeekly + appleAdsYearly + newPaidSubs;
+      // Apply churn to existing base, add new subscribers
+      const appleAdsRetained = appleAdsActive * retention;
+      appleAdsActive = appleAdsRetained + newPaidSubs;
 
-      const organicWeekly = organicActive * 0.94 * monthlyRetention;
-      const organicYearly = organicActive * 0.06 * yearlyRetention;
-      organicActive = organicWeekly + organicYearly + assumptions.organicMonthly;
+      const organicRetained = organicActive * retention;
+      organicActive = organicRetained + assumptions.organicMonthly;
 
-      const appleAdsRevenue = (appleAdsWeekly * avgWeeklyPrice * 4.33) + (appleAdsYearly * avgYearlyPrice / 12);
-      const organicRevenue = (organicWeekly * avgWeeklyPrice * 4.33) + (organicYearly * avgYearlyPrice / 12);
+      // Revenue = active subs * blended price per month
+      // ~94% weekly ($9.19 * 4.33 = $39.79/mo), ~6% yearly ($62/12 = $5.17/mo)
+      // Blended ARPU ≈ $38/month
+      const blendedArpu = 38;
+      const appleAdsRevenue = appleAdsActive * blendedArpu;
+      const organicRevenue = organicActive * blendedArpu;
 
       forecast.push({
         date: forecastDate.toISOString().slice(0, 7),
@@ -169,16 +148,16 @@ export function Planning() {
   );
 
   const forecastData = useMemo(() => {
-    if (!historicalData?.cohorts) return [];
-    return calculateForecast(currentScenario?.assumptions || baseAssumptions, historicalData.cohorts);
-  }, [historicalData, currentScenario, forecastMonths]);
+    if (!forecastApiData?.currentMetrics) return [];
+    return calculateForecast(currentScenario?.assumptions || baseAssumptions, forecastApiData.currentMetrics);
+  }, [forecastApiData, currentScenario, forecastMonths]);
 
   // Calculate all scenarios for comparison chart
   const allScenariosData = useMemo(() => {
-    if (!historicalData?.cohorts) return [];
-    const baseForecast = calculateForecast(baseAssumptions, historicalData.cohorts);
-    const optimisticForecast = calculateForecast(optimisticAssumptions, historicalData.cohorts);
-    const conservativeForecast = calculateForecast(conservativeAssumptions, historicalData.cohorts);
+    if (!forecastApiData?.currentMetrics) return [];
+    const baseForecast = calculateForecast(baseAssumptions, forecastApiData.currentMetrics);
+    const optimisticForecast = calculateForecast(optimisticAssumptions, forecastApiData.currentMetrics);
+    const conservativeForecast = calculateForecast(conservativeAssumptions, forecastApiData.currentMetrics);
 
     return baseForecast.map((base, i) => ({
       date: base.date,
@@ -217,8 +196,7 @@ export function Planning() {
         { label: 'CAC Target ($)', key: 'cacTarget', step: 1 },
         { label: 'Monthly Budget ($)', key: 'monthlyBudget', step: 1000 },
         { label: 'Organic Monthly', key: 'organicMonthly', step: 50 },
-        { label: 'Weekly Churn (%/mo)', key: 'monthlyChurnRate', step: 0.1 },
-        { label: 'Yearly Churn (%/mo)', key: 'yearlyChurnRate', step: 0.1 },
+        { label: 'Monthly Churn (%)', key: 'monthlyChurn', step: 1 },
       ].map(({ label, key, step }) => (
         <div key={key}>
           <label style={styles.inputLabel}>{label}</label>
