@@ -978,26 +978,64 @@ router.get('/roas-evolution', async (req, res) => {
       ORDER BY ra.cohort_month
     `);
 
+    // Helper function to predict payback months
+    const predictPaybackMonths = (roasData, maxAge) => {
+      const roasValues = [
+        { age: 7, roas: roasData.d7 },
+        { age: 14, roas: roasData.d14 },
+        { age: 30, roas: roasData.d30 },
+        { age: 60, roas: roasData.d60 },
+        { age: 90, roas: roasData.d90 },
+        { age: 120, roas: roasData.d120 },
+        { age: 150, roas: roasData.d150 },
+        { age: 180, roas: roasData.d180 },
+      ].filter(v => v.roas !== null && v.age <= maxAge);
+
+      if (roasValues.length < 2) return null;
+
+      if (roasData.total >= 1.0) {
+        const paidBackPoint = roasValues.find(v => v.roas >= 1.0);
+        return paidBackPoint ? Math.floor(paidBackPoint.age / 30) : null;
+      }
+
+      const lastTwo = roasValues.slice(-2);
+      const [prev, current] = lastTwo;
+      const roasGrowth = current.roas - prev.roas;
+      const daysGrowth = current.age - prev.age;
+
+      if (roasGrowth <= 0) return null;
+
+      const roasPerDay = roasGrowth / daysGrowth;
+      const remainingRoas = 1.0 - current.roas;
+      const daysToPayback = remainingRoas / roasPerDay;
+      const totalDays = current.age + daysToPayback;
+
+      return Math.ceil(totalDays / 30);
+    };
+
     // Transform to chart-friendly format
     const cohorts = result.rows.map(row => {
       const spend = parseFloat(row.spend);
       const maxAge = parseInt(row.max_age) || 0;
 
+      const roasData = {
+        d7: maxAge >= 7 ? parseFloat(row.rev_7d) / spend : null,
+        d14: maxAge >= 14 ? parseFloat(row.rev_14d) / spend : null,
+        d30: maxAge >= 30 ? parseFloat(row.rev_30d) / spend : null,
+        d60: maxAge >= 60 ? parseFloat(row.rev_60d) / spend : null,
+        d90: maxAge >= 90 ? parseFloat(row.rev_90d) / spend : null,
+        d120: maxAge >= 120 ? parseFloat(row.rev_120d) / spend : null,
+        d150: maxAge >= 150 ? parseFloat(row.rev_150d) / spend : null,
+        d180: maxAge >= 180 ? parseFloat(row.rev_180d) / spend : null,
+        total: parseFloat(row.rev_total) / spend,
+      };
+
       return {
         month: row.cohort_month,
         maxAge,
         spend,
-        roas: {
-          d7: maxAge >= 7 ? parseFloat(row.rev_7d) / spend : null,
-          d14: maxAge >= 14 ? parseFloat(row.rev_14d) / spend : null,
-          d30: maxAge >= 30 ? parseFloat(row.rev_30d) / spend : null,
-          d60: maxAge >= 60 ? parseFloat(row.rev_60d) / spend : null,
-          d90: maxAge >= 90 ? parseFloat(row.rev_90d) / spend : null,
-          d120: maxAge >= 120 ? parseFloat(row.rev_120d) / spend : null,
-          d150: maxAge >= 150 ? parseFloat(row.rev_150d) / spend : null,
-          d180: maxAge >= 180 ? parseFloat(row.rev_180d) / spend : null,
-          total: parseFloat(row.rev_total) / spend,
-        },
+        roas: roasData,
+        paybackMonths: predictPaybackMonths(roasData, maxAge),
       };
     });
 

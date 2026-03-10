@@ -29,6 +29,7 @@ interface RoasEvolutionData {
       d180: number | null;
       total: number
     };
+    paybackMonths: number | null;
   }>;
   chartData: Array<{ age: number; [key: string]: number | null }>;
   ages: number[];
@@ -71,6 +72,7 @@ export function RoasEvolution() {
       maxAge: cohort.maxAge,
       currentRoas: validRoas,
       isPaidBack,
+      paybackMonths: cohort.paybackMonths,
       color: COHORT_COLORS[i % COHORT_COLORS.length],
     };
   }) || [];
@@ -215,6 +217,7 @@ export function RoasEvolution() {
                 <th style={{ ...styles.th, textAlign: 'right' }}>Spend</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Age (days)</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Current ROAS</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Payback Months</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Status</th>
               </tr>
             </thead>
@@ -242,6 +245,9 @@ export function RoasEvolution() {
                   </td>
                   <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>
                     {(cohort.currentRoas * 100).toFixed(1)}%
+                  </td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>
+                    {cohort.paybackMonths !== null ? cohort.paybackMonths : '∞'}
                   </td>
                   <td style={{ ...styles.td, textAlign: 'right' }}>
                     <span

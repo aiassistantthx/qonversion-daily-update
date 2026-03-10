@@ -66,8 +66,7 @@ export function BulkCampaignCreate({ isOpen, onClose, onSuccess, appId }) {
     }
   };
 
-  const generateCampaigns = () => {
-    const campaigns = [];
+  const validateInputs = () => {
     const validationErrors = [];
 
     if (selectedTypes.length === 0) {
@@ -88,10 +87,11 @@ export function BulkCampaignCreate({ isOpen, onClose, onSuccess, appId }) {
       validationErrors.push('Default bid must be at least $0.10');
     }
 
-    if (validationErrors.length > 0) {
-      setErrors(validationErrors);
-      return [];
-    }
+    return validationErrors;
+  };
+
+  const generateCampaigns = () => {
+    const campaigns = [];
 
     selectedTypes.forEach(type => {
       selectedCountries.forEach(country => {
@@ -115,25 +115,30 @@ export function BulkCampaignCreate({ isOpen, onClose, onSuccess, appId }) {
       });
     });
 
-    setErrors([]);
     return campaigns;
   };
 
-  const campaigns = generateCampaigns();
   const totalCampaigns = selectedTypes.length * selectedCountries.length;
 
   const handleSubmit = async () => {
+    const validationErrors = validateInputs();
+
+    if (!appId) {
+      validationErrors.push('App ID is required');
+    }
+
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
     const campaignsToCreate = generateCampaigns();
 
     if (campaignsToCreate.length === 0) {
       return;
     }
 
-    if (!appId) {
-      setErrors(['App ID is required']);
-      return;
-    }
-
+    setErrors([]);
     setIsSubmitting(true);
     try {
       await onSuccess(campaignsToCreate);
