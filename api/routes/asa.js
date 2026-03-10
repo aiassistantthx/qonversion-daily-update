@@ -171,6 +171,7 @@ router.get('/campaigns', async (req, res) => {
         c.cpa,
         c.last_data_date,
         c.cohort_age,
+        c.impression_share,
         COALESCE(r.revenue, 0) as revenue,
         COALESCE(r.paid_users, 0) as paid_users,
         CASE WHEN c.spend > 0 THEN COALESCE(r.revenue, 0) / c.spend ELSE 0 END as roas,
@@ -189,6 +190,7 @@ router.get('/campaigns', async (req, res) => {
           SUM(CASE WHEN ${dateCondition} THEN impressions ELSE 0 END) as impressions,
           SUM(CASE WHEN ${dateCondition} THEN taps ELSE 0 END) as taps,
           SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) as installs,
+          AVG(CASE WHEN ${dateCondition} AND impression_share IS NOT NULL THEN impression_share ELSE NULL END) as impression_share,
           CASE WHEN SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END) > 0
                THEN SUM(CASE WHEN ${dateCondition} THEN spend ELSE 0 END) /
                     SUM(CASE WHEN ${dateCondition} THEN installs ELSE 0 END)
