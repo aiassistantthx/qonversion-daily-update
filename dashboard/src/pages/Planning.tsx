@@ -236,8 +236,7 @@ export function Planning() {
 
   const renderAssumptionInputs = (
     assumptions: Assumptions,
-    setAssumptions: React.Dispatch<React.SetStateAction<Assumptions>>,
-    scenario: string
+    setAssumptions: React.Dispatch<React.SetStateAction<Assumptions>>
   ) => (
     <div className="grid grid-cols-2 gap-3">
       <div>
@@ -369,15 +368,15 @@ export function Planning() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <div className="text-xs text-terminal-cyan mb-2">Base Case</div>
-            {renderAssumptionInputs(baseAssumptions, setBaseAssumptions, 'base')}
+            {renderAssumptionInputs(baseAssumptions, setBaseAssumptions)}
           </div>
           <div>
             <div className="text-xs text-terminal-green mb-2">Optimistic</div>
-            {renderAssumptionInputs(optimisticAssumptions, setOptimisticAssumptions, 'optimistic')}
+            {renderAssumptionInputs(optimisticAssumptions, setOptimisticAssumptions)}
           </div>
           <div>
             <div className="text-xs text-terminal-yellow mb-2">Conservative</div>
-            {renderAssumptionInputs(conservativeAssumptions, setConservativeAssumptions, 'conservative')}
+            {renderAssumptionInputs(conservativeAssumptions, setConservativeAssumptions)}
           </div>
         </div>
       </div>
