@@ -14,6 +14,14 @@ const { predictRoas, findPaybackDays } = require('../lib/predictions');
 const cache = require('../lib/cache');
 
 // ================================================
+// CONSTANTS
+// ================================================
+
+// Apple takes ~26% commission, developer gets 74% (proceeds)
+// All revenue calculations should use proceeds, not gross sales
+const PROCEEDS_RATE = 0.74;
+
+// ================================================
 // MIDDLEWARE
 // ================================================
 
@@ -205,7 +213,7 @@ router.get('/campaigns', async (req, res) => {
       LEFT JOIN (
         SELECT
           campaign_id,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
         FROM events_v2
         WHERE ${revenueCondition}
@@ -261,8 +269,8 @@ router.get('/campaigns', async (req, res) => {
       cohort_revenue AS (
         SELECT
           campaign_id::TEXT as campaign_id,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND campaign_id IS NOT NULL
@@ -355,10 +363,10 @@ router.get('/campaigns', async (req, res) => {
 
     const revenueQuery = await db.query(`
       SELECT
-        SUM(CASE WHEN ${revenueCondition} AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue,
+        SUM(CASE WHEN ${revenueCondition} AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue,
         COUNT(DISTINCT CASE WHEN ${revenueCondition} AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as total_paid_users
         ${compare === 'true' && prevRevenueCondition ? `,
-        SUM(CASE WHEN ${prevRevenueCondition} AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as prev_revenue,
+        SUM(CASE WHEN ${prevRevenueCondition} AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as prev_revenue,
         COUNT(DISTINCT CASE WHEN ${prevRevenueCondition} AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as prev_paid_users` : ''}
       FROM events_v2
       WHERE campaign_id IS NOT NULL
@@ -1009,7 +1017,7 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       LEFT JOIN (
         SELECT
           adgroup_id,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
         FROM events_v2
         WHERE ${revenueCondition}
@@ -1032,8 +1040,8 @@ router.get('/campaigns/:campaignId/adgroups', async (req, res) => {
       cohort_revenue AS (
         SELECT
           adgroup_id::TEXT as adgroup_id,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND campaign_id = $1
@@ -1271,10 +1279,10 @@ router.get('/keywords', async (req, res) => {
       keyword_revenue AS (
         SELECT
           keyword_id,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30
         FROM events_v2
         WHERE ${revenueCondition}
           AND keyword_id IS NOT NULL
@@ -2510,7 +2518,7 @@ router.get('/countries', async (req, res) => {
         SELECT
           country,
           COUNT(DISTINCT q_user_id) as installs,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue,
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue,
           COUNT(DISTINCT CASE WHEN event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users
         FROM events_v2
         WHERE ${revenueCondition}
@@ -2636,7 +2644,7 @@ router.get('/trends', async (req, res) => {
       daily_revenue AS (
         SELECT
           DATE(install_date) as date,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue
         FROM events_v2
         WHERE install_date >= $1 AND install_date <= $2
           AND campaign_id IS NOT NULL
@@ -2645,7 +2653,7 @@ router.get('/trends', async (req, res) => {
       daily_total_revenue AS (
         SELECT
           DATE(event_date) as date,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue
         FROM events_v2
         WHERE event_date >= $1 AND event_date <= $2
           AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
@@ -2725,7 +2733,7 @@ router.get('/trends', async (req, res) => {
 
     const revenueQuery = await db.query(`
       SELECT
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue
       FROM events_v2
       WHERE install_date >= $1 AND install_date <= $2
         AND campaign_id IS NOT NULL
@@ -2734,7 +2742,7 @@ router.get('/trends', async (req, res) => {
     // Total revenue (all sources, by event_date)
     const totalRevenueQuery = await db.query(`
       SELECT
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue
       FROM events_v2
       WHERE event_date >= $1 AND event_date <= $2
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
@@ -2956,15 +2964,15 @@ router.get('/cohorts', async (req, res) => {
         SELECT
           ${dateGroup} as cohort,
           install_date,
-          -- Revenue by age windows (days since install)
-          SUM(CASE WHEN event_date - install_date <= 0 THEN price_usd ELSE 0 END) as revenue_d0,
-          SUM(CASE WHEN event_date - install_date <= 3 THEN price_usd ELSE 0 END) as revenue_d3,
-          SUM(CASE WHEN event_date - install_date <= 7 THEN price_usd ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= 14 THEN price_usd ELSE 0 END) as revenue_d14,
-          SUM(CASE WHEN event_date - install_date <= 30 THEN price_usd ELSE 0 END) as revenue_d30,
-          SUM(CASE WHEN event_date - install_date <= 60 THEN price_usd ELSE 0 END) as revenue_d60,
-          SUM(CASE WHEN event_date - install_date <= 90 THEN price_usd ELSE 0 END) as revenue_d90,
-          SUM(price_usd) as revenue_total,
+          -- Revenue by age windows (days since install) - multiplied by 0.74 for proceeds
+          SUM(CASE WHEN event_date - install_date <= 0 THEN price_usd * 0.74 ELSE 0 END) as revenue_d0,
+          SUM(CASE WHEN event_date - install_date <= 3 THEN price_usd * 0.74 ELSE 0 END) as revenue_d3,
+          SUM(CASE WHEN event_date - install_date <= 7 THEN price_usd * 0.74 ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= 14 THEN price_usd * 0.74 ELSE 0 END) as revenue_d14,
+          SUM(CASE WHEN event_date - install_date <= 30 THEN price_usd * 0.74 ELSE 0 END) as revenue_d30,
+          SUM(CASE WHEN event_date - install_date <= 60 THEN price_usd * 0.74 ELSE 0 END) as revenue_d60,
+          SUM(CASE WHEN event_date - install_date <= 90 THEN price_usd * 0.74 ELSE 0 END) as revenue_d90,
+          SUM(price_usd * 0.74) as revenue_total,
           COUNT(DISTINCT q_user_id) as users,
           -- Paid users by age windows
           COUNT(DISTINCT CASE WHEN event_date - install_date <= 0 AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as paid_users_d0,
@@ -3352,7 +3360,8 @@ router.get('/kpi/cohort-cac', async (req, res) => {
     };
 
     // Target CAC from yearly payback calculation
-    const TARGET_CAC = 88.75;
+    // Target CAC based on proceeds (sales * 0.74) for yearly payback
+    const TARGET_CAC = 65.68; // Was 88.75 based on sales, now adjusted for proceeds
 
     res.json({
       target: TARGET_CAC,
@@ -3498,8 +3507,8 @@ router.get('/debug/cohort-roas', async (req, res) => {
       cohort_revenue AS (
         SELECT
           campaign_id::TEXT as campaign_id,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as revenue_d30,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d7,
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30,
           COUNT(*) as event_count
         FROM events_v2
         WHERE ${revenueCondition}
