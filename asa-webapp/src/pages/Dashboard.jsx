@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { StatusBadge } from '../components/Badge';
 import { HealthScoreWidget } from '../components/HealthScoreWidget';
+import HealthAlerts from '../components/HealthAlerts';
 import ConversionFunnelChart from '../components/ConversionFunnelChart';
 import TrendChart from '../components/TrendChart';
 import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
@@ -298,6 +299,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4">
         <CohortKpiCard data={cohortCacData} isLoading={cohortCacLoading} />
       </div>
+
+      {/* Health Alerts */}
+      <HealthAlerts limit={5} />
 
       {/* Secondary Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

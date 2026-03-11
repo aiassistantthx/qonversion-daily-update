@@ -3550,4 +3550,184 @@ router.get('/debug/cohort-roas', async (req, res) => {
   }
 });
 
+// ================================================
+// ALERTS
+// ================================================
+
+/**
+ * GET /asa/alerts
+ * Get recent alerts (health, budget, performance)
+ *
+ * Query params:
+ * - limit: number of alerts (default 50)
+ * - acknowledged: filter by acknowledged status (true/false)
+ * - severity: filter by severity (info, warning, error, critical)
+ * - type: filter by alert type
+ */
+router.get('/alerts', async (req, res) => {
+  try {
+    const { limit = 50, acknowledged, severity, type } = req.query;
+
+    let whereConditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (acknowledged !== undefined) {
+      whereConditions.push(`acknowledged = $${paramIndex++}`);
+      params.push(acknowledged === 'true');
+    }
+
+    if (severity) {
+      whereConditions.push(`severity = $${paramIndex++}`);
+      params.push(severity);
+    }
+
+    if (type) {
+      whereConditions.push(`alert_type = $${paramIndex++}`);
+      params.push(type);
+    }
+
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+
+    // Get alerts from asa_alerts table
+    const alertsQuery = await db.query(`
+      SELECT
+        id,
+        alert_type,
+        severity,
+        title,
+        message,
+        campaign_id,
+        acknowledged,
+        acknowledged_at,
+        created_at
+      FROM asa_alerts
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${paramIndex}
+    `, [...params, limit]);
+
+    // Also get budget alerts from legacy table
+    const budgetAlertsQuery = await db.query(`
+      SELECT
+        id,
+        campaign_id,
+        alert_level as severity,
+        message,
+        acknowledged,
+        acknowledged_at,
+        created_at,
+        'budget_alert' as alert_type,
+        'Budget Alert' as title
+      FROM asa_budget_alerts
+      WHERE DATE(created_at) >= CURRENT_DATE - INTERVAL '7 days'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+
+    // Merge and sort
+    const allAlerts = [
+      ...alertsQuery.rows,
+      ...budgetAlertsQuery.rows
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+     .slice(0, limit);
+
+    res.json({
+      data: allAlerts,
+      total: allAlerts.length
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch alerts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /asa/alerts/:id/acknowledge
+ * Mark an alert as acknowledged
+ */
+router.patch('/alerts/:id/acknowledge', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Try asa_alerts table first
+    let result = await db.query(`
+      UPDATE asa_alerts
+      SET acknowledged = true, acknowledged_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    // If not found, try budget alerts
+    if (result.rows.length === 0) {
+      result = await db.query(`
+        UPDATE asa_budget_alerts
+        SET acknowledged = true, acknowledged_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [id]);
+    }
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Failed to acknowledge alert:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /asa/alerts/summary
+ * Get alert counts by severity and type
+ */
+router.get('/alerts/summary', async (req, res) => {
+  try {
+    const summaryQuery = await db.query(`
+      WITH all_alerts AS (
+        SELECT severity, alert_type, acknowledged
+        FROM asa_alerts
+        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+        UNION ALL
+        SELECT alert_level as severity, 'budget_alert' as alert_type, acknowledged
+        FROM asa_budget_alerts
+        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+      )
+      SELECT
+        severity,
+        alert_type,
+        COUNT(*) as total,
+        COUNT(CASE WHEN acknowledged = false THEN 1 END) as unacknowledged
+      FROM all_alerts
+      GROUP BY severity, alert_type
+      ORDER BY
+        CASE severity
+          WHEN 'critical' THEN 1
+          WHEN 'error' THEN 2
+          WHEN 'warning' THEN 3
+          WHEN 'info' THEN 4
+          ELSE 5
+        END,
+        alert_type
+    `);
+
+    res.json({
+      data: summaryQuery.rows
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch alert summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

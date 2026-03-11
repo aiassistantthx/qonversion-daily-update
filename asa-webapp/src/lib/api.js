@@ -87,4 +87,9 @@ export const getSearchTerms = (params = {}) => api.get('/search-terms', { params
 // KPI
 export const getCohortCac = (params = {}) => api.get('/kpi/cohort-cac', { params }).then(res => res.data);
 
+// Alerts
+export const getAlerts = (params = {}) => api.get('/alerts', { params }).then(res => res.data);
+export const acknowledgeAlert = (id) => api.patch(`/alerts/${id}/acknowledge`).then(res => res.data);
+export const getAlertsSummary = () => api.get('/alerts/summary').then(res => res.data);
+
 export default api;

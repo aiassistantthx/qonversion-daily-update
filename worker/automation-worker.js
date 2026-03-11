@@ -247,6 +247,7 @@ async function runWorker() {
       if (shouldRunJob('hourly')) {
         await executeRulesForFrequency('hourly');
         await checkBudgetAlerts(); // Check budget usage hourly
+        await checkHealthAlerts(); // Check CPA spikes and no impressions
 
         // Sync changes from Apple Ads hourly
         try {
@@ -416,6 +417,125 @@ async function checkBudgetAlerts() {
 
   } catch (error) {
     log('error', `Budget check failed: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Check campaign health alerts (CPA spikes, no impressions, etc.)
+ */
+async function checkHealthAlerts() {
+  log('info', 'Checking campaign health...');
+
+  try {
+    const alerts = [];
+
+    // 1. Check for CPA spikes (50%+ increase vs yesterday)
+    const cpaResult = await db.query(`
+      WITH daily_cpa AS (
+        SELECT
+          campaign_id,
+          campaign_name,
+          date,
+          CASE WHEN installs > 0 THEN spend / installs ELSE 0 END as cpa,
+          installs,
+          spend
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '2 days'
+          AND campaign_status = 'ENABLED'
+      ),
+      cpa_comparison AS (
+        SELECT
+          today.campaign_id,
+          today.campaign_name,
+          today.cpa as today_cpa,
+          yesterday.cpa as yesterday_cpa,
+          today.spend as today_spend,
+          today.installs as today_installs,
+          CASE
+            WHEN yesterday.cpa > 0 THEN ((today.cpa - yesterday.cpa) / yesterday.cpa * 100)
+            ELSE 0
+          END as cpa_change_pct
+        FROM daily_cpa today
+        LEFT JOIN daily_cpa yesterday ON yesterday.campaign_id = today.campaign_id
+          AND yesterday.date = today.date - INTERVAL '1 day'
+        WHERE today.date = CURRENT_DATE
+          AND today.installs > 0
+      )
+      SELECT * FROM cpa_comparison
+      WHERE cpa_change_pct >= 50
+        AND today_spend >= 10
+      ORDER BY cpa_change_pct DESC
+    `);
+
+    for (const row of cpaResult.rows) {
+      const changePct = parseFloat(row.cpa_change_pct).toFixed(0);
+      alerts.push({
+        type: 'cpa_spike',
+        level: 'warning',
+        campaign_id: row.campaign_id,
+        campaign_name: row.campaign_name,
+        message: `📈 CPA SPIKE: ${row.campaign_name} - CPA increased ${changePct}% ($${parseFloat(row.yesterday_cpa).toFixed(2)} → $${parseFloat(row.today_cpa).toFixed(2)})`
+      });
+    }
+
+    // 2. Check for no impressions in last 24 hours
+    const noImpressionsResult = await db.query(`
+      WITH last_24h AS (
+        SELECT
+          campaign_id,
+          campaign_name,
+          SUM(impressions) as total_impressions,
+          MAX(date) as last_date
+        FROM apple_ads_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day'
+          AND campaign_status = 'ENABLED'
+        GROUP BY campaign_id, campaign_name
+      )
+      SELECT * FROM last_24h
+      WHERE total_impressions = 0
+    `);
+
+    for (const row of noImpressionsResult.rows) {
+      alerts.push({
+        type: 'no_impressions',
+        level: 'critical',
+        campaign_id: row.campaign_id,
+        campaign_name: row.campaign_name,
+        message: `🚫 NO IMPRESSIONS: ${row.campaign_name} - No impressions for 24+ hours`
+      });
+    }
+
+    // 3. Record all alerts in asa_alerts table
+    if (alerts.length > 0) {
+      log('info', `Found ${alerts.length} health alerts`);
+
+      // Send Telegram notification
+      await sendTelegramAlert(alerts);
+
+      // Record in database
+      for (const alert of alerts) {
+        await db.query(`
+          INSERT INTO asa_alerts (
+            alert_type, severity, title, message,
+            campaign_id, created_at
+          ) VALUES ($1, $2, $3, $4, $5, NOW())
+        `, [
+          alert.type,
+          alert.level,
+          alert.type === 'cpa_spike' ? 'CPA Spike Detected' : 'No Impressions',
+          alert.message,
+          alert.campaign_id
+        ]);
+      }
+    } else {
+      log('info', 'No health alerts');
+    }
+
+    return alerts;
+
+  } catch (error) {
+    log('error', `Health check failed: ${error.message}`);
     return [];
   }
 }
