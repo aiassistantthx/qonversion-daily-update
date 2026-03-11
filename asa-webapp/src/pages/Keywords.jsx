@@ -14,6 +14,7 @@ import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
+import BidRecommendation from '../components/BidRecommendation';
 import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
@@ -1060,17 +1061,31 @@ export default function Keywords() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1 justify-center">
-                            ${parseFloat(bid).toFixed(2)}
-                            <button
-                              onClick={() => {
-                                setEditingKeywordId(kw.keyword_id);
-                                setNewBid(bid);
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-1">
+                              ${parseFloat(bid).toFixed(2)}
+                              <button
+                                onClick={() => {
+                                  setEditingKeywordId(kw.keyword_id);
+                                  setNewBid(bid);
+                                }}
+                                className="text-gray-400 hover:text-gray-600"
+                              >
+                                <Edit2 size={12} />
+                              </button>
+                            </div>
+                            <BidRecommendation
+                              currentBid={bid}
+                              metrics={{
+                                cpa_7d: kw.cpa_7d,
+                                cop_7d: kw.cop_7d,
+                                cpt_7d: kw.cpt_7d,
+                                roas: roas,
+                                sov: kw.sov,
+                                installs_7d: kw.installs_7d
                               }}
-                              className="text-gray-400 hover:text-gray-600"
-                            >
-                              <Edit2 size={12} />
-                            </button>
+                              inline={true}
+                            />
                           </div>
                         )}
                       </TableCell>

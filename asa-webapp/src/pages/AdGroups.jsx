@@ -13,6 +13,7 @@ import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, delet
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
+import BidRecommendation from '../components/BidRecommendation';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const TARGET_CAC = 65.68;
 const DEFAULT_COLUMNS = {
   campaign: true,
   status: true,
+  bid: false,
   spend: true,
   revenue: true,
   roas: true,
@@ -41,6 +43,7 @@ const DEFAULT_COLUMNS = {
 const COLUMN_DEFINITIONS = [
   { id: 'campaign', label: 'Campaign' },
   { id: 'status', label: 'Status' },
+  { id: 'bid', label: 'Bid' },
   { id: 'spend', label: 'Spend' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'roas', label: 'ROAS' },
@@ -654,6 +657,29 @@ export default function AdGroups() {
                       return <TableCell key={columnId} className="text-gray-500">{ag.campaignName}</TableCell>;
                     case 'status':
                       return <TableCell key={columnId}><StatusBadge status={ag.status} /></TableCell>;
+                    case 'bid':
+                      const bidAmount = ag.defaultBidAmount?.amount || 0;
+                      return (
+                        <TableCell key={columnId}>
+                          <div className="flex flex-col items-center gap-1">
+                            <div>${bidAmount.toFixed(2)}</div>
+                            {bidAmount > 0 && (
+                              <BidRecommendation
+                                currentBid={bidAmount}
+                                metrics={{
+                                  cpa_7d: getPerf(ag, 'cpa'),
+                                  cop_7d: getPerf(ag, 'cop'),
+                                  cpt_7d: getPerf(ag, 'cpt'),
+                                  roas: getPerf(ag, 'roas'),
+                                  sov: 0,
+                                  installs_7d: getPerf(ag, 'installs')
+                                }}
+                                inline={true}
+                              />
+                            )}
+                          </div>
+                        </TableCell>
+                      );
                     case 'spend':
                       return <TableCell key={columnId}>${getPerf(ag, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'revenue':
