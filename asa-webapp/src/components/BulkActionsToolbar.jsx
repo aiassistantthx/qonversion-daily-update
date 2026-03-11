@@ -14,6 +14,7 @@ export function BulkActionsToolbar({
   onDelete,
   entityType = 'items',
   canAdjustBid = false,
+  isLoading = false,
 }) {
   const [showBidModal, setShowBidModal] = useState(false);
   const [bidAdjustment, setBidAdjustment] = useState('');
@@ -101,6 +102,7 @@ export function BulkActionsToolbar({
                 variant="success"
                 size="sm"
                 onClick={() => handleAction('enable', onEnable)}
+                loading={isLoading}
               >
                 <Play size={14} /> Enable
               </Button>
@@ -110,6 +112,7 @@ export function BulkActionsToolbar({
                 variant="danger"
                 size="sm"
                 onClick={() => handleAction('pause', onPause)}
+                loading={isLoading}
               >
                 <Pause size={14} /> Pause
               </Button>
@@ -119,6 +122,7 @@ export function BulkActionsToolbar({
                 variant="secondary"
                 size="sm"
                 onClick={handleBidAdjustment}
+                loading={isLoading}
               >
                 <TrendingUp size={14} /> Adjust Bid
               </Button>
@@ -128,6 +132,7 @@ export function BulkActionsToolbar({
                 variant="danger"
                 size="sm"
                 onClick={() => handleAction('delete', onDelete)}
+                loading={isLoading}
               >
                 <Trash2 size={14} /> Delete
               </Button>
@@ -184,12 +189,14 @@ export function BulkActionsToolbar({
             <Button
               variant="secondary"
               onClick={() => setShowBidModal(false)}
+              disabled={isLoading}
             >
               Cancel
             </Button>
             <Button
               onClick={applyBidAdjustment}
               disabled={!bidAdjustment || isNaN(parseFloat(bidAdjustment))}
+              loading={isLoading}
             >
               Apply
             </Button>
@@ -233,12 +240,14 @@ export function BulkActionsToolbar({
             <Button
               variant="secondary"
               onClick={() => setShowConfirmModal(false)}
+              disabled={isLoading}
             >
               Cancel
             </Button>
             <Button
               variant="danger"
               onClick={confirmAction}
+              loading={isLoading}
             >
               Confirm
             </Button>

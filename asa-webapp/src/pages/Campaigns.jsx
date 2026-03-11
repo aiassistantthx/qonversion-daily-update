@@ -777,6 +777,7 @@ export default function Campaigns() {
         onDelete={handleBulkDelete}
         entityType="campaigns"
         canAdjustBid={false}
+        isLoading={statusMutation.isPending}
       />
 
       <BulkCampaignCreate

@@ -1030,8 +1030,11 @@ export default function Keywords() {
                               value={newBid}
                               onChange={(e) => setNewBid(e.target.value)}
                               className="w-20"
+                              disabled={bidMutation.isPending}
                             />
-                            <button
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => {
                                 const bidVal = parseFloat(newBid);
                                 if (!isNaN(bidVal) && bidVal > 0) {
@@ -1043,13 +1046,15 @@ export default function Keywords() {
                                   });
                                 }
                               }}
+                              loading={bidMutation.isPending}
                               className="text-green-600 hover:text-green-700"
                             >
                               <Check size={14} />
-                            </button>
+                            </Button>
                             <button
                               onClick={() => setEditingKeywordId(null)}
                               className="text-gray-400 hover:text-gray-500"
+                              disabled={bidMutation.isPending}
                             >
                               <X size={14} />
                             </button>

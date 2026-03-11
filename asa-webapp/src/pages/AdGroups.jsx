@@ -146,6 +146,7 @@ export default function AdGroups() {
   const [sortField, setSortField] = useState('revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
 
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault } = useColumnSettings(
     'adgroups-columns',
@@ -346,53 +347,73 @@ export default function AdGroups() {
   };
 
   const handleBulkPause = async () => {
-    for (const key of selectedIds) {
-      const [campaignId, adGroupId] = key.split('-');
-      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'PAUSED');
+    setIsBulkActionLoading(true);
+    try {
+      for (const key of selectedIds) {
+        const [campaignId, adGroupId] = key.split('-');
+        await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'PAUSED');
+      }
+      queryClient.invalidateQueries(['adgroups']);
+      setSelectedIds(new Set());
+    } finally {
+      setIsBulkActionLoading(false);
     }
-    queryClient.invalidateQueries(['adgroups']);
-    setSelectedIds(new Set());
   };
 
   const handleBulkEnable = async () => {
-    for (const key of selectedIds) {
-      const [campaignId, adGroupId] = key.split('-');
-      await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'ENABLED');
+    setIsBulkActionLoading(true);
+    try {
+      for (const key of selectedIds) {
+        const [campaignId, adGroupId] = key.split('-');
+        await updateAdGroupStatus(parseInt(campaignId), parseInt(adGroupId), 'ENABLED');
+      }
+      queryClient.invalidateQueries(['adgroups']);
+      setSelectedIds(new Set());
+    } finally {
+      setIsBulkActionLoading(false);
     }
-    queryClient.invalidateQueries(['adgroups']);
-    setSelectedIds(new Set());
   };
 
   const handleBulkAdjustBid = async ({ type, value }) => {
-    for (const key of selectedIds) {
-      const [campaignId, adGroupId] = key.split('-');
-      const adGroup = adGroups.find(ag => ag.campaignId === parseInt(campaignId) && ag.id === parseInt(adGroupId));
-      if (!adGroup || !adGroup.defaultBidAmount) continue;
+    setIsBulkActionLoading(true);
+    try {
+      for (const key of selectedIds) {
+        const [campaignId, adGroupId] = key.split('-');
+        const adGroup = adGroups.find(ag => ag.campaignId === parseInt(campaignId) && ag.id === parseInt(adGroupId));
+        if (!adGroup || !adGroup.defaultBidAmount) continue;
 
-      let newBid;
-      if (type === 'percent') {
-        newBid = adGroup.defaultBidAmount.amount * (1 + value / 100);
-      } else {
-        newBid = adGroup.defaultBidAmount.amount + value;
+        let newBid;
+        if (type === 'percent') {
+          newBid = adGroup.defaultBidAmount.amount * (1 + value / 100);
+        } else {
+          newBid = adGroup.defaultBidAmount.amount + value;
+        }
+
+        newBid = Math.max(0.01, newBid);
+        await updateAdGroupBid(parseInt(campaignId), parseInt(adGroupId), {
+          amount: newBid,
+          currency: adGroup.defaultBidAmount.currency,
+        });
       }
-
-      newBid = Math.max(0.01, newBid);
-      await updateAdGroupBid(parseInt(campaignId), parseInt(adGroupId), {
-        amount: newBid,
-        currency: adGroup.defaultBidAmount.currency,
-      });
+      queryClient.invalidateQueries(['adgroups']);
+      setSelectedIds(new Set());
+    } finally {
+      setIsBulkActionLoading(false);
     }
-    queryClient.invalidateQueries(['adgroups']);
-    setSelectedIds(new Set());
   };
 
   const handleBulkDelete = async () => {
-    for (const key of selectedIds) {
-      const [campaignId, adGroupId] = key.split('-');
-      await deleteAdGroup(parseInt(campaignId), parseInt(adGroupId));
+    setIsBulkActionLoading(true);
+    try {
+      for (const key of selectedIds) {
+        const [campaignId, adGroupId] = key.split('-');
+        await deleteAdGroup(parseInt(campaignId), parseInt(adGroupId));
+      }
+      queryClient.invalidateQueries(['adgroups']);
+      setSelectedIds(new Set());
+    } finally {
+      setIsBulkActionLoading(false);
     }
-    queryClient.invalidateQueries(['adgroups']);
-    setSelectedIds(new Set());
   };
 
   const selectedAdGroups = adGroups.filter(ag => selectedIds.has(`${ag.campaignId}-${ag.id}`));
