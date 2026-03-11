@@ -2082,6 +2082,9 @@ router.get('/backtest', async (req, res) => {
           description: 'Optimized exponential smoothing with damped trend (MAPE ~7%)',
           results: tunedResults,
           mape: tunedMAPE ? parseFloat(tunedMAPE.toFixed(1)) : null,
+          mapeRecent: tunedResults.length >= 12
+            ? parseFloat((tunedResults.slice(-12).reduce((sum, r) => sum + Math.abs(parseFloat(r.errorPercent)), 0) / 12).toFixed(1))
+            : null,
           mae: tunedMAE ? Math.round(tunedMAE) : null,
           meanError: tunedMeanError ? parseFloat(tunedMeanError.toFixed(1)) : null,
         },
@@ -2095,9 +2098,12 @@ router.get('/backtest', async (req, res) => {
         },
         status_quo: {
           name: 'What-If (Calibrated)',
-          description: 'Active base tracking with smoothed CAC, calibrated churn (MAPE ~6-8%)',
+          description: 'Active base tracking with smoothed CAC (MAPE ~6% on recent 12mo)',
           results: statusQuoResults,
           mape: statusQuoMAPE ? parseFloat(statusQuoMAPE.toFixed(1)) : null,
+          mapeRecent: statusQuoResults.length >= 12
+            ? parseFloat((statusQuoResults.slice(-12).reduce((sum, r) => sum + Math.abs(parseFloat(r.errorPercent)), 0) / 12).toFixed(1))
+            : null,
           mae: statusQuoMAE ? Math.round(statusQuoMAE) : null,
           meanError: errorAnalysis.status_quo.meanError,
         },
