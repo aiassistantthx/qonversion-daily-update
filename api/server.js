@@ -45,6 +45,12 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Skip auth for localhost development
+  const origin = req.headers.origin || '';
+  if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    return next();
+  }
+
   // If API_KEY is not set, allow all (for backward compatibility during setup)
   if (!API_KEY) {
     return next();

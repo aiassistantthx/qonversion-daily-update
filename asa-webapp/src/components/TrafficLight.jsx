@@ -61,7 +61,7 @@ export function TrafficLight({ predictedRoas, size = 'sm' }) {
           height: `${dot}px`,
           backgroundColor: color,
         }}
-        title={predictedRoas !== null ? `Predicted ROAS: ${predictedRoas.toFixed(2)}x` : 'No prediction'}
+        title={predictedRoas !== null ? `Predicted ROAS: ${(predictedRoas * 100).toFixed(0)}%` : 'No prediction'}
       />
       <span className={`font-medium ${text}`} style={{ color }}>
         {label}

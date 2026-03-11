@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
+        // Use local API for development - production: http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io
+        target: 'http://localhost:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

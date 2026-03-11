@@ -8,6 +8,7 @@ import { Input } from '../components/Input';
 import { GeoHeatmap } from '../components/GeoHeatmap';
 import { getCountries } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { TableSkeleton } from '../components/SkeletonLoader';
 import { ChevronUp, ChevronDown, Search, Download, ArrowRight } from 'lucide-react';
 
 export default function Countries() {
@@ -164,9 +165,7 @@ export default function Countries() {
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">Loading countries...</TableCell>
-              </TableRow>
+              <TableSkeleton rows={10} columns={8} />
             ) : error ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>
@@ -195,7 +194,7 @@ export default function Countries() {
                   </TableCell>
                   <TableCell className="text-right">
                     <span className={country.roas >= 1 ? 'text-green-600 font-medium' : 'text-red-500'}>
-                      {country.roas.toFixed(2)}x
+                      {(country.roas * 100).toFixed(0)}%
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
@@ -237,7 +236,7 @@ export default function Countries() {
               <div>
                 <div className="text-xs text-gray-500">ROAS</div>
                 <div className={`text-lg font-semibold ${data.totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}`}>
-                  {data.totals.roas.toFixed(2)}x
+                  {(data.totals.roas * 100).toFixed(0)}%
                 </div>
               </div>
               <div>

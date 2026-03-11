@@ -124,7 +124,7 @@ export function GeoHeatmap({ data = [] }) {
       return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     if (metric === 'roas') {
-      return `${value.toFixed(2)}x`;
+      return `${(value * 100).toFixed(0)}%`;
     }
     return value.toLocaleString();
   };

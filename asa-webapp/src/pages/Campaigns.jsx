@@ -15,6 +15,7 @@ import { PresetViews } from '../components/PresetViews';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
+import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Play, Pause,
   Search, ArrowRight, Layers, KeyRound, Download, Copy
@@ -641,9 +642,7 @@ export default function Campaigns() {
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading campaigns...</TableCell>
-              </TableRow>
+              <TableSkeleton rows={10} columns={visibleColumnCount} />
             ) : error ? (
               <TableRow>
                 <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-red-500">Error: {error.message}</TableCell>

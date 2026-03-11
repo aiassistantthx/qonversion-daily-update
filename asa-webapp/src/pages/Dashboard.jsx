@@ -8,6 +8,7 @@ import TrendChart from '../components/TrendChart';
 import { getTrafficLightStatus, getTrafficLightColor, getTrafficLightLabel } from '../components/TrafficLight';
 import { getCampaigns, getRules, getHistory, getTrends, getCohortCac } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { CardSkeleton, TableSkeleton } from '../components/SkeletonLoader';
 import { useState } from 'react';
 import {
   TrendingUp,
@@ -109,7 +110,7 @@ function CohortKpiCard({ data, isLoading }) {
   );
 }
 
-function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext }) {
+function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix = '', color = 'blue', subtext, isLoading }) {
   const colors = {
     blue: 'bg-blue-100 text-blue-600',
     green: 'bg-green-100 text-green-600',
@@ -120,6 +121,16 @@ function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix =
   const percentChange = prevValue && prevValue !== 0
     ? ((value - prevValue) / prevValue) * 100
     : null;
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent>
+          <CardSkeleton />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -233,6 +244,7 @@ export default function Dashboard() {
           prefix="$"
           icon={DollarSign}
           color="blue"
+          isLoading={campaignsLoading}
         />
         <MetricCard
           title="Revenue"
@@ -241,14 +253,16 @@ export default function Dashboard() {
           prefix="$"
           icon={TrendingUp}
           color="green"
+          isLoading={campaignsLoading}
         />
         <MetricCard
           title="ROAS"
-          value={roas.toFixed(2)}
-          prevValue={prevRoas > 0 ? prevRoas.toFixed(2) : null}
-          suffix="x"
+          value={(roas * 100).toFixed(0)}
+          prevValue={prevRoas > 0 ? (prevRoas * 100).toFixed(0) : null}
+          suffix="%"
           icon={BarChart3}
           color={roas >= 1 ? 'green' : 'red'}
+          isLoading={campaignsLoading}
         />
         <MetricCard
           title="Installs"
@@ -256,6 +270,7 @@ export default function Dashboard() {
           prevValue={prevInstalls > 0 ? prevInstalls : null}
           icon={Download}
           color="purple"
+          isLoading={campaignsLoading}
         />
         <MetricCard
           title="CPA"
@@ -264,6 +279,7 @@ export default function Dashboard() {
           prefix="$"
           icon={MousePointer}
           color="blue"
+          isLoading={campaignsLoading}
         />
         <MetricCard
           title="CAC"
@@ -273,6 +289,7 @@ export default function Dashboard() {
           icon={DollarSign}
           color="purple"
           subtext={`${totalPaidUsers} paid users`}
+          isLoading={campaignsLoading}
         />
         </div>
       </div>
@@ -401,9 +418,7 @@ export default function Dashboard() {
             </TableHead>
             <TableBody>
               {campaignsLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">Loading...</TableCell>
-                </TableRow>
+                <TableSkeleton rows={5} columns={4} />
               ) : topCampaigns.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-gray-500">No campaigns found</TableCell>
@@ -425,7 +440,7 @@ export default function Dashboard() {
                       <TableCell className="text-right">${spend.toFixed(2)}</TableCell>
                       <TableCell className="text-right text-green-600">${revenue.toFixed(2)}</TableCell>
                       <TableCell className={`text-right font-medium ${campaignRoas >= 1 ? 'text-green-600' : 'text-red-600'}`}>
-                        {campaignRoas.toFixed(2)}x
+                        {(campaignRoas * 100).toFixed(0)}%
                       </TableCell>
                     </TableRow>
                   );
@@ -451,9 +466,7 @@ export default function Dashboard() {
             </TableHead>
             <TableBody>
               {rulesLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center">Loading...</TableCell>
-                </TableRow>
+                <TableSkeleton rows={5} columns={4} />
               ) : (rulesData?.data || []).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-gray-500">No active rules</TableCell>
@@ -491,9 +504,7 @@ export default function Dashboard() {
           </TableHead>
           <TableBody>
             {historyLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center">Loading...</TableCell>
-              </TableRow>
+              <TableSkeleton rows={10} columns={6} />
             ) : (historyData?.data || []).length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-gray-500">No recent activity</TableCell>

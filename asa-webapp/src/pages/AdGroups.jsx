@@ -12,6 +12,7 @@ import { PresetViews } from '../components/PresetViews';
 import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
+import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
 } from 'lucide-react';
@@ -617,9 +618,7 @@ export default function AdGroups() {
           </TableHead>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading ad groups...</TableCell>
-              </TableRow>
+              <TableSkeleton rows={10} columns={visibleColumnCount} />
             ) : adGroups.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">

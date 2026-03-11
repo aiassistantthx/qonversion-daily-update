@@ -13,6 +13,7 @@ import { Modal } from '../components/Modal';
 import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
+import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
 } from 'lucide-react';
@@ -756,7 +757,7 @@ export default function Keywords() {
             <div className="p-4">
               <p className="text-sm text-gray-500">ROAS</p>
               <p className={`text-xl font-bold ${roas >= 1 ? 'text-green-600' : 'text-red-600'}`}>
-                {roas.toFixed(2)}x
+                {(roas * 100).toFixed(0)}%
               </p>
             </div>
           </Card>
@@ -991,9 +992,7 @@ export default function Keywords() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={visibleColumnCount} className="text-center py-8">Loading keywords...</TableCell>
-                </TableRow>
+                <TableSkeleton rows={10} columns={visibleColumnCount} />
               ) : keywords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">

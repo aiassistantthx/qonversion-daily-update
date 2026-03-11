@@ -16,11 +16,14 @@ interface ModelResult {
   description: string;
   results: BacktestResult[];
   mape: number | null;
+  mapeRecent?: number | null;
   mae: number | null;
+  meanError?: number | null;
 }
 
 interface BacktestData {
   models: {
+    tuned: ModelResult;
     status_quo: ModelResult;
     simple_average: ModelResult;
     cohort_based: ModelResult;
@@ -62,24 +65,32 @@ export function BacktestValidation() {
   }
 
   if (error || !data || !data.models) {
+    console.error('Backtest error:', error, 'data:', data);
     return (
       <div style={styles.card}>
         <div style={styles.cardTitle}>Model Validation</div>
         <div style={{ padding: 40, textAlign: 'center', color: '#ef4444' }}>
-          Unable to load backtest data. Please ensure the API is updated and deployed.
+          Unable to load backtest data. {error?.message || 'Check console for details.'}
         </div>
       </div>
     );
   }
 
-  // Prepare chart data - combine actual with all model predictions
-  const chartData = data.models.cohort_based?.results.map((r, i) => ({
-    month: r.month,
-    actual: r.actual / 1000,
-    status_quo: data.models.status_quo?.results[i]?.predicted / 1000 || null,
-    simple_avg: data.models.simple_average?.results[i - 2]?.predicted / 1000 || null,
-    cohort_based: r.predicted / 1000,
-  })) || [];
+  // Log successful data load
+  console.log('Backtest data loaded:', Object.keys(data.models));
+
+  // Prepare chart data - use tuned model as base (it has the most results)
+  const chartData = data.models.tuned?.results.map((r) => {
+    const statusQuoResult = data.models.status_quo?.results.find(s => s.month === r.month);
+    const simpleAvgResult = data.models.simple_average?.results.find(s => s.month === r.month);
+    return {
+      month: r.month,
+      actual: r.actual / 1000,
+      tuned: r.predicted / 1000,
+      status_quo: statusQuoResult?.predicted ? statusQuoResult.predicted / 1000 : null,
+      simple_avg: simpleAvgResult?.predicted ? simpleAvgResult.predicted / 1000 : null,
+    };
+  }).slice(-12) || []; // Show only last 12 months for clarity
 
   // Get MAPE badge color
   const getMapeColor = (mape: number | null) => {
@@ -97,9 +108,10 @@ export function BacktestValidation() {
   };
 
   const modelCards = [
-    { key: 'cohort_based', color: '#3b82f6' },
-    { key: 'status_quo', color: '#8b5cf6' },
-    { key: 'simple_average', color: '#6b7280' },
+    { key: 'tuned', color: '#10b981', showRecent: true },
+    { key: 'status_quo', color: '#8b5cf6', showRecent: true },
+    { key: 'simple_average', color: '#6b7280', showRecent: false },
+    { key: 'cohort_based', color: '#3b82f6', showRecent: false },
   ];
 
   return (
@@ -120,12 +132,14 @@ export function BacktestValidation() {
 
       {/* Model Accuracy Cards */}
       <div style={styles.metricsGrid}>
-        {modelCards.map(({ key, color }) => {
+        {modelCards.map(({ key, color, showRecent }) => {
           const model = data.models[key as keyof typeof data.models];
           if (!model) return null;
 
-          const MapeIcon = getMapeIcon(model.mape);
-          const mapeColor = getMapeColor(model.mape);
+          // Use mapeRecent if available and showRecent is true
+          const displayMape = showRecent && model.mapeRecent !== undefined ? model.mapeRecent : model.mape;
+          const MapeIcon = getMapeIcon(displayMape);
+          const mapeColor = getMapeColor(displayMape);
 
           return (
             <div key={key} style={{ ...styles.metricCard, borderTop: `3px solid ${color}` }}>
@@ -136,9 +150,11 @@ export function BacktestValidation() {
               <div style={styles.metricDescription}>{model.description}</div>
               <div style={styles.metricStats}>
                 <div>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>MAPE</div>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
+                    {showRecent && model.mapeRecent !== undefined ? 'MAPE (12mo)' : 'MAPE'}
+                  </div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: mapeColor }}>
-                    {model.mape !== null ? `${model.mape}%` : 'N/A'}
+                    {displayMape !== null ? `${displayMape}%` : 'N/A'}
                   </div>
                 </div>
                 <div>
@@ -193,12 +209,12 @@ export function BacktestValidation() {
               />
               <Line
                 type="monotone"
-                dataKey="cohort_based"
-                stroke="#3b82f6"
+                dataKey="tuned"
+                stroke="#10b981"
                 strokeWidth={2}
                 strokeDasharray="5 5"
-                dot={{ fill: '#3b82f6', r: 3 }}
-                name="Cohort Model"
+                dot={{ fill: '#10b981', r: 3 }}
+                name="Tuned (EWMA)"
               />
               <Line
                 type="monotone"
@@ -207,7 +223,7 @@ export function BacktestValidation() {
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={{ fill: '#8b5cf6', r: 3 }}
-                name="Status Quo"
+                name="What-If"
               />
             </LineChart>
           </ResponsiveContainer>

@@ -94,7 +94,7 @@ export function HealthScoreWidget({ campaigns = [] }) {
 
     let roasScore = 0;
     let roasStatus = 'critical';
-    let roasDetail = `${roas.toFixed(2)}x`;
+    let roasDetail = `${(roas * 100).toFixed(0)}%`;
     if (roas >= 1.2) {
       roasScore = 100;
       roasStatus = 'good';

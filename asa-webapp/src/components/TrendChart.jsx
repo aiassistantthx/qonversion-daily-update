@@ -35,7 +35,7 @@ export default function TrendChart({ data }) {
   const metrics = [
     { key: 'spend', label: 'Spend', color: '#3b82f6', prefix: '$' },
     { key: 'revenue', label: 'Revenue', color: '#10b981', prefix: '$' },
-    { key: 'roas', label: 'ROAS', color: '#8b5cf6', suffix: 'x' }
+    { key: 'roas', label: 'ROAS', color: '#8b5cf6', suffix: '%' }
   ];
 
   const currentMetric = metrics.find(m => m.key === selectedMetric);
@@ -43,7 +43,7 @@ export default function TrendChart({ data }) {
   const formatValue = (value) => {
     if (!value) return '0';
     if (selectedMetric === 'roas') {
-      return value.toFixed(2);
+      return (value * 100).toFixed(0);
     }
     return value.toFixed(2);
   };
@@ -96,6 +96,7 @@ export default function TrendChart({ data }) {
             <YAxis
               tick={{ fill: '#6b7280', fontSize: 11 }}
               domain={[0, 'auto']}
+              tickFormatter={(v) => selectedMetric === 'roas' ? `${(v * 100).toFixed(0)}%` : v}
             />
             <Tooltip
               contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}

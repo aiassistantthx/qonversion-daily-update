@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/asa': {
-        target: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
+        // Use SSH tunnel: ssh -L 3001:10.0.1.20:3000 -i ~/.ssh/coolify root@46.225.26.104
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
     },
