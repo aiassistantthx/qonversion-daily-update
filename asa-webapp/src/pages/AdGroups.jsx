@@ -10,13 +10,14 @@ import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
 import { HoverActions } from '../components/HoverActions';
+import { EmptyState } from '../components/EmptyState';
 import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download, Play, Pause, Eye
+  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download, Play, Pause, Eye, Layers, SearchX
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation
@@ -644,8 +645,13 @@ export default function AdGroups() {
               <TableSkeleton rows={10} columns={visibleColumnCount} />
             ) : adGroups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">
-                  No ad groups found
+                <TableCell colSpan={visibleColumnCount} className="py-0">
+                  <EmptyState
+                    icon={searchQuery ? SearchX : Layers}
+                    title={searchQuery ? `No results for "${searchQuery}"` : "No ad groups in this campaign"}
+                    description={searchQuery ? "Try different filters or search terms" : "Ad groups will appear here once created"}
+                    variant={searchQuery ? "search" : "default"}
+                  />
                 </TableCell>
               </TableRow>
             ) : (

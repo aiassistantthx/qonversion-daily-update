@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { HoverActions } from '../components/HoverActions';
+import { EmptyState } from '../components/EmptyState';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -17,7 +18,7 @@ import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye, KeyRound, SearchX
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -1312,8 +1313,18 @@ export default function Keywords() {
                 <TableSkeleton rows={10} columns={visibleColumnCount} />
               ) : keywords.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">
-                    No keywords found.
+                  <TableCell colSpan={visibleColumnCount} className="py-0">
+                    <EmptyState
+                      icon={searchQuery ? SearchX : KeyRound}
+                      title={searchQuery ? `No results for "${searchQuery}"` : "No keywords in this ad group"}
+                      description={searchQuery ? "Try different filters or search terms" : "Add keywords to start advertising"}
+                      variant={searchQuery ? "search" : "default"}
+                      action={!searchQuery && (
+                        <Button onClick={() => setBulkAddOpen(true)}>
+                          <Plus size={16} /> Add Keywords
+                        </Button>
+                      )}
+                    />
                   </TableCell>
                 </TableRow>
               ) : (

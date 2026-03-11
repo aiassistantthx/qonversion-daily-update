@@ -6,10 +6,11 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { Input, Select, Textarea } from '../components/Input';
 import { StatusBadge, Badge } from '../components/Badge';
+import { EmptyState } from '../components/EmptyState';
 import RuleTemplates from '../components/RuleTemplates';
 import RuleExecutionHistory from '../components/RuleExecutionHistory';
 import { getRules, getRule, createRule, updateRule, deleteRule, executeRule, previewRule } from '../lib/api';
-import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2 } from 'lucide-react';
+import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2, Zap } from 'lucide-react';
 
 const ACTION_TYPES = [
   { value: 'adjust_bid', label: 'Adjust Bid (%)' },
@@ -408,8 +409,22 @@ export default function Rules() {
               </TableRow>
             ) : rules.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                  No rules created yet
+                <TableCell colSpan={8} className="py-0">
+                  <EmptyState
+                    icon={Zap}
+                    title="No automation rules yet"
+                    description="Set up automation rules to optimize your campaigns automatically"
+                    action={
+                      <div className="flex gap-2">
+                        <Button onClick={() => setShowTemplates(true)} variant="secondary">
+                          <Sparkles size={16} /> Use Template
+                        </Button>
+                        <Button onClick={() => setShowForm(true)}>
+                          <Plus size={16} /> Create Rule
+                        </Button>
+                      </div>
+                    }
+                  />
                 </TableCell>
               </TableRow>
             ) : (

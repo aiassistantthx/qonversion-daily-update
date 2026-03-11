@@ -13,13 +13,14 @@ import { BulkCampaignCreate } from '../components/BulkCampaignCreate';
 import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
 import { HoverActions } from '../components/HoverActions';
+import { EmptyState } from '../components/EmptyState';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Play, Pause,
-  Search, ArrowRight, Layers, KeyRound, Download, Copy, Eye
+  Search, ArrowRight, Layers, KeyRound, Download, Copy, Eye, Megaphone, SearchX
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -443,6 +444,8 @@ export default function Campaigns() {
   };
 
   const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 2;
+  const hasData = data?.data?.length > 0;
+  const hasFilters = statusFilter || healthFilter || searchQuery;
 
   return (
     <div className="space-y-6">
@@ -452,18 +455,22 @@ export default function Campaigns() {
           <p className="text-gray-500 dark:text-gray-400">{dateLabel}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ColumnPicker
-            columns={COLUMN_DEFINITIONS}
-            visibleColumns={visibleColumns}
-            onToggle={toggleColumn}
-            onReset={resetToDefault}
-          />
-          <Button variant="secondary" onClick={exportCSV}>
-            <Download size={16} /> Export CSV
-          </Button>
-          <Button variant="secondary" onClick={() => setBulkCreateOpen(true)}>
-            Bulk Create
-          </Button>
+          {hasData && (
+            <>
+              <ColumnPicker
+                columns={COLUMN_DEFINITIONS}
+                visibleColumns={visibleColumns}
+                onToggle={toggleColumn}
+                onReset={resetToDefault}
+              />
+              <Button variant="secondary" onClick={exportCSV}>
+                <Download size={16} /> Export CSV
+              </Button>
+              <Button variant="secondary" onClick={() => setBulkCreateOpen(true)}>
+                Bulk Create
+              </Button>
+            </>
+          )}
           <Button onClick={() => navigate('/campaigns/create')}>
             Create Campaign
           </Button>
@@ -471,14 +478,17 @@ export default function Campaigns() {
       </div>
 
       {/* Preset Views */}
-      <PresetViews
-        activePreset={activePreset}
-        onPresetChange={applyPreset}
-        presets={PRESET_VIEWS}
-      />
+      {hasData && (
+        <PresetViews
+          activePreset={activePreset}
+          onPresetChange={applyPreset}
+          presets={PRESET_VIEWS}
+        />
+      )}
 
       {/* Filters and Actions */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+      {hasData && (
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -525,10 +535,26 @@ export default function Campaigns() {
             </Button>
           </div>
         )}
-      </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && !error && !hasData && (
+        <EmptyState
+          icon={Megaphone}
+          title="No campaigns yet"
+          description="Create your first campaign to start advertising on the App Store"
+          action={
+            <Button onClick={() => navigate('/campaigns/create')}>
+              Create Campaign
+            </Button>
+          }
+        />
+      )}
 
       {/* Table */}
-      <Card>
+      {hasData && (
+        <Card>
         <Table stickyFirstColumn={true}>
           <TableHead>
             <TableRow>
@@ -648,7 +674,14 @@ export default function Campaigns() {
               </TableRow>
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={visibleColumnCount} className="text-center py-8 text-gray-500">No campaigns found</TableCell>
+                <TableCell colSpan={visibleColumnCount} className="py-0">
+                  <EmptyState
+                    icon={SearchX}
+                    title={`No results for "${searchQuery}"`}
+                    description="Try different filters or search terms"
+                    variant="search"
+                  />
+                </TableCell>
               </TableRow>
             ) : (
               campaigns.map((campaign) => {
@@ -778,9 +811,10 @@ export default function Campaigns() {
             )}
           </TableBody>
         </Table>
-      </Card>
+        </Card>
+      )}
 
-      {campaigns.length > 0 && (
+      {campaigns.length > 0 && hasData && (
         <div className="text-center text-sm text-gray-500">
           Showing {campaigns.length} campaigns
         </div>
