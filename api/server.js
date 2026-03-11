@@ -11,14 +11,51 @@ const appleAds = require('./services/appleAds');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS middleware
+// API Key for authentication (set in .env or Coolify)
+const API_KEY = process.env.DASHBOARD_API_KEY || '';
+
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  'http://localhost:5182',
+  'http://localhost:5173',
+  'http://127.0.0.1:5182',
+  'http://127.0.0.1:5173',
+];
+
+// CORS middleware - restrict to allowed origins
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
+  next();
+});
+
+// API Key authentication middleware
+// Skip for health check and webhook (Qonversion needs to call webhook)
+app.use((req, res, next) => {
+  // Public endpoints - no auth required
+  const publicPaths = ['/health', '/webhook', '/'];
+  if (publicPaths.some(p => req.path === p || req.path.startsWith('/webhook'))) {
+    return next();
+  }
+
+  // If API_KEY is not set, allow all (for backward compatibility during setup)
+  if (!API_KEY) {
+    return next();
+  }
+
+  // Check API key from header or query param
+  const providedKey = req.headers['x-api-key'] || req.query.api_key;
+  if (providedKey !== API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API key' });
+  }
+
   next();
 });
 

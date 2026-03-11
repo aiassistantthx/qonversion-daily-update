@@ -1,7 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 async function fetchApi<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`);
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add API key if configured
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+
+  const response = await fetch(`${API_BASE}${endpoint}`, { headers });
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`);
   }
