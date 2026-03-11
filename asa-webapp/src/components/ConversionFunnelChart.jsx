@@ -5,9 +5,9 @@ import {
 export default function ConversionFunnelChart({ data }) {
   if (!data || !data.data || data.data.length === 0) {
     return (
-      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', textAlign: 'center' }}>
-        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Conversion Funnel</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-10 border border-gray-200 dark:border-gray-700 text-center">
+        <div className="text-sm text-gray-400 dark:text-gray-500 mb-2">Conversion Funnel</div>
+        <div className="text-xs text-gray-300 dark:text-gray-600">No data available</div>
       </div>
     );
   }
@@ -34,45 +34,45 @@ export default function ConversionFunnelChart({ data }) {
   const totals = data.totals || {};
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb' }}>
-      <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+    <div className="bg-white dark:bg-gray-800 rounded-lg p-5 border border-gray-200 dark:border-gray-700">
+      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
         Conversion Funnel
       </h3>
-      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
         Daily conversion from installs to trials to paid subscriptions
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-        <div style={{ padding: 12, background: '#f9fafb', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Total Installs</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: '#111827' }}>
+      <div className="grid grid-cols-3 gap-4 mb-5">
+        <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Installs</div>
+          <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             {totals.installs?.toLocaleString() || 0}
           </div>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
             100%
           </div>
         </div>
-        <div style={{ padding: 12, background: '#f0f9ff', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Total Trials</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: '#0284c7' }}>
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Trials</div>
+          <div className="text-xl font-semibold text-sky-600 dark:text-sky-400">
             {totals.trials?.toLocaleString() || 0}
           </div>
-          <div style={{ fontSize: 11, color: '#0284c7', marginTop: 4 }}>
+          <div className="text-[11px] text-sky-600 dark:text-sky-400 mt-1">
             {totals.install_to_trial_rate?.toFixed(1) || 0}% conversion
           </div>
         </div>
-        <div style={{ padding: 12, background: '#f0fdf4', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Total Paid Users</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: '#15803d' }}>
+        <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Paid Users</div>
+          <div className="text-xl font-semibold text-green-700 dark:text-green-400">
             {totals.paid_users?.toLocaleString() || 0}
           </div>
-          <div style={{ fontSize: 11, color: '#15803d', marginTop: 4 }}>
+          <div className="text-[11px] text-green-700 dark:text-green-400 mt-1">
             {totals.trial_to_paid_rate?.toFixed(1) || 0}% of trials
           </div>
         </div>
       </div>
 
-      <div style={{ height: 350 }}>
+      <div className="h-[350px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -88,7 +88,7 @@ export default function ConversionFunnelChart({ data }) {
               domain={[0, 'auto']}
             />
             <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
               formatter={(v) => v.toLocaleString()}
             />
             <Legend />
@@ -151,26 +151,26 @@ export default function ConversionFunnelChart({ data }) {
         </ResponsiveContainer>
       </div>
 
-      <div style={{ marginTop: 20, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', marginBottom: 8 }}>
+      <div className="mt-5 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
           Overall Conversion Rates
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, fontSize: 12 }}>
+        <div className="grid grid-cols-3 gap-3 text-xs">
           <div>
-            <span style={{ color: '#6b7280' }}>Install → Trial: </span>
-            <span style={{ fontWeight: 600, color: '#0284c7' }}>
+            <span className="text-gray-500 dark:text-gray-400">Install → Trial: </span>
+            <span className="font-semibold text-sky-600 dark:text-sky-400">
               {totals.install_to_trial_rate?.toFixed(1) || 0}%
             </span>
           </div>
           <div>
-            <span style={{ color: '#6b7280' }}>Trial → Paid: </span>
-            <span style={{ fontWeight: 600, color: '#15803d' }}>
+            <span className="text-gray-500 dark:text-gray-400">Trial → Paid: </span>
+            <span className="font-semibold text-green-700 dark:text-green-400">
               {totals.trial_to_paid_rate?.toFixed(1) || 0}%
             </span>
           </div>
           <div>
-            <span style={{ color: '#6b7280' }}>Install → Paid: </span>
-            <span style={{ fontWeight: 600, color: '#7c3aed' }}>
+            <span className="text-gray-500 dark:text-gray-400">Install → Paid: </span>
+            <span className="font-semibold text-purple-600 dark:text-purple-400">
               {totals.install_to_paid_rate?.toFixed(1) || 0}%
             </span>
           </div>

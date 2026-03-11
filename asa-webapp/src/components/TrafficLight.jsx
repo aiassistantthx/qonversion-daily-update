@@ -17,13 +17,25 @@ export function getTrafficLightStatus(predictedRoas) {
   return 'loss';
 }
 
+export function getTrafficLightColorClass(status) {
+  const colors = {
+    ok: 'bg-traffic-ok text-traffic-ok',
+    risk: 'bg-traffic-risk text-traffic-risk',
+    bad: 'bg-traffic-bad text-traffic-bad',
+    loss: 'bg-traffic-loss text-traffic-loss',
+    unknown: 'bg-traffic-unknown text-traffic-unknown',
+  };
+  return colors[status] || colors.unknown;
+}
+
+// Legacy function for backward compatibility
 export function getTrafficLightColor(status) {
   const colors = {
-    ok: '#10b981',      // green-500
-    risk: '#f59e0b',    // amber-500
-    bad: '#f97316',     // orange-500
-    loss: '#ef4444',    // red-500
-    unknown: '#9ca3af', // gray-400
+    ok: '#10b981',
+    risk: '#f59e0b',
+    bad: '#f97316',
+    loss: '#ef4444',
+    unknown: '#9ca3af',
   };
   return colors[status] || colors.unknown;
 }
@@ -41,29 +53,25 @@ export function getTrafficLightLabel(status) {
 
 export function TrafficLight({ predictedRoas, size = 'sm' }) {
   const status = getTrafficLightStatus(predictedRoas);
-  const color = getTrafficLightColor(status);
+  const colorClass = getTrafficLightColorClass(status);
   const label = getTrafficLightLabel(status);
 
   const sizes = {
-    sm: { dot: 8, text: 'text-xs' },
-    md: { dot: 10, text: 'text-sm' },
-    lg: { dot: 12, text: 'text-base' },
+    sm: { dot: 'w-2 h-2', text: 'text-xs' },
+    md: { dot: 'w-2.5 h-2.5', text: 'text-sm' },
+    lg: { dot: 'w-3 h-3', text: 'text-base' },
   };
 
   const { dot, text } = sizes[size] || sizes.sm;
+  const [bgClass, textClass] = colorClass.split(' ');
 
   return (
     <div className="inline-flex items-center gap-1.5">
       <div
-        className="rounded-full"
-        style={{
-          width: `${dot}px`,
-          height: `${dot}px`,
-          backgroundColor: color,
-        }}
+        className={`rounded-full ${dot} ${bgClass}`}
         title={predictedRoas !== null ? `Predicted ROAS: ${(predictedRoas * 100).toFixed(0)}%` : 'No prediction'}
       />
-      <span className={`font-medium ${text}`} style={{ color }}>
+      <span className={`font-medium ${text} ${textClass}`}>
         {label}
       </span>
     </div>

@@ -8,9 +8,9 @@ export default function TrendChart({ data }) {
 
   if (!data || !data.data || data.data.length === 0) {
     return (
-      <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', textAlign: 'center' }}>
-        <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Trends</div>
-        <div style={{ fontSize: 13, color: '#d1d5db' }}>No data available</div>
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-10 border border-gray-200 dark:border-gray-700 text-center">
+        <div className="text-sm text-gray-400 dark:text-gray-500 mb-2">Trends</div>
+        <div className="text-xs text-gray-300 dark:text-gray-600">No data available</div>
       </div>
     );
   }
@@ -48,33 +48,40 @@ export default function TrendChart({ data }) {
     return value.toFixed(2);
   };
 
+  const metricStyles = {
+    spend: {
+      selected: 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-500',
+      default: 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+    },
+    revenue: {
+      selected: 'border-2 border-green-500 bg-green-50 dark:bg-green-900/20 text-green-500',
+      default: 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+    },
+    roas: {
+      selected: 'border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-500',
+      default: 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+    }
+  };
+
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+    <div className="bg-white dark:bg-gray-800 rounded-lg p-5 border border-gray-200 dark:border-gray-700">
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h3 style={{ fontSize: 16, fontWeight: 600, color: '#111827', marginBottom: 4 }}>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
             Trends
           </h3>
-          <p style={{ fontSize: 12, color: '#6b7280' }}>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Daily metrics over time
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-2">
           {metrics.map((metric) => (
             <button
               key={metric.key}
               onClick={() => setSelectedMetric(metric.key)}
-              style={{
-                padding: '8px 16px',
-                fontSize: 13,
-                fontWeight: 500,
-                borderRadius: 6,
-                border: selectedMetric === metric.key ? `2px solid ${metric.color}` : '1px solid #e5e7eb',
-                background: selectedMetric === metric.key ? `${metric.color}10` : '#fff',
-                color: selectedMetric === metric.key ? metric.color : '#6b7280',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
+              className={`px-4 py-2 text-xs font-medium rounded-xs cursor-pointer transition-all ${
+                selectedMetric === metric.key ? metricStyles[metric.key].selected : metricStyles[metric.key].default
+              }`}
             >
               {metric.label}
             </button>
@@ -82,7 +89,7 @@ export default function TrendChart({ data }) {
         </div>
       </div>
 
-      <div style={{ height: 300 }}>
+      <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -99,7 +106,7 @@ export default function TrendChart({ data }) {
               tickFormatter={(v) => selectedMetric === 'roas' ? `${(v * 100).toFixed(0)}%` : v}
             />
             <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
               formatter={(v) => {
                 const formatted = formatValue(v);
                 return `${currentMetric.prefix || ''}${formatted}${currentMetric.suffix || ''}`;

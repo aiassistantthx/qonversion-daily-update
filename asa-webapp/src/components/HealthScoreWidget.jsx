@@ -8,12 +8,14 @@ function ScoreGauge({ score }) {
   const circumference = 2 * Math.PI * radius;
   const progress = (score / 100) * circumference;
 
-  const getColor = (score) => {
-    if (score >= 80) return '#22c55e'; // green
-    if (score >= 60) return '#eab308'; // yellow
-    if (score >= 40) return '#f97316'; // orange
-    return '#ef4444'; // red
+  const getColorConfig = (score) => {
+    if (score >= 80) return { stroke: '#22c55e', class: 'text-health-good' };
+    if (score >= 60) return { stroke: '#eab308', class: 'text-health-warning' };
+    if (score >= 40) return { stroke: '#f97316', class: 'text-orange-500' };
+    return { stroke: '#ef4444', class: 'text-health-critical' };
   };
+
+  const colorConfig = getColorConfig(score);
 
   return (
     <div className="relative inline-flex items-center justify-center">
@@ -31,7 +33,7 @@ function ScoreGauge({ score }) {
           cy="70"
           r={radius}
           fill="none"
-          stroke={getColor(score)}
+          stroke={colorConfig.stroke}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={circumference - progress}
@@ -40,7 +42,7 @@ function ScoreGauge({ score }) {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-3xl font-bold" style={{ color: getColor(score) }}>
+        <span className={`text-3xl font-bold ${colorConfig.class}`}>
           {score}
         </span>
         <span className="text-xs text-gray-500">Health Score</span>
@@ -51,9 +53,9 @@ function ScoreGauge({ score }) {
 
 function ScoreItem({ label, score, status, detail }) {
   const statusConfig = {
-    good: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-    warning: { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    critical: { icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    good: { icon: CheckCircle, color: 'text-health-good', bg: 'bg-green-50 dark:bg-green-900/20' },
+    warning: { icon: AlertTriangle, color: 'text-health-warning', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+    critical: { icon: AlertCircle, color: 'text-health-critical', bg: 'bg-red-50 dark:bg-red-900/20' },
   };
 
   const config = statusConfig[status] || statusConfig.good;
@@ -66,7 +68,7 @@ function ScoreItem({ label, score, status, detail }) {
         <span className="text-sm font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600">{detail}</span>
+        <span className="text-sm text-gray-600 dark:text-gray-400">{detail}</span>
         <span className={`text-sm font-bold ${config.color}`}>{score}/100</span>
       </div>
     </div>
