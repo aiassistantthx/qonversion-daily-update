@@ -1400,54 +1400,105 @@ export default function Keywords() {
                         return (
                           <TableCell key={columnId}>
                         {editingKeywordId === kw.keyword_id ? (
-                          <div className="flex items-center gap-1 justify-center">
-                            <Input
-                              type="number"
-                              value={newBid}
-                              onChange={(e) => setNewBid(e.target.value)}
-                              className="w-20"
-                              disabled={bidMutation.isPending}
-                            />
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                const bidVal = parseFloat(newBid);
-                                if (!isNaN(bidVal) && bidVal > 0) {
-                                  bidMutation.mutate({
-                                    keywordId: kw.keyword_id,
-                                    campaignId: kw.campaign_id,
-                                    adGroupId: kw.adgroup_id,
-                                    bidAmount: bidVal,
-                                  });
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-1 justify-center">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                max="100"
+                                value={newBid}
+                                onChange={(e) => setNewBid(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const bidVal = parseFloat(newBid);
+                                    if (!isNaN(bidVal) && bidVal >= 0.01 && bidVal <= 100) {
+                                      bidMutation.mutate({
+                                        keywordId: kw.keyword_id,
+                                        campaignId: kw.campaign_id,
+                                        adGroupId: kw.adgroup_id,
+                                        bidAmount: bidVal,
+                                      });
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    setEditingKeywordId(null);
+                                    setNewBid('');
+                                  }
+                                }}
+                                className="w-24 text-center"
+                                disabled={bidMutation.isPending}
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  const bidVal = parseFloat(newBid);
+                                  if (!isNaN(bidVal) && bidVal >= 0.01 && bidVal <= 100) {
+                                    bidMutation.mutate({
+                                      keywordId: kw.keyword_id,
+                                      campaignId: kw.campaign_id,
+                                      adGroupId: kw.adgroup_id,
+                                      bidAmount: bidVal,
+                                    });
+                                  }
+                                }}
+                                loading={bidMutation.isPending}
+                                className="text-green-600 hover:text-green-700"
+                              >
+                                <Check size={14} />
+                              </Button>
+                              <button
+                                onClick={() => {
+                                  setEditingKeywordId(null);
+                                  setNewBid('');
+                                }}
+                                className="text-gray-400 hover:text-gray-500"
+                                disabled={bidMutation.isPending}
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                            {(() => {
+                              const bidVal = parseFloat(newBid);
+                              const currentBidVal = parseFloat(bid);
+                              if (!isNaN(bidVal) && !isNaN(currentBidVal) && currentBidVal > 0) {
+                                const change = bidVal - currentBidVal;
+                                const changePercent = (change / currentBidVal) * 100;
+                                if (Math.abs(change) > 0.001) {
+                                  return (
+                                    <span className={`text-xs font-medium ${change > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                      {change > 0 ? '+' : ''}${change.toFixed(2)} ({changePercent > 0 ? '+' : ''}{changePercent.toFixed(1)}%)
+                                    </span>
+                                  );
                                 }
-                              }}
-                              loading={bidMutation.isPending}
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <Check size={14} />
-                            </Button>
-                            <button
-                              onClick={() => setEditingKeywordId(null)}
-                              className="text-gray-400 hover:text-gray-500"
-                              disabled={bidMutation.isPending}
-                            >
-                              <X size={14} />
-                            </button>
+                              }
+                              return null;
+                            })()}
+                            {(() => {
+                              const bidVal = parseFloat(newBid);
+                              if (isNaN(bidVal) || bidVal < 0.01 || bidVal > 100) {
+                                return (
+                                  <span className="text-xs text-red-600">
+                                    Must be between $0.01 and $100
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         ) : (
                           <div className="flex flex-col items-center gap-1">
-                            <div className="flex items-center gap-1">
-                              ${parseFloat(bid).toFixed(2)}
-                              <button
-                                onClick={() => {
-                                  setEditingKeywordId(kw.keyword_id);
-                                  setNewBid(bid);
-                                }}
-                                className="text-gray-400 hover:text-gray-600"
-                              >
-                                <Edit2 size={12} />
-                              </button>
+                            <div
+                              className="flex items-center gap-1 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                              onClick={() => {
+                                setEditingKeywordId(kw.keyword_id);
+                                setNewBid(bid);
+                              }}
+                              title="Click to edit"
+                            >
+                              <span className="font-medium">${parseFloat(bid).toFixed(2)}</span>
+                              <Edit2 size={12} className="text-gray-400" />
                             </div>
                             <BidRecommendation
                               currentBid={bid}
