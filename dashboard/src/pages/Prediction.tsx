@@ -264,8 +264,11 @@ export function Prediction() {
           </div>
 
           <div style={styles.paramSection}>
-            <div style={styles.paramLabel}>Split</div>
-            <ParamInput label="Weekly Share (%)" value={params.weeklyShare} onChange={v => setParams(p => ({ ...p, weeklyShare: v }))} step={1} />
+            <div style={styles.paramLabel}>New Subs Split</div>
+            <ParamInput label="→ Weekly (%)" value={params.weeklyShare} onChange={v => setParams(p => ({ ...p, weeklyShare: v }))} step={1} />
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+              {params.weeklyShare}% weekly / {100 - params.weeklyShare}% yearly
+            </div>
           </div>
 
           <div style={styles.paramSection}>

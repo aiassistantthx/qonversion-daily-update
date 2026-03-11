@@ -231,7 +231,7 @@ export function Planning() {
         { label: 'Organic Monthly', key: 'organicMonthly', step: 50 },
         { label: 'Weekly Churn (%/mo)', key: 'weeklyChurnMonthly', step: 1 },
         { label: 'Yearly Churn (%/yr)', key: 'yearlyChurnAnnual', step: 1 },
-        { label: 'Weekly Share (%)', key: 'weeklyShare', step: 1 },
+        { label: 'New Subs → Weekly (%)', key: 'weeklyShare', step: 1 },
       ].map(({ label, key, step }) => (
         <div key={key}>
           <label style={styles.inputLabel}>{label}</label>
