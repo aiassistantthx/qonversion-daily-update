@@ -14,9 +14,9 @@ import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
-import BidRecommendation from '../components/BidRecommendation';
+import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -188,6 +188,8 @@ export default function Keywords() {
   const [bulkBidMode, setBulkBidMode] = useState('absolute'); // 'absolute' or 'percent'
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, message: '' });
   const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
+  const [bulkOptimizeModalOpen, setBulkOptimizeModalOpen] = useState(false);
+  const [optimizationPreview, setOptimizationPreview] = useState([]);
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 
@@ -581,6 +583,90 @@ export default function Keywords() {
     });
   };
 
+  const handleBulkOptimize = () => {
+    const selectedKeywords = keywords.filter(k => selectedIds.has(k.keyword_id));
+
+    const preview = selectedKeywords.map(kw => {
+      const currentBid = parseFloat(kw.bid_amount || 0);
+      const spend = parseFloat(kw.spend_7d || 0);
+      const revenue = parseFloat(kw.revenue_7d || 0);
+      const roas = spend > 0 ? revenue / spend : 0;
+
+      const recommendation = calculateBidRecommendation(currentBid, {
+        cpa_7d: kw.cpa_7d,
+        cop_7d: kw.cop_7d,
+        cpt_7d: kw.cpt_7d,
+        roas: roas,
+        sov: kw.sov,
+        installs_7d: kw.installs_7d
+      });
+
+      if (!recommendation) {
+        return {
+          keywordId: kw.keyword_id,
+          keywordText: kw.keyword_text,
+          currentBid,
+          recommendedBid: currentBid,
+          change: 0,
+          changePercent: 0,
+          currentCpa: parseFloat(kw.cpa_7d || 0),
+          projectedCpa: parseFloat(kw.cpa_7d || 0),
+          reason: 'No recommendation available',
+          skip: true
+        };
+      }
+
+      const { recommendedBid, difference, differencePercent, reasons } = recommendation;
+      const currentCpa = parseFloat(kw.cpa_7d || 0);
+      const projectedCpa = currentCpa > 0 ? currentCpa * (currentBid / recommendedBid) : 0;
+
+      return {
+        keywordId: kw.keyword_id,
+        keywordText: kw.keyword_text,
+        currentBid,
+        recommendedBid,
+        change: difference,
+        changePercent: differencePercent,
+        currentCpa,
+        projectedCpa,
+        reason: reasons[0] || 'Optimized based on performance',
+        skip: Math.abs(differencePercent) < 5
+      };
+    });
+
+    setOptimizationPreview(preview);
+    setBulkOptimizeModalOpen(true);
+  };
+
+  const applyBulkOptimization = () => {
+    const selectedKeywords = keywords.filter(k => selectedIds.has(k.keyword_id));
+    const firstKeyword = selectedKeywords[0];
+
+    const updates = optimizationPreview
+      .filter(p => !p.skip)
+      .map(p => ({
+        keywordId: p.keywordId,
+        bidAmount: p.recommendedBid,
+      }));
+
+    if (updates.length === 0) {
+      setBulkOptimizeModalOpen(false);
+      return;
+    }
+
+    bulkBidMutation.mutate({
+      campaignId: firstKeyword.campaign_id,
+      adGroupId: firstKeyword.adgroup_id,
+      updates,
+    }, {
+      onSuccess: () => {
+        setBulkOptimizeModalOpen(false);
+        setSelectedIds(new Set());
+        setOptimizationPreview([]);
+      }
+    });
+  };
+
   const exportCSV = () => {
     const headers = ['Keyword', 'Match Type', 'Status', 'Bid', 'Bid vs CPA Ratio', 'Recommended Bid', 'Spend', 'Impressions', 'SOV %', 'Taps', 'TTR', 'Installs', 'CVR', 'CPA', 'CPT', 'CPM', 'Revenue', 'ROAS', 'COP'];
     const rows = keywords.map(k => {
@@ -779,6 +865,17 @@ export default function Keywords() {
               {selectedIds.size} keywords selected
             </span>
 
+            {/* Optimize All Bids */}
+            <div className="flex items-center gap-2 border-l pl-4 border-blue-300">
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleBulkOptimize}
+              >
+                <Zap size={14} /> Optimize All Bids
+              </Button>
+            </div>
+
             {/* Bid Update Section */}
             <div className="flex items-center gap-2 border-l pl-4 border-blue-300">
               <select
@@ -864,6 +961,129 @@ export default function Keywords() {
             >
               Confirm
             </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Bulk Optimization Preview Modal */}
+      {bulkOptimizeModalOpen && (
+        <Modal
+          open={bulkOptimizeModalOpen}
+          onClose={() => setBulkOptimizeModalOpen(false)}
+          title="Optimize Bids - Preview"
+          className="max-w-5xl"
+        >
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-sm text-gray-600">Keywords to Update</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {optimizationPreview.filter(p => !p.skip).length}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Bid Change</p>
+                  <p className="text-2xl font-bold">
+                    ${optimizationPreview.reduce((sum, p) => sum + (p.skip ? 0 : p.change), 0).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Avg CPA Change</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {(() => {
+                      const validPreviews = optimizationPreview.filter(p => !p.skip && p.currentCpa > 0);
+                      if (validPreviews.length === 0) return '-';
+                      const avgChange = validPreviews.reduce((sum, p) =>
+                        sum + (p.projectedCpa - p.currentCpa), 0) / validPreviews.length;
+                      return `${avgChange >= 0 ? '+' : ''}$${avgChange.toFixed(2)}`;
+                    })()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Skipped (&lt; 5% change)</p>
+                  <p className="text-2xl font-bold text-gray-400">
+                    {optimizationPreview.filter(p => p.skip).length}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeader>Keyword</TableHeader>
+                    <TableHeader>Current Bid</TableHeader>
+                    <TableHeader>Recommended Bid</TableHeader>
+                    <TableHeader>Change</TableHeader>
+                    <TableHeader>Current CPA</TableHeader>
+                    <TableHeader>Projected CPA</TableHeader>
+                    <TableHeader>Reason</TableHeader>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {optimizationPreview.map((preview) => (
+                    <TableRow
+                      key={preview.keywordId}
+                      className={preview.skip ? 'opacity-50' : ''}
+                    >
+                      <TableCell className="font-medium max-w-xs truncate" title={preview.keywordText}>
+                        {preview.keywordText}
+                        {preview.skip && (
+                          <Badge variant="default" className="ml-2 text-xs">Skip</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>${preview.currentBid.toFixed(2)}</TableCell>
+                      <TableCell className="font-semibold">
+                        ${preview.recommendedBid.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`font-medium ${
+                          preview.change > 0 ? 'text-orange-600' :
+                          preview.change < 0 ? 'text-green-600' :
+                          'text-gray-400'
+                        }`}>
+                          {preview.change > 0 ? '+' : ''}${preview.change.toFixed(2)}
+                          <span className="text-xs ml-1">
+                            ({preview.changePercent > 0 ? '+' : ''}{preview.changePercent.toFixed(1)}%)
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {preview.currentCpa > 0 ? `$${preview.currentCpa.toFixed(2)}` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {preview.projectedCpa > 0 ? (
+                          <span className={preview.projectedCpa < preview.currentCpa ? 'text-green-600 font-medium' : ''}>
+                            ${preview.projectedCpa.toFixed(2)}
+                          </span>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 max-w-xs truncate" title={preview.reason}>
+                        {preview.reason}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex gap-2 justify-end border-t pt-4">
+              <Button
+                variant="ghost"
+                onClick={() => setBulkOptimizeModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={applyBulkOptimization}
+                loading={bulkBidMutation.isPending}
+                disabled={optimizationPreview.filter(p => !p.skip).length === 0}
+              >
+                <Zap size={14} /> Apply Optimization
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1229,17 +1449,19 @@ export default function Keywords() {
                   };
 
                   return (
-                    <TableRow key={kw.keyword_id} className={selectedKeywords.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
+                    <TableRow key={kw.keyword_id} className={selectedIds.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
                       <TableCell>
-                        <Checkbox
-                          checked={selectedKeywords.has(kw.keyword_id)}
-                          onCheckedChange={() => toggleKeyword(kw.keyword_id)}
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(kw.keyword_id)}
+                          onChange={() => toggleSelect(kw.keyword_id)}
+                          className="rounded border-gray-300"
                         />
                       </TableCell>
                       <TableCell className="font-medium max-w-xs truncate" title={kw.keyword_text}>
                         {kw.keyword_text}
                       </TableCell>
-                      {visibleColumns.filter(c => c !== 'keyword').map(columnId => renderCell(columnId))}
+                      {columnOrder.map(columnId => visibleColumns[columnId] ? renderCell(columnId) : null)}
                     </TableRow>
                   );
                 })
