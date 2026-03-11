@@ -1,19 +1,29 @@
 import { Routes, Route } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import Campaigns from './pages/Campaigns';
-import CampaignCreate from './pages/CampaignCreate';
-import AdGroups from './pages/AdGroups';
-import Keywords from './pages/Keywords';
-import SearchTerms from './pages/SearchTerms';
-import NegativeKeywords from './pages/NegativeKeywords';
-import Rules from './pages/Rules';
-import RuleEdit from './pages/RuleEdit';
-import Templates from './pages/Templates';
-import History from './pages/History';
-import Countries from './pages/Countries';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ShortcutsHelp } from './components/ShortcutsHelp';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Campaigns = lazy(() => import('./pages/Campaigns'));
+const CampaignCreate = lazy(() => import('./pages/CampaignCreate'));
+const AdGroups = lazy(() => import('./pages/AdGroups'));
+const Keywords = lazy(() => import('./pages/Keywords'));
+const SearchTerms = lazy(() => import('./pages/SearchTerms'));
+const NegativeKeywords = lazy(() => import('./pages/NegativeKeywords'));
+const Rules = lazy(() => import('./pages/Rules'));
+const RuleEdit = lazy(() => import('./pages/RuleEdit'));
+const Templates = lazy(() => import('./pages/Templates'));
+const History = lazy(() => import('./pages/History'));
+const Countries = lazy(() => import('./pages/Countries'));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    </div>
+  );
+}
 
 function App() {
   const { showHelp, setShowHelp } = useKeyboardShortcuts();
@@ -21,21 +31,23 @@ function App() {
   return (
     <>
       <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/campaigns" element={<Campaigns />} />
-          <Route path="/campaigns/create" element={<CampaignCreate />} />
-          <Route path="/adgroups" element={<AdGroups />} />
-          <Route path="/keywords" element={<Keywords />} />
-          <Route path="/search-terms" element={<SearchTerms />} />
-          <Route path="/negative-keywords" element={<NegativeKeywords />} />
-          <Route path="/rules" element={<Rules />} />
-          <Route path="/rules/new" element={<RuleEdit />} />
-          <Route path="/rules/:id/edit" element={<RuleEdit />} />
-          <Route path="/templates" element={<Templates />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/countries" element={<Countries />} />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/campaigns/create" element={<CampaignCreate />} />
+            <Route path="/adgroups" element={<AdGroups />} />
+            <Route path="/keywords" element={<Keywords />} />
+            <Route path="/search-terms" element={<SearchTerms />} />
+            <Route path="/negative-keywords" element={<NegativeKeywords />} />
+            <Route path="/rules" element={<Rules />} />
+            <Route path="/rules/new" element={<RuleEdit />} />
+            <Route path="/rules/:id/edit" element={<RuleEdit />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/countries" element={<Countries />} />
+          </Routes>
+        </Suspense>
       </Layout>
       <ShortcutsHelp open={showHelp} onClose={() => setShowHelp(false)} />
     </>

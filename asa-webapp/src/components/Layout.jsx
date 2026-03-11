@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   LayoutDashboard,
   Megaphone,
@@ -20,6 +20,20 @@ import { useDateRange, DATE_PRESETS } from '../context/DateRangeContext';
 import { useTheme } from '../context/ThemeContext';
 import { SyncStatus } from './SyncStatus';
 import { DataFreshness } from './DataFreshness';
+
+const prefetchMap = {
+  '/': () => import('../pages/Dashboard'),
+  '/campaigns': () => import('../pages/Campaigns'),
+  '/campaigns/create': () => import('../pages/CampaignCreate'),
+  '/adgroups': () => import('../pages/AdGroups'),
+  '/keywords': () => import('../pages/Keywords'),
+  '/search-terms': () => import('../pages/SearchTerms'),
+  '/negative-keywords': () => import('../pages/NegativeKeywords'),
+  '/countries': () => import('../pages/Countries'),
+  '/rules': () => import('../pages/Rules'),
+  '/templates': () => import('../pages/Templates'),
+  '/history': () => import('../pages/History'),
+};
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -91,6 +105,13 @@ export default function Layout({ children }) {
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const handleNavHover = useCallback((path) => {
+    const prefetchFn = prefetchMap[path];
+    if (prefetchFn) {
+      prefetchFn();
+    }
+  }, []);
+
   return (
     <div className="min-h-screen flex bg-white dark:bg-gray-950">
       {/* Mobile menu button */}
@@ -147,6 +168,7 @@ export default function Layout({ children }) {
                   <Link
                     to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
+                    onMouseEnter={() => handleNavHover(item.path)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                       isActive
                         ? 'bg-blue-600 text-white'

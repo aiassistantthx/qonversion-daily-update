@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Card';
@@ -11,6 +11,7 @@ import { EmptyState } from '../components/EmptyState';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
+import { useDebounce } from '../hooks/useDebounce';
 import { Modal } from '../components/Modal';
 import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import { ColumnPicker } from '../components/ColumnPicker';
@@ -179,6 +180,7 @@ export default function Keywords() {
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [matchTypeFilter, setMatchTypeFilter] = useState('');
   const [campaignFilter, setCampaignFilter] = useState('');
   const [sortField, setSortField] = useState('spend');
@@ -317,8 +319,8 @@ export default function Keywords() {
       result = result.filter(k => k.match_type === matchTypeFilter);
     }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (debouncedSearchQuery) {
+      const query = debouncedSearchQuery.toLowerCase();
       result = result.filter(k =>
         k.keyword_text?.toLowerCase().includes(query)
       );
@@ -429,7 +431,7 @@ export default function Keywords() {
     });
 
     return result;
-  }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, searchQuery, sortField, sortDirection]);
+  }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, debouncedSearchQuery, sortField, sortDirection]);
 
   // Group keywords if grouping is enabled
   const keywordGroups = useMemo(() => {
