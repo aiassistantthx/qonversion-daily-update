@@ -9,9 +9,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface PredictionParams {
   monthlyBudget: number;
-  cpi: number;
-  trialRate: number;
-  conversionRate: number;
+  cacTarget: number;           // CAC target instead of CPI funnel
   organicSubscribers: number;
   weeklyPrice: number;
   yearlyPrice: number;
@@ -23,15 +21,14 @@ interface PredictionParams {
 
 interface MonthOverride {
   spend?: number;
-  cpi?: number;
+  cac?: number;
 }
 
 interface ForecastMonth {
   month: string;
   spend: number;
-  cpi: number;
-  installs: number;
-  trials: number;
+  cac: number;
+  newSubs: number;
   newWeekly: number;
   newYearly: number;
   activeWeekly: number;
@@ -45,18 +42,16 @@ interface ForecastMonth {
   isOverridden: boolean;
 }
 
-// Real metrics from OpenChat data (validated on 11 months, avg error 8.1%)
+// Real metrics from OpenChat data (validated on retention data)
 const defaultParams: PredictionParams = {
   monthlyBudget: 50000,
-  cpi: 1.83,
-  trialRate: 32,
-  conversionRate: 22,
-  organicSubscribers: 304,  // validated from funnel data
+  cacTarget: 59,             // CAC target instead of CPI funnel
+  organicSubscribers: 304,   // validated from funnel data
   weeklyPrice: 6.99,
   yearlyPrice: 49.99,
   weeklyChurnMonthly: 51,
   yearlyChurnAnnual: 65,
-  weeklyShare: 78,  // validated: 78% of new subs choose weekly
+  weeklyShare: 78,           // validated: 78% of new subs choose weekly
   forecastMonths: 12,
 };
 
@@ -96,20 +91,22 @@ export function Prediction() {
     for (const monthStr of monthKeys) {
       const override = monthOverrides[monthStr] || {};
       const monthSpend = override.spend ?? params.monthlyBudget;
-      const monthCpi = override.cpi ?? params.cpi;
-      const isOverridden = override.spend !== undefined || override.cpi !== undefined;
+      const monthCac = override.cac ?? params.cacTarget;
+      const isOverridden = override.spend !== undefined || override.cac !== undefined;
 
-      // New users from paid spend
-      const installs = monthCpi > 0 ? monthSpend / monthCpi : 0;
-      const trials = installs * (params.trialRate / 100);
-      const paidConversions = trials * (params.conversionRate / 100);
+      // New paid subscribers from spend / CAC
+      const paidNewSubs = monthCac > 0 ? monthSpend / monthCac : 0;
 
-      // Add organic subscribers (split by weekly share)
-      const organicWeekly = params.organicSubscribers * (params.weeklyShare / 100);
-      const organicYearly = params.organicSubscribers * (1 - params.weeklyShare / 100);
+      // Split paid and organic by weekly share
+      const weeklyShareFraction = params.weeklyShare / 100;
+      const paidWeekly = paidNewSubs * weeklyShareFraction;
+      const paidYearly = paidNewSubs * (1 - weeklyShareFraction);
+      const organicWeekly = params.organicSubscribers * weeklyShareFraction;
+      const organicYearly = params.organicSubscribers * (1 - weeklyShareFraction);
 
-      const newWeekly = paidConversions * (params.weeklyShare / 100) + organicWeekly;
-      const newYearly = paidConversions * (1 - params.weeklyShare / 100) + organicYearly;
+      const newWeekly = paidWeekly + organicWeekly;
+      const newYearly = paidYearly + organicYearly;
+      const totalNewSubs = paidNewSubs + params.organicSubscribers;
 
       // Apply churn to existing base
       activeWeekly = activeWeekly * monthlyWeeklyRetention + newWeekly;
@@ -126,9 +123,8 @@ export function Prediction() {
       results.push({
         month: monthStr,
         spend: monthSpend,
-        cpi: monthCpi,
-        installs: Math.round(installs),
-        trials: Math.round(trials),
+        cac: monthCac,
+        newSubs: Math.round(totalNewSubs),
         newWeekly: Math.round(newWeekly),
         newYearly: Math.round(newYearly),
         activeWeekly: Math.round(activeWeekly),
@@ -146,7 +142,7 @@ export function Prediction() {
     return results;
   }, [params, activeData, monthOverrides, monthKeys]);
 
-  const handleMonthOverride = useCallback((month: string, field: 'spend' | 'cpi', value: number) => {
+  const handleMonthOverride = useCallback((month: string, field: 'spend' | 'cac', value: number) => {
     setMonthOverrides(prev => ({
       ...prev,
       [month]: {
@@ -184,16 +180,16 @@ export function Prediction() {
   const totalSpend = forecast.reduce((s, f) => s + f.spend, 0);
 
   const handleExport = () => {
-    const headers = ['Month', 'Spend', 'CPI', 'Installs', 'Sales', 'ROAS', 'Active Weekly', 'Active Yearly'];
+    const headers = ['Month', 'Spend', 'CAC', 'New Subs', 'Active W', 'Active Y', 'Sales', 'ROAS'];
     const rows = forecast.map(f => [
       f.month,
       f.spend.toFixed(0),
-      f.cpi.toFixed(2),
-      f.installs,
-      f.totalRevenue.toFixed(0),
-      f.roas.toFixed(2),
+      f.cac.toFixed(0),
+      f.newSubs,
       f.activeWeekly,
       f.activeYearly,
+      f.totalRevenue.toFixed(0),
+      f.roas.toFixed(2),
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -264,13 +260,11 @@ export function Prediction() {
           <div style={styles.paramSection}>
             <div style={styles.paramLabel}>Marketing</div>
             <ParamInput label="Monthly Budget ($)" value={params.monthlyBudget} onChange={v => setParams(p => ({ ...p, monthlyBudget: v }))} step={1000} />
-            <ParamInput label="CPI ($)" value={params.cpi} onChange={v => setParams(p => ({ ...p, cpi: v }))} step={0.1} />
+            <ParamInput label="CAC Target ($)" value={params.cacTarget} onChange={v => setParams(p => ({ ...p, cacTarget: v }))} step={1} />
           </div>
 
           <div style={styles.paramSection}>
-            <div style={styles.paramLabel}>Conversion</div>
-            <ParamInput label="Trial Rate (%)" value={params.trialRate} onChange={v => setParams(p => ({ ...p, trialRate: v }))} step={1} />
-            <ParamInput label="Conversion Rate (%)" value={params.conversionRate} onChange={v => setParams(p => ({ ...p, conversionRate: v }))} step={1} />
+            <div style={styles.paramLabel}>Split</div>
             <ParamInput label="Weekly Share (%)" value={params.weeklyShare} onChange={v => setParams(p => ({ ...p, weeklyShare: v }))} step={1} />
           </div>
 
@@ -374,8 +368,7 @@ export function Prediction() {
               <tr>
                 <th style={styles.th}>Month</th>
                 <th style={{ ...styles.thRight, background: '#fef3c7' }}>Spend</th>
-                <th style={{ ...styles.thRight, background: '#fef3c7' }}>CPI</th>
-                <th style={styles.thRight}>Installs</th>
+                <th style={{ ...styles.thRight, background: '#fef3c7' }}>CAC</th>
                 <th style={styles.thRight}>New Subs</th>
                 <th style={styles.thRight}>Active W</th>
                 <th style={styles.thRight}>Active Y</th>
@@ -399,15 +392,14 @@ export function Prediction() {
                   </td>
                   <td style={{ ...styles.tdRight, padding: 4 }}>
                     <EditableCell
-                      value={f.cpi}
-                      onChange={v => handleMonthOverride(f.month, 'cpi', v)}
-                      format={v => `$${v.toFixed(2)}`}
-                      step={0.1}
-                      isOverridden={monthOverrides[f.month]?.cpi !== undefined}
+                      value={f.cac}
+                      onChange={v => handleMonthOverride(f.month, 'cac', v)}
+                      format={v => `$${v.toFixed(0)}`}
+                      step={1}
+                      isOverridden={monthOverrides[f.month]?.cac !== undefined}
                     />
                   </td>
-                  <td style={styles.tdRight}>{f.installs.toLocaleString()}</td>
-                  <td style={styles.tdRight}>{(f.newWeekly + f.newYearly).toLocaleString()}</td>
+                  <td style={styles.tdRight}>{f.newSubs.toLocaleString()}</td>
                   <td style={styles.tdRight}>{f.activeWeekly.toLocaleString()}</td>
                   <td style={styles.tdRight}>{f.activeYearly.toLocaleString()}</td>
                   <td style={styles.tdRight}>${f.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>

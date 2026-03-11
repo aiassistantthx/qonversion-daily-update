@@ -26,7 +26,7 @@ export function TopCountriesWidget({ data }: TopCountriesWidgetProps) {
     );
   }
 
-  const maxRoas = Math.max(...data.countries.map(c => c.roas || 0));
+  const maxRoas = Math.max(...data.countries.map(c => Number(c.roas) || 0));
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb', marginBottom: 16 }}>
@@ -43,8 +43,8 @@ export function TopCountriesWidget({ data }: TopCountriesWidgetProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {data.countries.map((country) => {
-          const roasPercent = maxRoas > 0 ? ((country.roas || 0) / maxRoas) * 100 : 0;
-          const isPositive = (country.roas || 0) >= 1;
+          const roasPercent = maxRoas > 0 ? ((Number(country.roas) || 0) / maxRoas) * 100 : 0;
+          const isPositive = (Number(country.roas) || 0) >= 1;
 
           return (
             <div
@@ -100,7 +100,7 @@ export function TopCountriesWidget({ data }: TopCountriesWidgetProps) {
                         gap: 4,
                       }}
                     >
-                      {country.roas ? `${country.roas.toFixed(2)}x` : '—'}
+                      {country.roas != null ? `${Number(country.roas).toFixed(2)}x` : '—'}
                       {isPositive && <TrendingUp size={14} />}
                     </div>
                   </div>

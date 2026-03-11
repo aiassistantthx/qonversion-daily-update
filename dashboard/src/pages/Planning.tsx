@@ -2,13 +2,16 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Line } from 'recharts';
 import { Download, TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { BacktestValidation } from '../components/BacktestValidation';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface Assumptions {
   cacTarget: number;
-  monthlyChurn: number;      // Blended monthly churn rate (%)
+  weeklyChurnMonthly: number;   // Weekly churn rate per month (%)
+  yearlyChurnAnnual: number;    // Yearly churn rate per year (%)
+  weeklyShare: number;          // % of new subs choosing weekly (%)
   monthlyBudget: number;
-  organicMonthly: number;    // New organic subscribers per month
+  organicMonthly: number;       // New organic subscribers per month
 }
 
 interface ScenarioConfig {
@@ -31,29 +34,37 @@ interface ForecastPoint {
 }
 
 export function Planning() {
-  // Default values (validated on 11 months backtest, avg error 8.1%)
-  const actualMonthlyChurn = 48;  // Blended monthly churn % (94% weekly @ 51% + 6% yearly @ 5%)
+  // Default values (validated on retention data)
+  const defaultWeeklyChurnMonthly = 51;  // Weekly churn rate per month %
+  const defaultYearlyChurnAnnual = 65;   // Yearly churn rate per year %
+  const defaultWeeklyShare = 78;          // % of new subs choosing weekly
   const defaultBudget = 40000;
-  const defaultOrganicMonthly = 304;  // validated from funnel data
+  const defaultOrganicMonthly = 304;      // validated from funnel data
 
   // Scenario assumptions - only CAC varies
   const [baseAssumptions, setBaseAssumptions] = useState<Assumptions>({
     cacTarget: 59,  // Current paid-only COP
-    monthlyChurn: actualMonthlyChurn,
+    weeklyChurnMonthly: defaultWeeklyChurnMonthly,
+    yearlyChurnAnnual: defaultYearlyChurnAnnual,
+    weeklyShare: defaultWeeklyShare,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
 
   const [optimisticAssumptions, setOptimisticAssumptions] = useState<Assumptions>({
     cacTarget: 45,
-    monthlyChurn: actualMonthlyChurn,
+    weeklyChurnMonthly: defaultWeeklyChurnMonthly,
+    yearlyChurnAnnual: defaultYearlyChurnAnnual,
+    weeklyShare: defaultWeeklyShare,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
 
   const [conservativeAssumptions, setConservativeAssumptions] = useState<Assumptions>({
     cacTarget: 75,
-    monthlyChurn: actualMonthlyChurn,
+    weeklyChurnMonthly: defaultWeeklyChurnMonthly,
+    yearlyChurnAnnual: defaultYearlyChurnAnnual,
+    weeklyShare: defaultWeeklyShare,
     monthlyBudget: defaultBudget,
     organicMonthly: defaultOrganicMonthly,
   });
@@ -90,11 +101,11 @@ export function Planning() {
     // Use activeSubs breakdown if available, otherwise fall back to estimates
     const activeSubs = currentMetrics?.activeSubs;
 
-    // Weekly subscribers (94% of base, high churn)
+    // Weekly subscribers (high churn)
     const weeklyAppleAds = activeSubs?.weekly?.apple_ads || 0;
     const weeklyOrganic = activeSubs?.weekly?.organic || 0;
 
-    // Yearly subscribers (6% of base, low churn - 35% annual renewal = ~5.4% monthly churn)
+    // Yearly subscribers (low churn)
     const yearlyAppleAds = activeSubs?.yearly?.apple_ads || 0;
     const yearlyOrganic = activeSubs?.yearly?.organic || 0;
 
@@ -104,30 +115,30 @@ export function Planning() {
     let yearlyPaidActive = yearlyAppleAds;
     let yearlyOrganicActive = yearlyOrganic;
 
-    // Product-specific parameters (validated)
-    const weeklyMonthlyChurn = 51;  // 51% monthly churn for weekly subs
-    const yearlyMonthlyChurn = 8.4;  // ~8.4% monthly (65% annual churn)
-    const weeklyArpu = 30.27;  // $6.99/week × 4.33 weeks (gross)
+    // Use separate churn rates from assumptions
+    const weeklyRetention = 1 - assumptions.weeklyChurnMonthly / 100;
+    // Convert annual churn to monthly: (1 - yearlyChurn)^(1/12)
+    const yearlyRetention = Math.pow(1 - assumptions.yearlyChurnAnnual / 100, 1 / 12);
+
+    const weeklyArpu = 30.27;  // $6.99/week x 4.33 weeks (gross)
     const yearlyArpu = 4.17;   // $49.99/year / 12 months (gross)
-    const weeklyShareNew = 0.78;  // 78% of new subs choose weekly
+    const weeklyShareFraction = assumptions.weeklyShare / 100;  // Convert % to fraction
 
     for (let month = 0; month < forecastMonths; month++) {
       const forecastDate = new Date(today);
       forecastDate.setMonth(forecastDate.getMonth() + month + 1);
 
       const newPaidSubs = assumptions.monthlyBudget / assumptions.cacTarget;
-      const newPaidWeekly = newPaidSubs * weeklyShareNew;
-      const newPaidYearly = newPaidSubs * (1 - weeklyShareNew);
-      const newOrganicWeekly = assumptions.organicMonthly * weeklyShareNew;
-      const newOrganicYearly = assumptions.organicMonthly * (1 - weeklyShareNew);
+      const newPaidWeekly = newPaidSubs * weeklyShareFraction;
+      const newPaidYearly = newPaidSubs * (1 - weeklyShareFraction);
+      const newOrganicWeekly = assumptions.organicMonthly * weeklyShareFraction;
+      const newOrganicYearly = assumptions.organicMonthly * (1 - weeklyShareFraction);
 
-      // WEEKLY SUBSCRIBERS (high churn)
-      const weeklyRetention = (1 - weeklyMonthlyChurn / 100);
+      // WEEKLY SUBSCRIBERS (high churn - applied monthly)
       weeklyPaidActive = weeklyPaidActive * weeklyRetention + newPaidWeekly;
       weeklyOrganicActive = weeklyOrganicActive * weeklyRetention + newOrganicWeekly;
 
-      // YEARLY SUBSCRIBERS (low churn)
-      const yearlyRetention = (1 - yearlyMonthlyChurn / 100);
+      // YEARLY SUBSCRIBERS (low churn - annual rate converted to monthly)
       yearlyPaidActive = yearlyPaidActive * yearlyRetention + newPaidYearly;
       yearlyOrganicActive = yearlyOrganicActive * yearlyRetention + newOrganicYearly;
 
@@ -187,7 +198,7 @@ export function Planning() {
       optimistic: optimisticForecast[i]?.totalRevenue / 1000 || 0,
       conservative: conservativeForecast[i]?.totalRevenue / 1000 || 0,
     }));
-  }, [historicalData, baseAssumptions, optimisticAssumptions, conservativeAssumptions, forecastMonths]);
+  }, [forecastApiData, baseAssumptions, optimisticAssumptions, conservativeAssumptions, forecastMonths]);
 
 
   const handleExport = () => {
@@ -218,7 +229,9 @@ export function Planning() {
         { label: 'CAC Target ($)', key: 'cacTarget', step: 1 },
         { label: 'Monthly Budget ($)', key: 'monthlyBudget', step: 1000 },
         { label: 'Organic Monthly', key: 'organicMonthly', step: 50 },
-        { label: 'Monthly Churn (%)', key: 'monthlyChurn', step: 1 },
+        { label: 'Weekly Churn (%/mo)', key: 'weeklyChurnMonthly', step: 1 },
+        { label: 'Yearly Churn (%/yr)', key: 'yearlyChurnAnnual', step: 1 },
+        { label: 'Weekly Share (%)', key: 'weeklyShare', step: 1 },
       ].map(({ label, key, step }) => (
         <div key={key}>
           <label style={styles.inputLabel}>{label}</label>
@@ -276,9 +289,10 @@ export function Planning() {
               <h2 style={styles.cardTitle}>Automated Revenue Forecast</h2>
               <p style={styles.cardSubtitle}>12-month projection based on cohort retention curves</p>
               <div style={styles.modelParams}>
-                <span>📊 Cohort retention model</span>
-                <span>📈 Renewal: {(forecastApiData.modelParameters.yearlyRenewalRate * 100).toFixed(0)}%</span>
-                <span>🔄 Weekly retention: {(forecastApiData.modelParameters.weeklyWeeklyRetention * 100).toFixed(0)}%</span>
+                <span>Spend: ${(forecastApiData.currentMetrics?.avgSpend30d / 1000 || 40).toFixed(0)}k/mo</span>
+                <span>CAC: ${(forecastApiData.currentMetrics?.avgCAC30d || 59).toFixed(0)}</span>
+                <span>Organic: {forecastApiData.currentMetrics?.avgOrganic30d || 304}/mo</span>
+                <span>Weekly Share: {((forecastApiData.currentMetrics?.weeklyShare || 0.78) * 100).toFixed(0)}%</span>
               </div>
             </div>
             {forecastApiData.validation?.avgError && (
@@ -574,6 +588,9 @@ export function Planning() {
           </div>
         </div>
       )}
+
+      {/* Model Backtesting Section */}
+      <BacktestValidation />
     </div>
   );
 }
