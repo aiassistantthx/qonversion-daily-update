@@ -1060,87 +1060,82 @@ router.get('/roas-evolution', async (req, res) => {
 });
 
 // ============================================
-// KEYWORDS PERFORMANCE - Apple Ads keywords data
-// Note: Conversions estimated using average trial and conversion rates
+// KEYWORDS PERFORMANCE - Apple Ads keywords with REAL attribution
+// Matches keyword_id from Apple Ads with events_v2 for actual conversions/revenue
 // ============================================
 router.get('/keywords', async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 90;
 
-    // Get average conversion rates for estimation
-    const ratesResult = await db.query(`
-      SELECT
-        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
-        COUNT(DISTINCT q_user_id) FILTER (
-          WHERE event_name = 'Trial Converted'
-          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
-        ) as conversions
-      FROM events_v2
-      WHERE install_date >= CURRENT_DATE - INTERVAL '${days} days'
-        AND media_source = 'Apple AdServices'
-    `);
-
-    const avgTrials = parseInt(ratesResult.rows[0]?.trials) || 1;
-    const avgConversions = parseInt(ratesResult.rows[0]?.conversions) || 1;
-
-    // Get total installs from Apple Ads for the period
-    const installsResult = await db.query(`
-      SELECT SUM(installs) as total_installs
-      FROM apple_ads_campaigns
-      WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
-    `);
-    const totalInstalls = parseInt(installsResult.rows[0]?.total_installs) || 1;
-
-    // Trial rate and conversion rate
-    const trialRate = avgTrials / totalInstalls;
-    const conversionRate = avgConversions / avgTrials;
-
-    // Get keyword performance from Apple Ads
+    // Get keyword performance with REAL attribution from events_v2
+    // Joins apple_ads_keywords (spend) with events_v2 (revenue/conversions by keyword_id)
     const result = await db.query(`
-      WITH keyword_data AS (
+      WITH keyword_spend AS (
+        -- Apple Ads spend data per keyword
         SELECT
-          keyword_id,
-          keyword_text,
-          campaign_id,
-          SUM(spend) as spend,
-          SUM(installs) as installs,
-          SUM(taps) as taps,
-          SUM(impressions) as impressions
-        FROM apple_ads_keywords
-        WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
-          AND keyword_text IS NOT NULL
-        GROUP BY keyword_id, keyword_text, campaign_id
+          k.keyword_id,
+          k.keyword_text,
+          k.campaign_id,
+          SUM(k.spend) as spend,
+          SUM(k.installs) as installs,
+          SUM(k.taps) as taps,
+          SUM(k.impressions) as impressions
+        FROM apple_ads_keywords k
+        WHERE k.date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND k.keyword_text IS NOT NULL
+          AND k.keyword_id IS NOT NULL
+        GROUP BY k.keyword_id, k.keyword_text, k.campaign_id
+      ),
+      keyword_attribution AS (
+        -- Real conversion/revenue data from events_v2 matched by keyword_id
+        SELECT
+          e.keyword_id,
+          COUNT(DISTINCT e.q_user_id) FILTER (WHERE e.event_name = 'Trial Started') as trials,
+          COUNT(DISTINCT e.q_user_id) FILTER (
+            WHERE e.event_name = 'Trial Converted'
+            OR (e.event_name = 'Subscription Started' AND e.product_id LIKE '%yearly%')
+          ) as conversions,
+          COALESCE(SUM(e.proceeds_usd) FILTER (WHERE e.proceeds_usd > 0 AND NOT e.refund), 0) as revenue
+        FROM events_v2 e
+        WHERE e.install_date >= CURRENT_DATE - INTERVAL '${days} days'
+          AND e.keyword_id IS NOT NULL
+        GROUP BY e.keyword_id
       ),
       campaign_names AS (
-        SELECT DISTINCT campaign_id, campaign_name
+        SELECT DISTINCT ON (campaign_id) campaign_id, campaign_name
         FROM apple_ads_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '${days} days'
+        ORDER BY campaign_id, date DESC
       )
       SELECT
-        kd.keyword_id,
-        kd.keyword_text,
+        ks.keyword_id,
+        ks.keyword_text,
         cn.campaign_name,
-        kd.spend,
-        kd.installs,
-        kd.taps,
-        kd.impressions
-      FROM keyword_data kd
-      LEFT JOIN campaign_names cn ON kd.campaign_id = cn.campaign_id
-      WHERE kd.spend > 10
-      ORDER BY kd.spend DESC
-      LIMIT 100
+        ks.spend,
+        ks.installs,
+        ks.taps,
+        ks.impressions,
+        COALESCE(ka.trials, 0) as trials,
+        COALESCE(ka.conversions, 0) as conversions,
+        COALESCE(ka.revenue, 0) as revenue,
+        CASE WHEN ka.keyword_id IS NOT NULL THEN true ELSE false END as has_attribution
+      FROM keyword_spend ks
+      LEFT JOIN keyword_attribution ka ON ks.keyword_id = ka.keyword_id
+      LEFT JOIN campaign_names cn ON ks.campaign_id = cn.campaign_id
+      WHERE ks.spend > 10
+      ORDER BY ks.spend DESC
+      LIMIT 200
     `);
 
     const keywords = result.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
       const installs = parseInt(row.installs) || 0;
       const taps = parseInt(row.taps) || 0;
-
-      // Estimate trials and conversions based on average rates
-      const estTrials = Math.round(installs * trialRate);
-      const estConversions = Math.round(estTrials * conversionRate);
-      const avgPrice = 50; // Average yearly subscription price
-      const estRevenue = estConversions * avgPrice;
+      const impressions = parseInt(row.impressions) || 0;
+      const trials = parseInt(row.trials) || 0;
+      const conversions = parseInt(row.conversions) || 0;
+      const revenue = parseFloat(row.revenue) || 0;
+      const hasAttribution = row.has_attribution;
 
       return {
         keywordId: row.keyword_id,
@@ -1149,17 +1144,16 @@ router.get('/keywords', async (req, res) => {
         spend,
         installs,
         taps,
-        impressions: parseInt(row.impressions) || 0,
-        trials: estTrials,
-        conversions: estConversions,
-        revenue: estRevenue,
-        cpi: installs > 0 ? spend / installs : null,
-        cpt: estTrials > 0 ? spend / estTrials : null,
-        cop: estConversions > 0 ? spend / estConversions : null,
-        roas: spend > 0 ? estRevenue / spend : null,
-        trialRate: trialRate * 100,
-        crToPaid: conversionRate * 100,
-        isEstimated: true,  // Flag to indicate values are estimated
+        impressions,
+        trials,
+        conversions,
+        revenue,
+        ctr: impressions > 0 ? taps / impressions : null,
+        cvr: taps > 0 ? installs / taps : null,
+        cpa: installs > 0 ? spend / installs : null,
+        cop: conversions > 0 ? spend / conversions : null,
+        roas: spend > 0 ? revenue / spend : null,
+        hasAttribution,  // true = real data, false = no matching events
       };
     });
 
@@ -1170,11 +1164,14 @@ router.get('/keywords', async (req, res) => {
       trials: keywords.reduce((s, k) => s + k.trials, 0),
       conversions: keywords.reduce((s, k) => s + k.conversions, 0),
       revenue: keywords.reduce((s, k) => s + k.revenue, 0),
-      trialRate: trialRate * 100,
-      crToPaid: conversionRate * 100,
+      keywordsWithAttribution: keywords.filter(k => k.hasAttribution).length,
+      keywordsTotal: keywords.length,
     };
     totals.cop = totals.conversions > 0 ? totals.spend / totals.conversions : null;
     totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
+    totals.attributionRate = totals.keywordsTotal > 0
+      ? (totals.keywordsWithAttribution / totals.keywordsTotal * 100).toFixed(1)
+      : 0;
 
     res.json({ keywords, totals, days });
   } catch (error) {

@@ -282,6 +282,7 @@ export interface KeywordPerformance {
   cpa: number | null;
   cop: number | null;
   roas: number | null;
+  hasAttribution: boolean;  // true = real data from keyword_id match
 }
 
 export interface SeasonalityData {

@@ -338,7 +338,7 @@ export function MarketingDashboard() {
 
       {/* Keywords table */}
       {keywordsData && keywordsData.keywords.length > 0 && (
-        <KeywordTable keywords={keywordsData.keywords} />
+        <KeywordTable keywords={keywordsData.keywords} totals={keywordsData.totals} />
       )}
     </div>
   );

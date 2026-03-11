@@ -4,13 +4,27 @@ import type { KeywordPerformance } from '../api';
 import { exportToCSV } from '../utils/export';
 import { useSortableData, SortIcon } from './SortableTable';
 
+interface KeywordTotals {
+  spend: number;
+  installs: number;
+  trials: number;
+  conversions: number;
+  revenue: number;
+  keywordsWithAttribution: number;
+  keywordsTotal: number;
+  cop: number | null;
+  roas: number | null;
+  attributionRate: string;
+}
+
 interface KeywordTableProps {
   keywords: KeywordPerformance[];
+  totals?: KeywordTotals;
 }
 
 const ITEMS_PER_PAGE = 20;
 
-export function KeywordTable({ keywords }: KeywordTableProps) {
+export function KeywordTable({ keywords, totals }: KeywordTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const { sortedData, sortKey, sortAsc, handleSort } = useSortableData<KeywordPerformance>(
     keywords,
@@ -49,7 +63,14 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
       <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
         <div>
           <div className="text-sm font-medium text-gray-900">Keywords Performance</div>
-          <div className="text-xs text-gray-500">{sortedData.length} keywords</div>
+          <div className="text-xs text-gray-500">
+            {sortedData.length} keywords
+            {totals && (
+              <span className="ml-2">
+                • {totals.keywordsWithAttribution} with attribution ({totals.attributionRate}%)
+              </span>
+            )}
+          </div>
         </div>
         <button
           onClick={handleExport}
@@ -125,18 +146,26 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
             {paginatedData.map((kw) => {
               const isGoodCpa = kw.cpa !== null && kw.cpa < 50;
               const isGoodRoas = kw.roas !== null && kw.roas > 1;
+              const hasData = kw.hasAttribution;
 
               return (
                 <tr
                   key={kw.keywordId}
-                  className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                  className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${!hasData ? 'opacity-60' : ''}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-gray-900">{kw.keyword}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-medium text-gray-900">{kw.keyword}</div>
+                      {!hasData && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500" title="No attribution data for this keyword">
+                          No data
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                      {kw.campaign}
+                      {kw.campaign || '—'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-sm text-gray-900">
@@ -152,17 +181,17 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
                     {kw.installs?.toLocaleString() ?? '-'}
                   </td>
                   <td className={`px-4 py-3 text-right font-mono text-sm font-medium ${
-                    isGoodCpa ? 'text-green-600' : 'text-red-600'
+                    hasData ? (isGoodCpa ? 'text-green-600' : 'text-red-600') : 'text-gray-400'
                   }`}>
                     {kw.cpa !== null ? formatCurrency(kw.cpa) : '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-sm text-gray-900">
-                    {kw.conversions?.toLocaleString() ?? '-'}
+                    {hasData ? (kw.conversions?.toLocaleString() ?? '-') : '—'}
                   </td>
                   <td className={`px-4 py-3 text-right font-mono text-sm font-medium ${
-                    isGoodRoas ? 'text-green-600' : 'text-red-600'
+                    hasData ? (isGoodRoas ? 'text-green-600' : 'text-red-600') : 'text-gray-400'
                   }`}>
-                    {kw.roas !== null ? `${kw.roas.toFixed(2)}x` : '—'}
+                    {hasData && kw.roas !== null ? `${kw.roas.toFixed(2)}x` : '—'}
                   </td>
                 </tr>
               );
