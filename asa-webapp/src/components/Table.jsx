@@ -24,13 +24,14 @@ export function TableBody({ children }) {
   );
 }
 
-export function TableRow({ children, className = '', onClick }) {
+export function TableRow({ children, className = '', onClick, hoverActions }) {
   return (
     <tr
-      className={`${onClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${className}`}
+      className={`relative group ${onClick ? 'cursor-pointer hover:bg-gray-50' : 'hover:bg-gray-50'} ${className}`}
       onClick={onClick}
     >
       {children}
+      {hoverActions}
     </tr>
   );
 }

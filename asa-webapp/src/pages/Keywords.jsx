@@ -6,6 +6,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
+import { HoverActions } from '../components/HoverActions';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -16,7 +17,7 @@ import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -1655,7 +1656,43 @@ export default function Keywords() {
                   };
 
                       groupRows.push(
-                        <TableRow key={kw.keyword_id} className={selectedIds.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
+                        <TableRow
+                          key={kw.keyword_id}
+                          className={selectedIds.has(kw.keyword_id) ? 'bg-blue-50' : ''}
+                          hoverActions={
+                            <HoverActions>
+                              <Button
+                                size="sm"
+                                variant={kw.keyword_status === 'ACTIVE' ? 'danger' : 'success'}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  bulkStatusMutation.mutate({
+                                    campaignId: kw.campaign_id,
+                                    adGroupId: kw.adgroup_id,
+                                    keywordIds: [kw.keyword_id],
+                                    status: kw.keyword_status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
+                                  });
+                                }}
+                                loading={bulkStatusMutation.isPending}
+                                title={kw.keyword_status === 'ACTIVE' ? 'Pause' : 'Enable'}
+                              >
+                                {kw.keyword_status === 'ACTIVE' ? <Pause size={14} /> : <Play size={14} />}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingKeywordId(kw.keyword_id);
+                                  setNewBid(bid);
+                                }}
+                                title="Edit bid"
+                              >
+                                <Edit2 size={14} />
+                              </Button>
+                            </HoverActions>
+                          }
+                        >
                           <TableCell>
                             <input
                               type="checkbox"

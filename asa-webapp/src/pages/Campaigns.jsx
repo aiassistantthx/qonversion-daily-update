@@ -12,13 +12,14 @@ import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { BulkCampaignCreate } from '../components/BulkCampaignCreate';
 import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
+import { HoverActions } from '../components/HoverActions';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Play, Pause,
-  Search, ArrowRight, Layers, KeyRound, Download, Copy
+  Search, ArrowRight, Layers, KeyRound, Download, Copy, Eye
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -441,7 +442,7 @@ export default function Campaigns() {
     setDraggedColumn(null);
   };
 
-  const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 3;
+  const visibleColumnCount = Object.values(visibleColumns).filter(Boolean).length + 2;
 
   return (
     <div className="space-y-6">
@@ -586,7 +587,6 @@ export default function Campaigns() {
                   </SortHeader>
                 );
               })}
-              <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
             {/* Totals Row */}
             {data?.totals && (
@@ -636,7 +636,6 @@ export default function Campaigns() {
                       return <TableHeader key={columnId}>—</TableHeader>;
                   }
                 })}
-                <TableHeader></TableHeader>
               </TableRow>
             )}
           </TableHead>
@@ -708,7 +707,47 @@ export default function Campaigns() {
                 };
 
                 return (
-                  <TableRow key={campaign.id} className="hover:bg-gray-50">
+                  <TableRow
+                    key={campaign.id}
+                    hoverActions={
+                      <HoverActions>
+                        <Button
+                          size="sm"
+                          variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' });
+                          }}
+                          loading={statusMutation.isPending}
+                          title={campaign.status === 'ENABLED' ? 'Pause' : 'Enable'}
+                        >
+                          {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/campaigns/create?copy=${campaign.id}`);
+                          }}
+                          title="Copy campaign"
+                        >
+                          <Copy size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/adgroups?campaigns=${campaign.id}`);
+                          }}
+                          title="View details"
+                        >
+                          <Eye size={14} />
+                        </Button>
+                      </HoverActions>
+                    }
+                  >
                     <TableCell sticky>
                       <input
                         type="checkbox"
@@ -733,26 +772,6 @@ export default function Campaigns() {
                       if (!visibleColumns[columnId]) return null;
                       return renderCell(columnId);
                     })}
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => navigate(`/campaigns/create?copy=${campaign.id}`)}
-                          title="Copy campaign"
-                        >
-                          <Copy size={14} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={campaign.status === 'ENABLED' ? 'danger' : 'success'}
-                          onClick={() => statusMutation.mutate({ id: campaign.id, status: campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' })}
-                          loading={statusMutation.isPending}
-                        >
-                          {campaign.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
-                        </Button>
-                      </div>
-                    </TableCell>
                   </TableRow>
                 );
               })

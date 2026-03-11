@@ -9,13 +9,14 @@ import { Input } from '../components/Input';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
+import { HoverActions } from '../components/HoverActions';
 import { getCampaigns, getAdGroups, updateAdGroupStatus, updateAdGroupBid, deleteAdGroup } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download
+  ChevronUp, ChevronDown, Search, ArrowRight, ArrowLeft, KeyRound, X, Download, Play, Pause, Eye
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation
@@ -593,7 +594,6 @@ export default function AdGroups() {
                   </SortHeader>
                 );
               })}
-              <TableHeader className="w-24">Actions</TableHeader>
             </TableRow>
             {/* Totals Row */}
             {totals && (
@@ -636,7 +636,6 @@ export default function AdGroups() {
                       return <TableHeader key={columnId}>—</TableHeader>;
                   }
                 })}
-                <TableHeader></TableHeader>
               </TableRow>
             )}
           </TableHead>
@@ -723,7 +722,36 @@ export default function AdGroups() {
                 };
 
                 return (
-                  <TableRow key={`${ag.campaignId}-${ag.id}`} className="hover:bg-gray-50">
+                  <TableRow
+                    key={`${ag.campaignId}-${ag.id}`}
+                    hoverActions={
+                      <HoverActions>
+                        <Button
+                          size="sm"
+                          variant={ag.status === 'ENABLED' ? 'danger' : 'success'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            statusMutation.mutate({ campaignId: ag.campaignId, adGroupId: ag.id, status: ag.status === 'ENABLED' ? 'PAUSED' : 'ENABLED' });
+                          }}
+                          loading={statusMutation.isPending}
+                          title={ag.status === 'ENABLED' ? 'Pause' : 'Enable'}
+                        >
+                          {ag.status === 'ENABLED' ? <Pause size={14} /> : <Play size={14} />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigateToKeywords(ag.campaignId, ag.id);
+                          }}
+                          title="View keywords"
+                        >
+                          <KeyRound size={14} />
+                        </Button>
+                      </HoverActions>
+                    }
+                  >
                     <TableCell>
                       <input
                         type="checkbox"
@@ -745,15 +773,6 @@ export default function AdGroups() {
                       if (!visibleColumns[columnId]) return null;
                       return renderCell(columnId);
                     })}
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => navigateToKeywords(ag.campaignId, ag.id)}
-                      >
-                        <KeyRound size={14} />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 );
               })
