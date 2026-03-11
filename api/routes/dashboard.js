@@ -1884,6 +1884,14 @@ router.get('/backtest', async (req, res) => {
     // COHORT-BASED MODEL (advanced)
     // Uses subscriber cohorts with churn curves
     // ============================================
+
+    // Constants for cohort model
+    const COHORT_WEEKLY_PRICE = 6.99;
+    const COHORT_YEARLY_PRICE = 49.99;
+    const WEEKLY_W1_RETENTION = 0.48;       // Week 1 retention
+    const WEEKLY_WEEKLY_RETENTION = 0.92;   // Week-to-week retention after W1
+    const YEARLY_RENEWAL_RATE = 0.35;       // 35% annual renewal
+
     const cohortResults = [];
 
     // Get weekly revenue by product type for cohort modeling
@@ -1931,18 +1939,18 @@ router.get('/backtest', async (req, res) => {
       weeklyBase += newTrialsContributing;
 
       // Predict weekly revenue
-      const predictedWeeklyRevenue = weeklyBase * WEEKLY_PRICE * 4;
+      const predictedWeeklyRevenue = weeklyBase * COHORT_WEEKLY_PRICE * 4;
 
       // Predict yearly revenue (new subs + estimate renewals)
       const avgYearlyNewSubs = prevData.yearlyNewSubs;
-      const yearlyNewRevenue = avgYearlyNewSubs * YEARLY_PRICE;
+      const yearlyNewRevenue = avgYearlyNewSubs * COHORT_YEARLY_PRICE;
 
       // Add estimated renewals (from cohort 12 months ago if available)
       let yearlyRenewalsRevenue = 0;
       if (i >= 12) {
         const cohort12MonthsAgo = revenueByType[historical[i - 12]?.month];
         if (cohort12MonthsAgo) {
-          yearlyRenewalsRevenue = cohort12MonthsAgo.yearlyNewSubs * YEARLY_RENEWAL_RATE * YEARLY_PRICE;
+          yearlyRenewalsRevenue = cohort12MonthsAgo.yearlyNewSubs * YEARLY_RENEWAL_RATE * COHORT_YEARLY_PRICE;
         }
       }
 
