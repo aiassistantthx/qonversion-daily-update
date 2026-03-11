@@ -16,7 +16,7 @@ import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -193,6 +193,10 @@ export default function Keywords() {
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 
+  // Grouping state
+  const [groupBy, setGroupBy] = useState(''); // '', 'matchType', 'performance', 'bidRange'
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
     'keywords-columns',
     DEFAULT_COLUMNS,
@@ -273,6 +277,21 @@ export default function Keywords() {
   // Get all keywords data (including total for all pages)
   const allKeywordsData = keywordsData?.data || [];
   const totalKeywords = keywordsData?.total || allKeywordsData.length;
+
+  // Helper function to categorize keywords
+  const categorizeKeyword = (kw) => {
+    const spend = parseFloat(kw.spend_7d || 0);
+    const revenue = parseFloat(kw.revenue_7d || 0);
+    const roas = spend > 0 ? revenue / spend : 0;
+    const cpa = parseFloat(kw.cpa_7d || 0);
+    const bid = parseFloat(kw.bid_amount || 0);
+
+    return {
+      matchType: kw.match_type || 'UNKNOWN',
+      performance: roas >= 1 ? 'Top' : roas >= 0.5 ? 'Mid' : 'Low',
+      bidRange: bid >= 5 ? '$5+' : bid >= 1 ? '$1-5' : '$0-1',
+    };
+  };
 
   // Filter and sort current page
   const keywords = useMemo(() => {
@@ -410,6 +429,55 @@ export default function Keywords() {
     return result;
   }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, searchQuery, sortField, sortDirection]);
 
+  // Group keywords if grouping is enabled
+  const keywordGroups = useMemo(() => {
+    if (!groupBy) {
+      return [{ name: 'all', label: 'All Keywords', keywords }];
+    }
+
+    const groups = {};
+    keywords.forEach(kw => {
+      const category = categorizeKeyword(kw);
+      const groupKey = category[groupBy];
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(kw);
+    });
+
+    return Object.entries(groups).map(([key, kws]) => {
+      // Calculate aggregate metrics
+      const totals = kws.reduce((acc, kw) => {
+        acc.spend += parseFloat(kw.spend_7d || 0);
+        acc.revenue += parseFloat(kw.revenue_7d || 0);
+        acc.installs += parseInt(kw.installs_7d || 0);
+        acc.impressions += parseInt(kw.impressions_7d || 0);
+        acc.taps += parseInt(kw.taps_7d || 0);
+        acc.paidUsers += parseInt(kw.paid_users_7d || 0);
+        return acc;
+      }, { spend: 0, revenue: 0, installs: 0, impressions: 0, taps: 0, paidUsers: 0 });
+
+      totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
+      totals.cpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
+      totals.cop = totals.paidUsers > 0 ? totals.spend / totals.paidUsers : 0;
+      totals.ttr = totals.impressions > 0 ? totals.taps / totals.impressions : 0;
+      totals.cvr = totals.taps > 0 ? totals.installs / totals.taps : 0;
+      totals.cpt = totals.taps > 0 ? totals.spend / totals.taps : 0;
+      totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
+
+      return {
+        name: key,
+        label: key,
+        keywords: kws,
+        count: kws.length,
+        totals,
+      };
+    }).sort((a, b) => {
+      // Sort groups by spend (descending)
+      return b.totals.spend - a.totals.spend;
+    });
+  }, [keywords, groupBy]);
+
   // Calculate totals from filtered keywords
   const totals = useMemo(() => {
     if (!keywords.length) return null;
@@ -462,6 +530,18 @@ export default function Keywords() {
     } else {
       setSelectedIds(new Set(keywords.map(k => k.keyword_id)));
     }
+  };
+
+  const toggleGroupCollapse = (groupName) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
   };
 
   const updateSearchParams = (newParams) => {
@@ -1132,6 +1212,21 @@ export default function Keywords() {
           <option value="EXACT">Exact</option>
           <option value="BROAD">Broad</option>
         </select>
+
+        <select
+          value={groupBy}
+          onChange={(e) => {
+            setGroupBy(e.target.value);
+            setCollapsedGroups(new Set());
+            setPage(1);
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium"
+        >
+          <option value="">No Grouping</option>
+          <option value="matchType">Group by Match Type</option>
+          <option value="performance">Group by Performance</option>
+          <option value="bidRange">Group by Bid Range</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -1221,7 +1316,67 @@ export default function Keywords() {
                   </TableCell>
                 </TableRow>
               ) : (
-                keywords.map((kw) => {
+                keywordGroups.flatMap((group) => {
+                  const isCollapsed = collapsedGroups.has(group.name);
+                  const groupRows = [];
+
+                  // Group header row (only show if grouping is enabled)
+                  if (groupBy) {
+                    groupRows.push(
+                      <TableRow key={`group-${group.name}`} className="bg-gray-100 hover:bg-gray-200 cursor-pointer border-t-2 border-gray-300">
+                        <TableCell colSpan={2} onClick={() => toggleGroupCollapse(group.name)}>
+                          <div className="flex items-center gap-2 font-semibold text-gray-900">
+                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                            <span>{group.label}</span>
+                            <Badge variant="info">{group.count} keywords</Badge>
+                          </div>
+                        </TableCell>
+                        {columnOrder.map((columnId) => {
+                          if (!visibleColumns[columnId]) return null;
+
+                          // Show aggregate metrics for each column
+                          switch (columnId) {
+                            case 'matchType':
+                            case 'bid':
+                            case 'bidVsCpa':
+                            case 'sov':
+                              return <TableCell key={columnId}>—</TableCell>;
+                            case 'spend':
+                              return <TableCell key={columnId} className="font-semibold">${group.totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                            case 'impressions':
+                              return <TableCell key={columnId} className="font-semibold">{group.totals.impressions?.toLocaleString()}</TableCell>;
+                            case 'taps':
+                              return <TableCell key={columnId} className="font-semibold">{group.totals.taps?.toLocaleString()}</TableCell>;
+                            case 'installs':
+                              return <TableCell key={columnId} className="font-semibold">{group.totals.installs?.toLocaleString()}</TableCell>;
+                            case 'revenue':
+                              return <TableCell key={columnId} className="font-semibold text-green-600">${group.totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                            case 'roas':
+                              return <TableCell key={columnId} className="font-semibold"><span className={group.totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(group.totals.roas * 100)?.toFixed(0)}%</span></TableCell>;
+                            case 'cpa':
+                              return <TableCell key={columnId} className="font-semibold">${group.totals.cpa?.toFixed(2)}</TableCell>;
+                            case 'cac':
+                            case 'cop':
+                              return <TableCell key={columnId} className="font-semibold">${group.totals.cop?.toFixed(2)}</TableCell>;
+                            case 'ttr':
+                              return <TableCell key={columnId} className="font-semibold">{(group.totals.ttr * 100).toFixed(2)}%</TableCell>;
+                            case 'cvr':
+                              return <TableCell key={columnId} className="font-semibold">{(group.totals.cvr * 100).toFixed(2)}%</TableCell>;
+                            case 'cpt':
+                              return <TableCell key={columnId} className="font-semibold">${group.totals.cpt?.toFixed(2)}</TableCell>;
+                            case 'cpm':
+                              return <TableCell key={columnId} className="font-semibold">${group.totals.cpm?.toFixed(2)}</TableCell>;
+                            default:
+                              return <TableCell key={columnId}>—</TableCell>;
+                          }
+                        })}
+                      </TableRow>
+                    );
+                  }
+
+                  // Keyword rows (only show if not collapsed)
+                  if (!isCollapsed) {
+                    group.keywords.forEach((kw) => {
                   const spend = parseFloat(kw.spend_7d || 0);
                   const revenue = parseFloat(kw.revenue_7d || 0);
                   const roas = spend > 0 ? revenue / spend : 0;
@@ -1448,22 +1603,26 @@ export default function Keywords() {
                     }
                   };
 
-                  return (
-                    <TableRow key={kw.keyword_id} className={selectedIds.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(kw.keyword_id)}
-                          onChange={() => toggleSelect(kw.keyword_id)}
-                          className="rounded border-gray-300"
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium max-w-xs truncate" title={kw.keyword_text}>
-                        {kw.keyword_text}
-                      </TableCell>
-                      {columnOrder.map(columnId => visibleColumns[columnId] ? renderCell(columnId) : null)}
-                    </TableRow>
-                  );
+                      groupRows.push(
+                        <TableRow key={kw.keyword_id} className={selectedIds.has(kw.keyword_id) ? 'bg-blue-50' : ''}>
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(kw.keyword_id)}
+                              onChange={() => toggleSelect(kw.keyword_id)}
+                              className="rounded border-gray-300"
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium max-w-xs truncate" title={kw.keyword_text}>
+                            {kw.keyword_text}
+                          </TableCell>
+                          {columnOrder.map(columnId => visibleColumns[columnId] ? renderCell(columnId) : null)}
+                        </TableRow>
+                      );
+                    });
+                  }
+
+                  return groupRows;
                 })
               )}
             </TableBody>
