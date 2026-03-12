@@ -6,10 +6,11 @@ import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Input } from '../components/Input';
+import { SearchTermsAutoNegateModal } from '../components/SearchTermsAutoNegateModal';
 import { getSearchTerms, getCampaigns, createNegativeKeywords, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Plus, Minus
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Plus, Minus, Sparkles
 } from 'lucide-react';
 
 export default function SearchTerms() {
@@ -28,13 +29,15 @@ export default function SearchTerms() {
   const [sortField, setSortField] = useState('spend');
   const [sortDirection, setSortDirection] = useState('desc');
   const [page, setPage] = useState(1);
+  const [showAutoNegateModal, setShowAutoNegateModal] = useState(false);
   const itemsPerPage = 20;
 
   const negativeKeywordMutation = useMutation({
     mutationFn: (data) => createNegativeKeywords(data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries(['search-terms']);
-      alert('Negative keyword added successfully');
+      const count = variables.negativeKeywords?.length || 1;
+      alert(`${count} negative keyword${count > 1 ? 's' : ''} added successfully`);
     },
     onError: (error) => {
       alert(`Failed to add negative keyword: ${error.message}`);
@@ -233,6 +236,37 @@ export default function SearchTerms() {
   const avgCpa = totals.installs > 0 ? totals.spend / totals.installs : 0;
   const avgTtr = totals.impressions > 0 ? totals.taps / totals.impressions : 0;
 
+  const handleBulkAddNegatives = async (termsToAdd) => {
+    const grouped = termsToAdd.reduce((acc, st) => {
+      const key = `${st.campaign_id}-${st.adgroup_id}`;
+      if (!acc[key]) {
+        acc[key] = {
+          campaignId: st.campaign_id,
+          adGroupId: st.adgroup_id,
+          keywords: []
+        };
+      }
+      acc[key].keywords.push({
+        text: st.search_term,
+        matchType: 'EXACT'
+      });
+      return acc;
+    }, {});
+
+    try {
+      for (const group of Object.values(grouped)) {
+        await negativeKeywordMutation.mutateAsync({
+          campaignId: group.campaignId,
+          adGroupId: group.adGroupId,
+          negativeKeywords: group.keywords
+        });
+      }
+      setShowAutoNegateModal(false);
+    } catch (error) {
+      console.error('Error adding negative keywords:', error);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -247,6 +281,9 @@ export default function SearchTerms() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="primary" onClick={() => setShowAutoNegateModal(true)}>
+            <Sparkles size={16} /> Auto-Negate
+          </Button>
           <Button variant="secondary" onClick={exportCSV}>
             <Download size={16} /> Export CSV
           </Button>
@@ -514,6 +551,13 @@ export default function SearchTerms() {
           )}
         </div>
       )}
+
+      <SearchTermsAutoNegateModal
+        open={showAutoNegateModal}
+        onClose={() => setShowAutoNegateModal(false)}
+        searchTerms={allSearchTermsData}
+        onAddNegatives={handleBulkAddNegatives}
+      />
     </div>
   );
 }
