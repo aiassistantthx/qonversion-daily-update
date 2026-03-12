@@ -1,30 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { TrendingUp, RefreshCw } from 'lucide-react';
 import { api } from '../api';
-import { CopWaterfall } from '../components/CopWaterfall';
-import { RevenueSourceBar } from '../components/RevenueSourceBar';
-import { CampaignTable } from '../components/CampaignTable';
-import { MetricCard, detectAnomaly } from '../components/MetricCard';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
-  // These endpoints don't exist yet - use empty defaults
-  const copData = null as null | {
-    current: { d1: number | null; d4: number | null; d7: number | null; d14: number | null; d30: number | null };
-    trend: Array<{date: string; value: number}>
-  };
-  const campaignsData = { campaigns: [] as Array<{campaignId: string; campaignName: string; installs: number; payers: number; cop: number; spend: number; revenue: number; roas: number}> };
-  const revenueSource = { summary: { paid: 0, organic: 0, total: 0, paidPercent: 0, organicPercent: 0 }, daily: [] };
-  const dailyData = { metrics: [] as Array<{cpa: number; spend: number; revenue: number; date: string}> };
-
   const { data: topCountriesRoas } = useQuery({
     queryKey: ['top-countries-roas'],
     queryFn: () => api.getTopCountriesRoas(10),
     refetchInterval: 60000,
   });
 
-  const { data: marketingData, isLoading: marketingLoading, error: marketingError } = useQuery({
+  const { data: marketingData, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['marketing'],
     queryFn: () => api.getMarketing(6),
     refetchInterval: 60000,
@@ -36,122 +24,131 @@ export function MarketingDashboard() {
     refetchInterval: 60000,
   });
 
-  const isLoading = marketingLoading;
-
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading marketing data...</div>
-        </div>
+      <div style={styles.container}>
+        <div style={styles.loading}>Loading marketing data...</div>
       </div>
     );
   }
 
-  if (marketingError) {
+  if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="text-red-800 font-medium mb-1">Error loading marketing data</div>
-          <div className="text-red-600 text-sm">{marketingError.message}</div>
+      <div style={styles.container}>
+        <div style={styles.error}>
+          <strong>Error loading marketing data</strong>
+          <p>{(error as Error).message}</p>
         </div>
       </div>
     );
   }
 
-  // Calculate CPA metrics
-  const todayCpa = dailyData?.metrics?.[0]?.cpa;
-  const weekAvgCpa = (dailyData?.metrics?.slice(0, 7).reduce((sum, m) => sum + (m.cpa || 0), 0) || 0) / 7;
-  const cpaChange = todayCpa && weekAvgCpa ? ((todayCpa - weekAvgCpa) / weekAvgCpa) * 100 : undefined;
-
-  // Extract historical data for anomaly detection
-  const historicalCpa = dailyData?.metrics?.slice(0, 7).map(m => m.cpa || 0).filter(v => v > 0) || [];
-  const historicalSpend = dailyData?.metrics?.slice(0, 30).map(m => m.spend || 0).filter(v => v > 0) || [];
-  const historicalRevenue = dailyData?.metrics?.slice(0, 30).map(m => m.revenue || 0).filter(v => v > 0) || [];
-
-  // Detect anomalies
-  const cpaAnomaly = todayCpa ? detectAnomaly(todayCpa, historicalCpa, 'CPA', true) : undefined;
-  const totalSpend = campaignsData?.campaigns.reduce((sum, c) => sum + c.spend, 0) || 0;
-  const totalRevenue = revenueSource?.summary.total || 0;
-  const spendAnomaly = totalSpend > 0 ? detectAnomaly(totalSpend, historicalSpend, 'Spend') : undefined;
-  const revenueAnomaly = totalRevenue > 0 ? detectAnomaly(totalRevenue, historicalRevenue, 'Revenue') : undefined;
+  // Calculate summary metrics
+  const recentData = marketingData?.data?.slice(0, 3) || [];
+  const totalSpend = recentData.reduce((sum, m) => sum + (m.spend || 0), 0);
+  const totalRevenue = recentData.reduce((sum, m) => sum + (m.revenue?.total || 0), 0);
+  const avgRoas = recentData.length > 0
+    ? recentData.reduce((sum, m) => sum + (m.roas?.d7 || 0), 0) / recentData.length
+    : 0;
+  const avgCop = recentData.length > 0
+    ? recentData.reduce((sum, m) => sum + (m.cop?.d7 || 0), 0) / recentData.length
+    : 0;
 
   return (
-    <div className="p-6 space-y-6 bg-white">
-      {/* Top metrics */}
-      <div className="grid grid-cols-4 gap-4">
-        <MetricCard
-          title="CPA Today"
-          value={todayCpa ? `$${todayCpa.toFixed(2)}` : '—'}
-          change={cpaChange ? -cpaChange : undefined} // Inverted: lower is better
-          changeLabel="Cost per acquisition"
-          anomaly={cpaAnomaly}
-        />
-        <MetricCard
-          title="CPA 7d Avg"
-          value={weekAvgCpa ? `$${weekAvgCpa.toFixed(2)}` : '—'}
-          format="currency"
-        />
-        <MetricCard
-          title="Total Spend (30d)"
-          value={totalSpend}
-          format="currency"
-          anomaly={spendAnomaly}
-        />
-        <MetricCard
-          title="Total Revenue (30d)"
-          value={totalRevenue}
-          format="currency"
-          anomaly={revenueAnomaly}
-        />
+    <div style={styles.container}>
+      {/* Header */}
+      <div style={styles.header}>
+        <div>
+          <h1 style={styles.title}>
+            <TrendingUp size={24} style={{ marginRight: 8, color: '#3b82f6' }} />
+            Marketing Analytics
+          </h1>
+          <p style={styles.subtitle}>
+            Spend, revenue, ROAS trends and keyword performance
+          </p>
+        </div>
+        <button
+          style={styles.refreshBtn}
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw
+            size={16}
+            style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }}
+          />
+        </button>
       </div>
 
-      {/* Spend vs Revenue and ROAS Trend */}
+      {/* Summary Cards */}
+      <div style={styles.metricsGrid}>
+        <div style={{ ...styles.metricCard, borderTop: '3px solid #ef4444' }}>
+          <div style={styles.metricLabel}>Total Spend (3mo)</div>
+          <div style={styles.metricValue}>${(totalSpend / 1000).toFixed(0)}k</div>
+          <div style={styles.metricSub}>Apple Search Ads</div>
+        </div>
+        <div style={{ ...styles.metricCard, borderTop: '3px solid #10b981' }}>
+          <div style={styles.metricLabel}>Total Revenue (3mo)</div>
+          <div style={styles.metricValue}>${(totalRevenue / 1000).toFixed(0)}k</div>
+          <div style={styles.metricSub}>From paid users</div>
+        </div>
+        <div style={{ ...styles.metricCard, borderTop: '3px solid #3b82f6' }}>
+          <div style={styles.metricLabel}>Avg ROAS (d7)</div>
+          <div style={{ ...styles.metricValue, color: avgRoas >= 0.15 ? '#10b981' : '#ef4444' }}>
+            {(avgRoas * 100).toFixed(1)}%
+          </div>
+          <div style={styles.metricSub}>Last 3 months</div>
+        </div>
+        <div style={{ ...styles.metricCard, borderTop: '3px solid #f59e0b' }}>
+          <div style={styles.metricLabel}>Avg COP (d7)</div>
+          <div style={styles.metricValue}>${avgCop.toFixed(0)}</div>
+          <div style={styles.metricSub}>Cost per payer</div>
+        </div>
+      </div>
+
+      {/* Charts Row */}
       {marketingData && marketingData.data.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="text-sm text-gray-600 mb-4 font-medium">Spend vs Revenue (Monthly)</div>
-            <div className="h-64">
+        <div style={styles.grid2}>
+          {/* Spend vs Revenue */}
+          <div style={styles.card}>
+            <h3 style={styles.cardTitle}>Spend vs Revenue (Monthly)</h3>
+            <div style={{ height: 280 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
                     dataKey="month"
                     stroke="#6b7280"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
                   />
                   <YAxis
                     stroke="#6b7280"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
                     tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      color: '#111827'
-                    }}
+                    contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
                     formatter={(value, name) => [
-                      `$${Number(value)?.toFixed(0) || 0}`,
-                      name === 'spend' ? 'Spend' : 'Revenue (Total)'
+                      `$${Number(value)?.toLocaleString() || 0}`,
+                      name === 'spend' ? 'Spend' : 'Revenue'
                     ]}
                   />
+                  <Legend />
                   <Line
                     type="monotone"
                     dataKey="spend"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={false}
+                    dot={{ r: 4 }}
                     name="Spend"
                   />
                   <Line
                     type="monotone"
-                    dataKey={(m) => m.revenue.total}
+                    dataKey={(m) => m.revenue?.total || 0}
                     stroke="#10b981"
                     strokeWidth={2}
-                    dot={false}
+                    dot={{ r: 4 }}
                     name="Revenue"
                   />
                 </LineChart>
@@ -159,165 +156,36 @@ export function MarketingDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="text-sm text-gray-600 mb-4 font-medium">ROAS Trend (d7, Monthly)</div>
-            <div className="h-64">
+          {/* ROAS Trend */}
+          <div style={styles.card}>
+            <h3 style={styles.cardTitle}>ROAS Trend (d7, Monthly)</h3>
+            <div style={{ height: 280 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
                     dataKey="month"
                     stroke="#6b7280"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
                   />
                   <YAxis
                     stroke="#6b7280"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
-                    tickFormatter={(val) => `${val.toFixed(1)}x`}
+                    tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
                   />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      color: '#111827'
-                    }}
-                    formatter={(value) => [`${Number(value)?.toFixed(2) || '—'}x`, 'ROAS (d7)']}
+                    contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+                    formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, 'ROAS (d7)']}
                   />
                   <Line
                     type="monotone"
-                    dataKey={(m) => m.roas.d7}
+                    dataKey={(m) => m.roas?.d7 || 0}
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={true}
+                    dot={{ r: 4, fill: '#3b82f6' }}
                     connectNulls
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* COP section */}
-      <div className="grid grid-cols-2 gap-4">
-        {copData && (
-          <CopWaterfall data={copData.current} targetCop={50} />
-        )}
-
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-          <div className="text-sm text-gray-600 mb-4 font-medium">COP Trend (d7)</div>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={copData?.trend || []}>
-                <XAxis
-                  dataKey="date"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  tickFormatter={(val) => {
-                    const date = new Date(val);
-                    return `${date.getMonth() + 1}/${date.getDate()}`;
-                  }}
-                />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  tickFormatter={(val) => `$${val}`}
-                  domain={['dataMin - 10', 'dataMax + 10']}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    color: '#111827'
-                  }}
-                  formatter={(value) => [`$${Number(value)?.toFixed(2) || '—'}`, 'COP']}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cop"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls
-                />
-                {/* Target line */}
-                <Line
-                  type="monotone"
-                  dataKey={() => 50}
-                  stroke="#f59e0b"
-                  strokeWidth={1}
-                  strokeDasharray="5 5"
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Organic vs Paid and Top Countries */}
-      {revenueSource && (
-        <div className="grid grid-cols-2 gap-4">
-          <RevenueSourceBar
-            organic={revenueSource.summary.organic}
-            paid={revenueSource.summary.paid}
-            organicPercent={revenueSource.summary.organicPercent}
-            paidPercent={revenueSource.summary.paidPercent}
-          />
-
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="text-sm text-gray-600 mb-4 font-medium">Revenue by Source (Daily)</div>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueSource.daily}>
-                  <XAxis
-                    dataKey="date"
-                    stroke="#6b7280"
-                    fontSize={12}
-                    tickLine={false}
-                    tickFormatter={(val) => {
-                      const date = new Date(val);
-                      return `${date.getMonth() + 1}/${date.getDate()}`;
-                    }}
-                  />
-                  <YAxis
-                    stroke="#6b7280"
-                    fontSize={12}
-                    tickLine={false}
-                    tickFormatter={(val) => `$${val}`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      color: '#111827'
-                    }}
-                    formatter={(value, name) => [
-                      `$${Number(value)?.toFixed(0) || 0}`,
-                      name === 'organic' ? 'Organic' : 'Paid'
-                    ]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="organic"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    dot={false}
-                    name="Organic"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="paid"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={false}
-                    name="Paid"
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -331,15 +199,109 @@ export function MarketingDashboard() {
         <TopCountriesRoasWidget countries={topCountriesRoas.countries} />
       )}
 
-      {/* Campaign table */}
-      {campaignsData && campaignsData.campaigns.length > 0 && (
-        <CampaignTable campaigns={campaignsData.campaigns} />
-      )}
-
       {/* Keywords table */}
       {keywordsData && keywordsData.keywords.length > 0 && (
         <KeywordTable keywords={keywordsData.keywords} totals={keywordsData.totals} />
       )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    padding: 24,
+    fontFamily: "'Inter', -apple-system, sans-serif",
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 700,
+    color: '#111827',
+    marginBottom: 4,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  refreshBtn: {
+    padding: 10,
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    cursor: 'pointer',
+    color: '#6b7280',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: 16,
+    marginBottom: 24,
+  },
+  metricCard: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    border: '1px solid #e5e7eb',
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: 500,
+    marginBottom: 8,
+    textTransform: 'uppercase' as const,
+  },
+  metricValue: {
+    fontSize: 28,
+    fontWeight: 700,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  metricSub: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  grid2: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 24,
+    marginBottom: 24,
+  },
+  card: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    border: '1px solid #e5e7eb',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#111827',
+    marginBottom: 16,
+  },
+  loading: {
+    padding: 40,
+    textAlign: 'center' as const,
+    color: '#6b7280',
+  },
+  error: {
+    padding: 20,
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    color: '#991b1b',
+  },
+};

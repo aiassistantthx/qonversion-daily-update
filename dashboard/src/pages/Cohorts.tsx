@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, X, ChevronDown } from 'lucide-react';
+import { RefreshCw, X, ChevronDown, Users } from 'lucide-react';
 import { CohortTable, type CohortsData } from '../components/CohortTable';
 import { RevenueByDayChart, PayerShareChart } from '../components';
 import type { RevenueByDayData, PayerShareData } from '../components';
@@ -87,7 +87,15 @@ export function Cohorts() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>Cohort ROAS Analysis</h1>
+        <div>
+          <h1 style={styles.title}>
+            <Users size={24} style={{ marginRight: 8, color: '#8b5cf6' }} />
+            Cohort ROAS Analysis
+          </h1>
+          <p style={styles.subtitle}>
+            Revenue per user by cohort with LTV curves and payer share analysis
+          </p>
+        </div>
         <div style={styles.headerRight}>
           <select
             value={period}
@@ -213,6 +221,7 @@ export function Cohorts() {
           </button>
         </div>
       </div>
+    </div>
 
       {selectedCountries.length > 0 && (
         <div style={{
@@ -304,9 +313,16 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 24,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 600,
+    fontSize: 22,
+    fontWeight: 700,
     color: '#111827',
+    display: 'flex',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
   },
   headerRight: {
     display: 'flex',
