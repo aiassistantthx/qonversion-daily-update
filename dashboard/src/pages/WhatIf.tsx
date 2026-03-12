@@ -776,16 +776,13 @@ export function WhatIf() {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
 
-      {/* Subscribers Chart - full width below main grid */}
-      <div style={{ ...styles.chartCard, marginBottom: 24 }}>
-        <h3 style={styles.cardTitle}>Subscribers Growth</h3>
+          {/* Subscribers Chart */}
+          <h3 style={{ ...styles.cardTitle, marginTop: 32 }}>Subscribers Growth</h3>
           <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-            Active subscribers (weekly + yearly) and new acquisitions per month
+            Active subscribers and new acquisitions per month
           </p>
-          <div style={{ height: 300 }}>
+          <div style={{ height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={subsChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -883,6 +880,7 @@ export function WhatIf() {
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
 
       {/* Detailed Table with Editable Budgets */}
       <div style={styles.tableCard}>
