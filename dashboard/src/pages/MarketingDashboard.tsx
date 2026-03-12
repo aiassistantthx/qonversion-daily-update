@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, AreaChart, Area } from 'recharts';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
-import { KeywordTable } from '../components/KeywordTable';
 
 export function MarketingDashboard() {
   const { data: topCountriesRoas } = useQuery({
@@ -18,11 +17,6 @@ export function MarketingDashboard() {
     refetchInterval: 60000,
   });
 
-  const { data: keywordsData } = useQuery({
-    queryKey: ['keywords'],
-    queryFn: () => api.getKeywords(30),
-    refetchInterval: 60000,
-  });
 
   if (isLoading) {
     return (
@@ -199,10 +193,6 @@ export function MarketingDashboard() {
         <TopCountriesRoasWidget countries={topCountriesRoas.countries} />
       )}
 
-      {/* Keywords table */}
-      {keywordsData && keywordsData.keywords.length > 0 && (
-        <KeywordTable keywords={keywordsData.keywords} totals={keywordsData.totals} />
-      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
