@@ -33,19 +33,19 @@ const MODEL_DEFAULTS = {
 
   // Acquisition mix (from events_v2 database - varies by month, ~80% avg)
   weeklyShare: 80,                 // % of new subs are weekly
-  organicMonthly: 0,               // Already included in subscriber count
 
-  // Budget defaults
+  // Budget & CAC defaults
   monthlyBudget: 57000,            // Default monthly ad spend
+  forecastCAC: 33,                 // Blended CAC for forecast (historical: $18-35)
 };
 
 interface WhatIfParams {
   monthlyBudget: number;
+  forecastCAC: number;
   weeklyW1Retention: number;
   weeklyWeeklyRetention: number;
   yearlyRenewalRate: number;
   weeklyShare: number;
-  organicMonthly: number;
   weeklyPrice: number;
   yearlyPrice: number;
 }
@@ -166,11 +166,11 @@ function getCohortRevenue(
 export function WhatIf() {
   const [params, setParams] = useState<WhatIfParams>({
     monthlyBudget: MODEL_DEFAULTS.monthlyBudget,
+    forecastCAC: MODEL_DEFAULTS.forecastCAC,
     weeklyW1Retention: MODEL_DEFAULTS.weeklyW1Retention,
     weeklyWeeklyRetention: MODEL_DEFAULTS.weeklyWeeklyRetention,
     yearlyRenewalRate: MODEL_DEFAULTS.yearlyRenewalRate,
     weeklyShare: MODEL_DEFAULTS.weeklyShare,
-    organicMonthly: MODEL_DEFAULTS.organicMonthly,
     weeklyPrice: MODEL_DEFAULTS.weeklyPrice,
     yearlyPrice: MODEL_DEFAULTS.yearlyPrice,
   });
@@ -258,14 +258,9 @@ export function WhatIf() {
     // Each month's subscribers become a cohort
     const cohorts: Cohort[] = [];
 
-    // Calculate average CAC from recent COMPLETE months (for forecasting new subs)
-    // Exclude current month if it's incomplete
-    const completeMonths = historical.filter((h: any) => h.month !== currentMonth);
-    const recentMonths = completeMonths.slice(-3);
-    const avgCAC = recentMonths.reduce((sum: number, h: any) => {
-      const cac = h.subscribers > 0 && h.spend > 0 ? h.spend / h.subscribers : 60;
-      return sum + cac;
-    }, 0) / Math.max(recentMonths.length, 1);
+    // Use forecastCAC parameter for new subscriber calculation
+    // (blended CAC includes organic effect: spend / total_subs)
+    const forecastCAC = params.forecastCAC;
 
     // Process historical months to build cohorts
     // For current month, extrapolate subscribers to full month
@@ -348,9 +343,8 @@ export function WhatIf() {
     for (const monthStr of forecastMonthKeys) {
       const { budget: monthBudget, isCustom } = getBudgetForMonth(monthStr);
 
-      // Calculate new subscribers from budget + organic
-      const newPaidSubs = avgCAC > 0 ? monthBudget / avgCAC : 0;
-      const totalNewSubs = newPaidSubs + params.organicMonthly;
+      // Calculate new subscribers from budget / CAC (blended includes organic)
+      const totalNewSubs = forecastCAC > 0 ? monthBudget / forecastCAC : 0;
 
       // Add new cohort for this forecast month
       cohorts.push({
@@ -431,11 +425,11 @@ export function WhatIf() {
   const resetToDefaults = () => {
     setParams({
       monthlyBudget: MODEL_DEFAULTS.monthlyBudget,
+      forecastCAC: MODEL_DEFAULTS.forecastCAC,
       weeklyW1Retention: MODEL_DEFAULTS.weeklyW1Retention,
       weeklyWeeklyRetention: MODEL_DEFAULTS.weeklyWeeklyRetention,
       yearlyRenewalRate: MODEL_DEFAULTS.yearlyRenewalRate,
       weeklyShare: MODEL_DEFAULTS.weeklyShare,
-      organicMonthly: MODEL_DEFAULTS.organicMonthly,
       weeklyPrice: MODEL_DEFAULTS.weeklyPrice,
       yearlyPrice: MODEL_DEFAULTS.yearlyPrice,
     });
@@ -561,6 +555,15 @@ export function WhatIf() {
               Override per month in table below
             </div>
             <ParamInput
+              label="Blended CAC ($)"
+              value={params.forecastCAC}
+              onChange={v => setParams(p => ({ ...p, forecastCAC: v }))}
+              step={1}
+            />
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, marginBottom: 8 }}>
+              Historical: $18-35 (recent: ~$33)
+            </div>
+            <ParamInput
               label="Forecast Months"
               value={forecastMonths}
               onChange={setForecastMonths}
@@ -613,12 +616,9 @@ export function WhatIf() {
               onChange={v => setParams(p => ({ ...p, weeklyShare: v }))}
               step={1}
             />
-            <ParamInput
-              label="Organic Monthly"
-              value={params.organicMonthly}
-              onChange={v => setParams(p => ({ ...p, organicMonthly: v }))}
-              step={50}
-            />
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, marginBottom: 8 }}>
+              % of new subs choosing weekly (default: 80%)
+            </div>
           </div>
 
           <div style={styles.paramSection}>
