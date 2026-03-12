@@ -18,10 +18,12 @@ import { HoverActions } from '../components/HoverActions';
 import { EmptyState } from '../components/EmptyState';
 import { Delta } from '../components/Delta';
 import { SpendPacingIndicator } from '../components/SpendPacingIndicator';
+import ExportButton from '../components/ExportButton';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk, copyCampaign } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { useFilterPersistence } from '../hooks/useFilterPersistence';
+import { useScheduledExports } from '../hooks/useScheduledExports';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Play, Pause,
@@ -217,6 +219,8 @@ export default function Campaigns() {
     DEFAULT_COLUMNS,
     Object.keys(DEFAULT_COLUMNS)
   );
+
+  const { saveExport } = useScheduledExports('campaigns');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -444,41 +448,29 @@ export default function Campaigns() {
     }
   };
 
-  const exportCSV = () => {
-    const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP', 'TTR', 'CVR', 'CPT', 'CPM'];
-    const rows = campaigns.map(c => {
-      const p = c.performance || {};
-      const spend = parseFloat(p.spend || 0);
-      const revenue = parseFloat(p.revenue || 0);
-      const roas = spend > 0 ? (revenue / spend).toFixed(2) : '';
-      const ttr = parseFloat(p.ttr || 0);
-      const cvr = parseFloat(p.cvr || 0);
-      return [
-        `"${c.name}"`,
-        c.status,
-        c.dailyBudgetAmount?.amount || '',
-        spend.toFixed(2),
-        p.impressions || 0,
-        p.taps || 0,
-        p.installs || 0,
-        p.cpa ? parseFloat(p.cpa).toFixed(2) : '',
-        revenue.toFixed(2),
-        roas,
-        p.cop ? parseFloat(p.cop).toFixed(2) : '',
-        (ttr * 100).toFixed(2) + '%',
-        (cvr * 100).toFixed(2) + '%',
-        p.cpt ? parseFloat(p.cpt).toFixed(2) : '',
-        p.cpm ? parseFloat(p.cpm).toFixed(2) : '',
-      ];
-    });
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `campaigns-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-  };
+  const exportColumns = [
+    { key: 'name', label: 'Campaign', getValue: (c) => c.name },
+    { key: 'status', label: 'Status', getValue: (c) => c.status },
+    { key: 'budget', label: 'Budget', getValue: (c) => c.dailyBudgetAmount?.amount || '' },
+    { key: 'spend', label: 'Spend', getValue: (c) => parseFloat(c.performance?.spend || 0).toFixed(2) },
+    { key: 'revenue', label: 'Revenue', getValue: (c) => parseFloat(c.performance?.revenue || 0).toFixed(2) },
+    { key: 'roas', label: 'ROAS', getValue: (c) => {
+      const spend = parseFloat(c.performance?.spend || 0);
+      const revenue = parseFloat(c.performance?.revenue || 0);
+      return spend > 0 ? (revenue / spend).toFixed(2) : '';
+    }},
+    { key: 'roasD7', label: 'ROAS D7', getValue: (c) => c.performance?.roas_d7 ? parseFloat(c.performance.roas_d7).toFixed(2) : '' },
+    { key: 'roasD30', label: 'ROAS D30', getValue: (c) => c.performance?.roas_d30 ? parseFloat(c.performance.roas_d30).toFixed(2) : '' },
+    { key: 'impressions', label: 'Impressions', getValue: (c) => c.performance?.impressions || 0 },
+    { key: 'taps', label: 'Taps', getValue: (c) => c.performance?.taps || 0 },
+    { key: 'installs', label: 'Installs', getValue: (c) => c.performance?.installs || 0 },
+    { key: 'cpa', label: 'CPA', getValue: (c) => c.performance?.cpa ? parseFloat(c.performance.cpa).toFixed(2) : '' },
+    { key: 'cop', label: 'COP', getValue: (c) => c.performance?.cop ? parseFloat(c.performance.cop).toFixed(2) : '' },
+    { key: 'ttr', label: 'TTR', getValue: (c) => c.performance?.ttr ? (parseFloat(c.performance.ttr) * 100).toFixed(2) + '%' : '' },
+    { key: 'cvr', label: 'CVR', getValue: (c) => c.performance?.cvr ? (parseFloat(c.performance.cvr) * 100).toFixed(2) + '%' : '' },
+    { key: 'cpt', label: 'CPT', getValue: (c) => c.performance?.cpt ? parseFloat(c.performance.cpt).toFixed(2) : '' },
+    { key: 'cpm', label: 'CPM', getValue: (c) => c.performance?.cpm ? parseFloat(c.performance.cpm).toFixed(2) : '' },
+  ];
 
   const [draggedColumn, setDraggedColumn] = useState(null);
 
@@ -526,9 +518,15 @@ export default function Campaigns() {
                 onToggle={toggleColumn}
                 onReset={resetToDefault}
               />
-              <Button variant="secondary" onClick={exportCSV}>
-                <Download size={16} /> Export CSV
-              </Button>
+              <ExportButton
+                data={campaigns}
+                columns={exportColumns}
+                visibleColumns={columnOrder.filter(col => visibleColumns[col])}
+                filename="campaigns"
+                pageKey="campaigns"
+                currentFilters={{ statusFilter, healthFilter, searchQuery, sortField, sortDirection }}
+                onScheduleExport={saveExport}
+              />
               <Button variant="secondary" onClick={() => setBulkCreateOpen(true)}>
                 Bulk Create
               </Button>
