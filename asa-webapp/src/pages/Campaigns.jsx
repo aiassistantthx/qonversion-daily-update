@@ -17,6 +17,7 @@ import { PresetViews } from '../components/PresetViews';
 import { HoverActions } from '../components/HoverActions';
 import { EmptyState } from '../components/EmptyState';
 import { Delta } from '../components/Delta';
+import { SpendPacingIndicator } from '../components/SpendPacingIndicator';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk, copyCampaign } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -35,6 +36,7 @@ const DEFAULT_COLUMNS = {
   health: true,
   trend: true,
   spend: true,
+  pacing: true,
   revenue: true,
   roas: true,
   roasD7: false,
@@ -56,6 +58,7 @@ const COLUMN_DEFINITIONS = [
   { id: 'health', label: 'Health' },
   { id: 'trend', label: 'Trend' },
   { id: 'spend', label: 'Spend' },
+  { id: 'pacing', label: 'Pacing' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'roas', label: 'ROAS' },
   { id: 'roasD7', label: 'ROAS D7' },
@@ -81,6 +84,7 @@ const PRESET_VIEWS = [
       health: true,
       trend: true,
       spend: false,
+      pacing: false,
       revenue: true,
       roas: true,
       installs: true,
@@ -101,6 +105,7 @@ const PRESET_VIEWS = [
       health: false,
       trend: false,
       spend: true,
+      pacing: true,
       revenue: false,
       roas: false,
       installs: false,
@@ -121,6 +126,7 @@ const PRESET_VIEWS = [
       health: false,
       trend: false,
       spend: false,
+      pacing: false,
       revenue: false,
       roas: false,
       installs: false,
@@ -141,6 +147,7 @@ const PRESET_VIEWS = [
       health: true,
       trend: true,
       spend: true,
+      pacing: true,
       revenue: true,
       roas: true,
       installs: true,
@@ -629,7 +636,7 @@ export default function Campaigns() {
                 const column = COLUMN_DEFINITIONS.find(c => c.id === columnId);
                 if (!column) return null;
 
-                if (columnId === 'health' || columnId === 'trend') {
+                if (columnId === 'health' || columnId === 'trend' || columnId === 'pacing') {
                   return (
                     <TableHeader
                       key={columnId}
@@ -678,6 +685,7 @@ export default function Campaigns() {
                     case 'deliveryStatus':
                     case 'health':
                     case 'trend':
+                    case 'pacing':
                       return <TableHeader key={columnId}>—</TableHeader>;
                     case 'spend':
                       return <TableHeader key={columnId}>
@@ -784,6 +792,15 @@ export default function Campaigns() {
                       return <TableCell key={columnId}><Sparkline data={campaign.performance?.trend_7d || []} /></TableCell>;
                     case 'spend':
                       return <TableCell key={columnId}>${getPerf(campaign, 'spend').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
+                    case 'pacing':
+                      return (
+                        <TableCell key={columnId}>
+                          <SpendPacingIndicator
+                            spend={getPerf(campaign, 'spend')}
+                            budget={campaign.dailyBudgetAmount?.amount || 0}
+                          />
+                        </TableCell>
+                      );
                     case 'revenue':
                       return <TableCell key={columnId} className="font-medium text-green-600">${getPerf(campaign, 'revenue').toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>;
                     case 'roas':
