@@ -400,6 +400,16 @@ export function WhatIf() {
     type: d.type,
   }));
 
+  // Subscribers chart data
+  const subsChartData = forecastData.map(d => ({
+    month: d.month.slice(2),
+    newSubs: d.newSubs,
+    weeklyActive: d.weeklyActive,
+    yearlyActive: d.yearlyActive,
+    totalActive: d.weeklyActive + d.yearlyActive,
+    type: d.type,
+  }));
+
   // Summary metrics
   const historicalData = forecastData.filter(d => d.type === 'historical' || d.type === 'current');
   const futureData = forecastData.filter(d => d.type === 'forecast');
@@ -768,6 +778,111 @@ export function WhatIf() {
           </div>
         </div>
       </div>
+
+      {/* Subscribers Chart - full width below main grid */}
+      <div style={{ ...styles.chartCard, marginBottom: 24 }}>
+        <h3 style={styles.cardTitle}>Subscribers Growth</h3>
+          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+            Active subscribers (weekly + yearly) and new acquisitions per month
+          </p>
+          <div style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={subsChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="month"
+                  stroke="#6b7280"
+                  fontSize={11}
+                  tickLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  yAxisId="active"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}
+                />
+                <YAxis
+                  yAxisId="new"
+                  orientation="right"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}
+                  formatter={(value, name) => {
+                    const v = Number(value).toLocaleString();
+                    if (name === 'totalActive') return [v, 'Total Active'];
+                    if (name === 'weeklyActive') return [v, 'Weekly Active'];
+                    if (name === 'yearlyActive') return [v, 'Yearly Active'];
+                    if (name === 'newSubs') return [v, 'New Subscribers'];
+                    return [v, name];
+                  }}
+                />
+                <Legend />
+
+                {/* Reference line for forecast start */}
+                {lastHistorical && (
+                  <ReferenceLine
+                    x={lastHistorical.month.slice(2)}
+                    stroke="#6b7280"
+                    strokeDasharray="3 3"
+                    yAxisId="active"
+                  />
+                )}
+
+                {/* New subscribers (bars) */}
+                <Bar
+                  yAxisId="new"
+                  dataKey="newSubs"
+                  fill="#10b981"
+                  opacity={0.6}
+                  name="newSubs"
+                />
+
+                {/* Total active subscribers (area) */}
+                <Area
+                  yAxisId="active"
+                  type="monotone"
+                  dataKey="totalActive"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="#3b82f620"
+                  name="totalActive"
+                />
+
+                {/* Weekly active (line) */}
+                <Line
+                  yAxisId="active"
+                  type="monotone"
+                  dataKey="weeklyActive"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  name="weeklyActive"
+                />
+
+                {/* Yearly active (line) */}
+                <Line
+                  yAxisId="active"
+                  type="monotone"
+                  dataKey="yearlyActive"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  name="yearlyActive"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
 
       {/* Detailed Table with Editable Budgets */}
       <div style={styles.tableCard}>
