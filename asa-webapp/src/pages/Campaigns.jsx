@@ -10,12 +10,14 @@ import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight'
 import { ColumnPicker } from '../components/ColumnPicker';
 import { BulkActionsToolbar } from '../components/BulkActionsToolbar';
 import { BulkCampaignCreate } from '../components/BulkCampaignCreate';
+import { CampaignDuplicateModal } from '../components/CampaignDuplicateModal';
+import { BulkDuplicateModal } from '../components/BulkDuplicateModal';
 import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
 import { HoverActions } from '../components/HoverActions';
 import { EmptyState } from '../components/EmptyState';
 import { Delta } from '../components/Delta';
-import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
+import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk, copyCampaign } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { TableSkeleton } from '../components/SkeletonLoader';
@@ -190,6 +192,9 @@ export default function Campaigns() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [campaignToDuplicate, setCampaignToDuplicate] = useState(null);
+  const [bulkDuplicateOpen, setBulkDuplicateOpen] = useState(false);
 
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset, reorderColumns } = useColumnSettings(
     'campaigns-columns',
@@ -205,6 +210,15 @@ export default function Campaigns() {
   const statusMutation = useMutation({
     mutationFn: ({ id, status }) => updateCampaignStatus(id, status),
     onSuccess: () => queryClient.invalidateQueries(['campaigns']),
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: ({ id, data }) => copyCampaign(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['campaigns']);
+      setDuplicateModalOpen(false);
+      setCampaignToDuplicate(null);
+    },
   });
 
   // Helper to get performance value
@@ -382,6 +396,38 @@ export default function Campaigns() {
     }
   };
 
+  const handleDuplicate = (duplicateData) => {
+    duplicateMutation.mutate({
+      id: campaignToDuplicate.id,
+      data: duplicateData
+    });
+  };
+
+  const openDuplicateModal = (campaign) => {
+    setCampaignToDuplicate(campaign);
+    setDuplicateModalOpen(true);
+  };
+
+  const handleBulkDuplicate = async (duplicates) => {
+    try {
+      for (const duplicate of duplicates) {
+        await copyCampaign(duplicate.sourceId, {
+          name: duplicate.name,
+          copyAdGroups: duplicate.copyAdGroups,
+          copyKeywords: duplicate.copyKeywords,
+          copyBids: duplicate.copyBids,
+          countriesOrRegions: duplicate.countriesOrRegions
+        });
+      }
+      queryClient.invalidateQueries(['campaigns']);
+      setBulkDuplicateOpen(false);
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Bulk duplicate failed:', error);
+      alert('Failed to duplicate campaigns: ' + error.message);
+    }
+  };
+
   const exportCSV = () => {
     const headers = ['Campaign', 'Status', 'Budget', 'Spend', 'Impressions', 'Taps', 'Installs', 'CPA', 'Revenue', 'ROAS', 'COP', 'TTR', 'CVR', 'CPT', 'CPM'];
     const rows = campaigns.map(c => {
@@ -528,6 +574,9 @@ export default function Campaigns() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
+            <Button variant="secondary" size="sm" onClick={() => setBulkDuplicateOpen(true)}>
+              <Copy size={14} /> Duplicate
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => navigate(`/adgroups?campaigns=${[...selectedIds].join(',')}`)}>
               <Layers size={14} /> Ad Groups
             </Button>
@@ -797,9 +846,9 @@ export default function Campaigns() {
                           variant="secondary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/campaigns/create?copy=${campaign.id}`);
+                            openDuplicateModal(campaign);
                           }}
-                          title="Copy campaign"
+                          title="Duplicate campaign"
                         >
                           <Copy size={14} />
                         </Button>
@@ -867,6 +916,25 @@ export default function Campaigns() {
         entityType="campaigns"
         canAdjustBid={false}
         isLoading={statusMutation.isPending}
+      />
+
+      <CampaignDuplicateModal
+        campaign={campaignToDuplicate}
+        isOpen={duplicateModalOpen}
+        onClose={() => {
+          setDuplicateModalOpen(false);
+          setCampaignToDuplicate(null);
+        }}
+        onDuplicate={handleDuplicate}
+        isLoading={duplicateMutation.isPending}
+      />
+
+      <BulkDuplicateModal
+        campaigns={selectedCampaigns}
+        isOpen={bulkDuplicateOpen}
+        onClose={() => setBulkDuplicateOpen(false)}
+        onDuplicate={handleBulkDuplicate}
+        isLoading={duplicateMutation.isPending}
       />
 
       <BulkCampaignCreate

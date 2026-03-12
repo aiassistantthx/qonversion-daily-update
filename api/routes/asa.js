@@ -856,7 +856,9 @@ router.post('/campaigns/:id/copy', async (req, res) => {
     const {
       name,
       copyAdGroups = true,
-      copyKeywords = true
+      copyKeywords = true,
+      copyBids = true,
+      countriesOrRegions
     } = req.body;
 
     // Get original campaign
@@ -870,7 +872,7 @@ router.post('/campaigns/:id/copy', async (req, res) => {
     const campaignPayload = {
       name: name || `${originalCampaign.name} (Copy)`,
       adamId: originalCampaign.adamId,
-      countriesOrRegions: originalCampaign.countriesOrRegions,
+      countriesOrRegions: countriesOrRegions || originalCampaign.countriesOrRegions,
       supplySources: originalCampaign.supplySources,
       budgetAmount: originalCampaign.budgetAmount,
       dailyBudgetAmount: originalCampaign.dailyBudgetAmount,
@@ -914,7 +916,7 @@ router.post('/campaigns/:id/copy', async (req, res) => {
             const keywordsToCreate = keywords.map(kw => ({
               text: kw.text,
               matchType: kw.matchType,
-              bidAmount: kw.bidAmount,
+              bidAmount: copyBids ? kw.bidAmount : adGroup.defaultBidAmount,
               status: 'PAUSED'
             }));
 
