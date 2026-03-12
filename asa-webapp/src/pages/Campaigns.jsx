@@ -14,6 +14,7 @@ import { Sparkline } from '../components/Sparkline';
 import { PresetViews } from '../components/PresetViews';
 import { HoverActions } from '../components/HoverActions';
 import { EmptyState } from '../components/EmptyState';
+import { Delta } from '../components/Delta';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -622,6 +623,7 @@ export default function Campaigns() {
                 {columnOrder.map((columnId) => {
                   if (!visibleColumns[columnId]) return null;
                   const totals = data.totals;
+                  const prevTotals = data.prevTotals;
                   switch (columnId) {
                     case 'status':
                     case 'deliveryStatus':
@@ -629,17 +631,35 @@ export default function Campaigns() {
                     case 'trend':
                       return <TableHeader key={columnId}>—</TableHeader>;
                     case 'spend':
-                      return <TableHeader key={columnId}>${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId}>
+                        ${totals.spend?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <Delta current={totals.spend} previous={prevTotals?.spend} />
+                      </TableHeader>;
                     case 'revenue':
-                      return <TableHeader key={columnId} className="text-green-600">${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableHeader>;
+                      return <TableHeader key={columnId} className="text-green-600">
+                        ${totals.revenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <Delta current={totals.revenue} previous={prevTotals?.revenue} />
+                      </TableHeader>;
                     case 'roas':
-                      return <TableHeader key={columnId}><span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(totals.roas * 100)?.toFixed(0)}%</span></TableHeader>;
+                      return <TableHeader key={columnId}>
+                        <span className={totals.roas >= 1 ? 'text-green-600' : 'text-red-500'}>{(totals.roas * 100)?.toFixed(0)}%</span>
+                        <Delta current={totals.roas} previous={prevTotals?.roas} />
+                      </TableHeader>;
                     case 'installs':
-                      return <TableHeader key={columnId}>{totals.installs?.toLocaleString()}</TableHeader>;
+                      return <TableHeader key={columnId}>
+                        {totals.installs?.toLocaleString()}
+                        <Delta current={totals.installs} previous={prevTotals?.installs} />
+                      </TableHeader>;
                     case 'cpa':
-                      return <TableHeader key={columnId}>${totals.cpa?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>
+                        ${totals.cpa?.toFixed(2)}
+                        <Delta current={totals.cpa} previous={prevTotals?.cpa} />
+                      </TableHeader>;
                     case 'cac':
-                      return <TableHeader key={columnId}>${totals.cop?.toFixed(2)}</TableHeader>;
+                      return <TableHeader key={columnId}>
+                        ${totals.cop?.toFixed(2)}
+                        <Delta current={totals.cop} previous={prevTotals?.cop} />
+                      </TableHeader>;
                     case 'kpiDiff':
                       const kpiDiff = totals.cop ? totals.cop - TARGET_CAC : null;
                       return <TableHeader key={columnId}><span className={kpiDiff <= 0 ? 'text-green-600' : 'text-red-600'}>{kpiDiff !== null ? (kpiDiff >= 0 ? '+' : '') + kpiDiff.toFixed(2) : '—'}</span></TableHeader>;
@@ -648,16 +668,32 @@ export default function Campaigns() {
                       return <TableHeader key={columnId}>—</TableHeader>;
                     case 'ttr':
                       const avgTtr = totals.impressions > 0 ? (totals.taps / totals.impressions) * 100 : 0;
-                      return <TableHeader key={columnId}>{avgTtr.toFixed(2)}%</TableHeader>;
+                      const prevTtr = prevTotals?.impressions > 0 ? (prevTotals.taps / prevTotals.impressions) * 100 : 0;
+                      return <TableHeader key={columnId}>
+                        {avgTtr.toFixed(2)}%
+                        <Delta current={avgTtr} previous={prevTtr} />
+                      </TableHeader>;
                     case 'cvr':
                       const avgCvr = totals.taps > 0 ? (totals.installs / totals.taps) * 100 : 0;
-                      return <TableHeader key={columnId}>{avgCvr.toFixed(2)}%</TableHeader>;
+                      const prevCvr = prevTotals?.taps > 0 ? (prevTotals.installs / prevTotals.taps) * 100 : 0;
+                      return <TableHeader key={columnId}>
+                        {avgCvr.toFixed(2)}%
+                        <Delta current={avgCvr} previous={prevCvr} />
+                      </TableHeader>;
                     case 'cpt':
                       const avgCpt = totals.taps > 0 ? totals.spend / totals.taps : 0;
-                      return <TableHeader key={columnId}>${avgCpt.toFixed(2)}</TableHeader>;
+                      const prevCpt = prevTotals?.taps > 0 ? prevTotals.spend / prevTotals.taps : 0;
+                      return <TableHeader key={columnId}>
+                        ${avgCpt.toFixed(2)}
+                        <Delta current={avgCpt} previous={prevCpt} />
+                      </TableHeader>;
                     case 'cpm':
                       const avgCpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
-                      return <TableHeader key={columnId}>${avgCpm.toFixed(2)}</TableHeader>;
+                      const prevCpm = prevTotals?.impressions > 0 ? (prevTotals.spend / prevTotals.impressions) * 1000 : 0;
+                      return <TableHeader key={columnId}>
+                        ${avgCpm.toFixed(2)}
+                        <Delta current={avgCpm} previous={prevCpm} />
+                      </TableHeader>;
                     default:
                       return <TableHeader key={columnId}>—</TableHeader>;
                   }
