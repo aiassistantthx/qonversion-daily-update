@@ -4072,7 +4072,7 @@ router.get('/countries-monthly', async (req, res) => {
 // ============================================
 router.get('/top-countries-roas', async (req, res) => {
   try {
-    const { from, to, limit = 10 } = req.query;
+    const { from, to, limit = 20, minSpend = 100 } = req.query;
 
     // Date filter - default to last 30 days
     let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
@@ -4110,36 +4110,47 @@ router.get('/top-countries-roas', async (req, res) => {
         WHERE ${dateCondition.replaceAll('install_date', 'e.install_date')}
           AND e.media_source = 'Apple AdServices'
         GROUP BY e.country
+      ),
+      all_countries AS (
+        SELECT
+          cm.country,
+          cm.users,
+          cm.subscribers,
+          ROUND(cm.revenue::numeric, 2) as revenue,
+          ROUND((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 2) as spend,
+          CASE
+            WHEN cm.subscribers > 0 THEN
+              ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.subscribers, 0), 2)
+            ELSE NULL
+          END as cop,
+          CASE
+            WHEN ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0 THEN
+              ROUND(cm.revenue / NULLIF((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 0), 2)
+            ELSE NULL
+          END as roas
+        FROM country_metrics cm
+        LEFT JOIN country_installs ci ON cm.country = ci.country
+        CROSS JOIN total_spend ts
+        CROSS JOIN total_installs ti
+        WHERE cm.subscribers > 0
+          AND ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0
+      ),
+      ranked_countries AS (
+        SELECT *,
+          NTILE(2) OVER (ORDER BY spend DESC) as spend_half
+        FROM all_countries
+        WHERE spend >= ${parseFloat(minSpend)}
       )
-      SELECT
-        cm.country,
-        cm.users,
-        cm.subscribers,
-        ROUND(cm.revenue::numeric, 2) as revenue,
-        ROUND((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 2) as spend,
-        CASE
-          WHEN cm.subscribers > 0 THEN
-            ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.subscribers, 0), 2)
-          ELSE NULL
-        END as cop,
-        CASE
-          WHEN ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0 THEN
-            ROUND(cm.revenue / NULLIF((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend, 0), 2)
-          ELSE NULL
-        END as roas
-      FROM country_metrics cm
-      LEFT JOIN country_installs ci ON cm.country = ci.country
-      CROSS JOIN total_spend ts
-      CROSS JOIN total_installs ti
-      WHERE cm.subscribers > 0
-        AND ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0
+      SELECT country, users, subscribers, revenue, spend, cop, roas
+      FROM ranked_countries
+      WHERE spend_half = 1
       ORDER BY roas DESC NULLS LAST
       LIMIT ${parseInt(limit)}
     `);
 
     res.json({
       countries: result.rows,
-      filters: { from, to, limit: parseInt(limit) }
+      filters: { from, to, limit: parseInt(limit), minSpend: parseFloat(minSpend) }
     });
   } catch (error) {
     console.error('Top countries ROAS error:', error);

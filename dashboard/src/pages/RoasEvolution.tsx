@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine } from 'recharts';
-import { RefreshCw, Calendar } from 'lucide-react';
+import { RefreshCw, Calendar, TrendingUp } from 'lucide-react';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -105,7 +105,10 @@ export function RoasEvolution() {
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>ROAS Evolution by Cohort Age</h1>
+          <h1 style={styles.title}>
+            <TrendingUp size={24} style={{ marginRight: 8, color: '#10b981' }} />
+            ROAS Evolution by Cohort Age
+          </h1>
           <p style={styles.subtitle}>
             How ROAS grows as cohorts mature. Each line represents one monthly cohort.
           </p>
@@ -294,10 +297,12 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 24,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 600,
+    fontSize: 22,
+    fontWeight: 700,
     color: '#111827',
     marginBottom: 4,
+    display: 'flex',
+    alignItems: 'center',
   },
   subtitle: {
     fontSize: 14,

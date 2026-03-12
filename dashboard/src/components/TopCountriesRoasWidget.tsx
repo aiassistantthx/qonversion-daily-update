@@ -3,7 +3,6 @@ import type { TopCountryRoas } from '../api';
 
 interface TopCountriesRoasWidgetProps {
   countries: TopCountryRoas[];
-  filterBySpend?: boolean; // Filter to top 50% by spend
 }
 
 function getFlag(countryCode: string): string {
@@ -15,7 +14,7 @@ function getFlag(countryCode: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
-export function TopCountriesRoasWidget({ countries, filterBySpend = true }: TopCountriesRoasWidgetProps) {
+export function TopCountriesRoasWidget({ countries }: TopCountriesRoasWidgetProps) {
   if (!countries || countries.length === 0) {
     return (
       <div style={styles.card}>
@@ -28,28 +27,17 @@ export function TopCountriesRoasWidget({ countries, filterBySpend = true }: TopC
     );
   }
 
-  // Filter to top 50% by spend if enabled
-  let filteredCountries = countries;
-  if (filterBySpend && countries.length > 0) {
-    // Sort by spend descending and take top half
-    const sortedBySpend = [...countries].sort((a, b) => b.spend - a.spend);
-    const halfCount = Math.max(1, Math.ceil(sortedBySpend.length / 2));
-    const topHalf = sortedBySpend.slice(0, halfCount);
-    // Sort by ROAS for display
-    filteredCountries = topHalf.sort((a, b) => (b.roas || 0) - (a.roas || 0));
-  }
-
   return (
     <div style={styles.card}>
       <div style={styles.header}>
         <Trophy size={18} style={{ color: '#f59e0b' }} />
         <span style={styles.title}>Top Countries by ROAS</span>
         <span style={styles.subtitle}>
-          (top 50% by spend)
+          (top 50% by spend, min $100)
         </span>
       </div>
       <div style={styles.list}>
-        {filteredCountries.map((country, index) => {
+        {countries.map((country, index) => {
           const roasPercent = country.roas != null ? country.roas * 100 : 0;
           const isGood = roasPercent >= 100;
 
