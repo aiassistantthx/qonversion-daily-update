@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '../components/Table';
 import { Button } from '../components/Button';
-import { StatusBadge, DeliveryStatusBadge } from '../components/Badge';
+import { StatusBadge, DeliveryStatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { TrafficLight, getTrafficLightStatus } from '../components/TrafficLight';
 import { ColumnPicker } from '../components/ColumnPicker';
@@ -21,10 +21,11 @@ import { SpendPacingIndicator } from '../components/SpendPacingIndicator';
 import { getCampaigns, updateCampaignStatus, deleteCampaign, createCampaignsBulk, copyCampaign } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
+import { useFilterPersistence } from '../hooks/useFilterPersistence';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import {
   ChevronUp, ChevronDown, Play, Pause,
-  Search, ArrowRight, Layers, KeyRound, Download, Copy, Eye, Megaphone, SearchX
+  Search, ArrowRight, Layers, KeyRound, Download, Copy, Eye, Megaphone, SearchX, Filter, RotateCcw
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -192,10 +193,18 @@ export default function Campaigns() {
   const queryClient = useQueryClient();
   const { queryParams, label: dateLabel } = useDateRange();
 
-  const [statusFilter, setStatusFilter] = useState('');
-  const [healthFilter, setHealthFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState('revenue');
+  const { filters, setFilters, resetFilters, syncToUrl, activeFilterCount } = useFilterPersistence('campaigns-filters', {
+    statusFilter: '',
+    healthFilter: '',
+    searchQuery: '',
+    sortField: 'revenue',
+    sortDirection: 'desc',
+  });
+
+  const [statusFilter, setStatusFilter] = useState(filters.statusFilter || '');
+  const [healthFilter, setHealthFilter] = useState(filters.healthFilter || '');
+  const [searchQuery, setSearchQuery] = useState(filters.searchQuery || '');
+  const [sortField, setSortField] = useState(filters.sortField || 'revenue');
   const [sortDirection, setSortDirection] = useState('desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);

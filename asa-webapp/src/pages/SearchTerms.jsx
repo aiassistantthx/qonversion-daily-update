@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Card';
@@ -10,8 +10,9 @@ import { SearchTermsAutoNegateModal } from '../components/SearchTermsAutoNegateM
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { getSearchTerms, getCampaigns, createNegativeKeywords, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
+import { useFilterPersistence } from '../hooks/useFilterPersistence';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Plus, Minus, Sparkles
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Plus, Minus, Sparkles, Filter, RotateCcw
 } from 'lucide-react';
 
 export default function SearchTerms() {
@@ -25,14 +26,30 @@ export default function SearchTerms() {
   const campaignIds = campaignIdsParam ? campaignIdsParam.split(',') : [];
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [campaignFilter, setCampaignFilter] = useState('');
-  const [sortField, setSortField] = useState('spend');
-  const [sortDirection, setSortDirection] = useState('desc');
+  const { filters, setFilters, resetFilters, syncToUrl, activeFilterCount } = useFilterPersistence('search-terms-filters', {
+    searchQuery: '',
+    campaignFilter: '',
+    sortField: 'spend',
+    sortDirection: 'desc',
+  });
+
+  const [searchQuery, setSearchQuery] = useState(filters.searchQuery || '');
+  const [campaignFilter, setCampaignFilter] = useState(filters.campaignFilter || '');
+  const [sortField, setSortField] = useState(filters.sortField || 'spend');
+  const [sortDirection, setSortDirection] = useState(filters.sortDirection || 'desc');
   const [page, setPage] = useState(1);
   const [showAutoNegateModal, setShowAutoNegateModal] = useState(false);
   const [confirmNegative, setConfirmNegative] = useState({ open: false, term: null });
   const itemsPerPage = 20;
+
+  useEffect(() => {
+    setFilters({
+      searchQuery,
+      campaignFilter,
+      sortField,
+      sortDirection,
+    });
+  }, [searchQuery, campaignFilter, sortField, sortDirection]);
 
   const negativeKeywordMutation = useMutation({
     mutationFn: (data) => createNegativeKeywords(data),
@@ -391,6 +408,41 @@ export default function SearchTerms() {
             </option>
           ))}
         </select>
+
+        {activeFilterCount > 0 && (
+          <div className="flex items-center gap-2 border-l pl-4 border-gray-300">
+            <div className="flex items-center gap-2">
+              <Filter size={16} className="text-gray-500" />
+              <Badge variant="info" className="font-medium">
+                {activeFilterCount} active
+              </Badge>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                resetFilters();
+                setSearchQuery('');
+                setCampaignFilter('');
+                setSortField('spend');
+                setSortDirection('desc');
+                setPage(1);
+              }}
+              title="Reset all filters"
+            >
+              <RotateCcw size={14} /> Reset
+            </Button>
+          </div>
+        )}
+
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={syncToUrl}
+          title="Copy URL to share these filters"
+        >
+          Share Filters
+        </Button>
       </div>
 
       <Card>

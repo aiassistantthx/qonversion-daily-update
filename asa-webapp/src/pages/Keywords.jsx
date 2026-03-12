@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Card';
@@ -13,6 +13,7 @@ import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bul
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
 import { useDebounce } from '../hooks/useDebounce';
+import { useFilterPersistence } from '../hooks/useFilterPersistence';
 import { Modal } from '../components/Modal';
 import { BulkKeywordAdd } from '../components/BulkKeywordAdd';
 import { ColumnPicker } from '../components/ColumnPicker';
@@ -21,7 +22,7 @@ import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
 import { QuickFilters } from '../components/QuickFilters';
 import {
-  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye, KeyRound, SearchX
+  ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye, KeyRound, SearchX, Filter, RotateCcw
 } from 'lucide-react';
 
 // Target CAC from yearly payback calculation (proceeds-based)
@@ -181,17 +182,28 @@ export default function Keywords() {
   const campaignIds = campaignIdsParam ? campaignIdsParam.split(',') : [];
   const adGroupIds = adGroupIdsParam ? adGroupIdsParam.split(',') : [];
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const { filters, setFilters, resetFilters, syncToUrl, activeFilterCount } = useFilterPersistence('keywords-filters', {
+    searchQuery: '',
+    matchTypeFilter: '',
+    campaignFilter: '',
+    sortField: 'spend',
+    sortDirection: 'desc',
+    groupBy: '',
+  });
+
+  const [searchQuery, setSearchQuery] = useState(filters.searchQuery || '');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [matchTypeFilter, setMatchTypeFilter] = useState('');
-  const [campaignFilter, setCampaignFilter] = useState('');
-  const [sortField, setSortField] = useState('spend');
-  const [sortDirection, setSortDirection] = useState('desc');
+  const [matchTypeFilter, setMatchTypeFilter] = useState(filters.matchTypeFilter || '');
+  const [campaignFilter, setCampaignFilter] = useState(filters.campaignFilter || '');
+  const [sortField, setSortField] = useState(filters.sortField || 'spend');
+  const [sortDirection, setSortDirection] = useState(filters.sortDirection || 'desc');
+  const [groupBy, setGroupBy] = useState(filters.groupBy || '');
+
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [editingKeywordId, setEditingKeywordId] = useState(null);
   const [newBid, setNewBid] = useState('');
   const [bulkBidAmount, setBulkBidAmount] = useState('');
-  const [bulkBidMode, setBulkBidMode] = useState('absolute'); // 'absolute' or 'percent'
+  const [bulkBidMode, setBulkBidMode] = useState('absolute');
   const [confirmModal, setConfirmModal] = useState({ open: false, action: null, message: '' });
   const [bulkAddModalOpen, setBulkAddModalOpen] = useState(false);
   const [bulkOptimizeModalOpen, setBulkOptimizeModalOpen] = useState(false);
@@ -199,12 +211,20 @@ export default function Keywords() {
   const [page, setPage] = useState(parseInt(pageParam) || 1);
   const itemsPerPage = 20;
 
-  // Grouping state
-  const [groupBy, setGroupBy] = useState(''); // '', 'matchType', 'performance', 'bidRange'
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
-
-  // Quick filter state
   const [quickFilteredKeywords, setQuickFilteredKeywords] = useState(null);
+
+  // Sync filter changes to persistence
+  useEffect(() => {
+    setFilters({
+      searchQuery,
+      matchTypeFilter,
+      campaignFilter,
+      sortField,
+      sortDirection,
+      groupBy,
+    });
+  }, [searchQuery, matchTypeFilter, campaignFilter, sortField, sortDirection, groupBy]);
 
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
     'keywords-columns',
@@ -1241,6 +1261,43 @@ export default function Keywords() {
           <option value="performance">Group by Performance</option>
           <option value="bidRange">Group by Bid Range</option>
         </select>
+
+        {activeFilterCount > 0 && (
+          <div className="flex items-center gap-2 border-l pl-4 border-gray-300">
+            <div className="flex items-center gap-2">
+              <Filter size={16} className="text-gray-500" />
+              <Badge variant="info" className="font-medium">
+                {activeFilterCount} active
+              </Badge>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                resetFilters();
+                setSearchQuery('');
+                setMatchTypeFilter('');
+                setCampaignFilter('');
+                setSortField('spend');
+                setSortDirection('desc');
+                setGroupBy('');
+                setPage(1);
+              }}
+              title="Reset all filters"
+            >
+              <RotateCcw size={14} /> Reset
+            </Button>
+          </div>
+        )}
+
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={syncToUrl}
+          title="Copy URL to share these filters"
+        >
+          Share Filters
+        </Button>
       </div>
 
       {/* Table */}
