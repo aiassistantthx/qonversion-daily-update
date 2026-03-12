@@ -18,6 +18,7 @@ import { ColumnPicker } from '../components/ColumnPicker';
 import { PresetViews } from '../components/PresetViews';
 import { TableSkeleton } from '../components/SkeletonLoader';
 import BidRecommendation, { calculateBidRecommendation } from '../components/BidRecommendation';
+import { QuickFilters } from '../components/QuickFilters';
 import {
   ChevronUp, ChevronDown, Search, ArrowLeft, X, Download, Edit2, Check, Pause, Play, Percent, AlertTriangle, TrendingUp, Plus, Zap, ChevronRight, Eye, KeyRound, SearchX
 } from 'lucide-react';
@@ -201,6 +202,9 @@ export default function Keywords() {
   const [groupBy, setGroupBy] = useState(''); // '', 'matchType', 'performance', 'bidRange'
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
 
+  // Quick filter state
+  const [quickFilteredKeywords, setQuickFilteredKeywords] = useState(null);
+
   const { visibleColumns, columnOrder, toggleColumn, resetToDefault, applyPreset, activePreset } = useColumnSettings(
     'keywords-columns',
     DEFAULT_COLUMNS,
@@ -300,6 +304,11 @@ export default function Keywords() {
   // Filter and sort current page
   const keywords = useMemo(() => {
     let result = allKeywordsData;
+
+    // Apply quick filter first if active
+    if (quickFilteredKeywords !== null) {
+      result = quickFilteredKeywords;
+    }
 
     // Filter by campaign IDs if multiple
     if (campaignIds.length > 1) {
@@ -431,7 +440,7 @@ export default function Keywords() {
     });
 
     return result;
-  }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, debouncedSearchQuery, sortField, sortDirection]);
+  }, [allKeywordsData, campaignIds, adGroupIds, campaignFilter, matchTypeFilter, debouncedSearchQuery, sortField, sortDirection, quickFilteredKeywords]);
 
   // Group keywords if grouping is enabled
   const keywordGroups = useMemo(() => {
@@ -890,6 +899,16 @@ export default function Keywords() {
         onPresetChange={applyPreset}
         presets={PRESET_VIEWS}
       />
+
+      {/* Quick Filters */}
+      <Card>
+        <div className="p-4">
+          <QuickFilters
+            keywords={allKeywordsData}
+            onFilterChange={(filtered) => setQuickFilteredKeywords(filtered)}
+          />
+        </div>
+      </Card>
 
       {/* Totals */}
       {keywords.length > 0 && (
