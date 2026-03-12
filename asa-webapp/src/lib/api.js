@@ -57,6 +57,8 @@ export const executeAllRules = (dryRun = false, frequency = null) => {
   return api.post('/rules/execute-all', null, { params }).then(res => res.data);
 };
 export const getRuleTemplates = () => api.get('/rule-templates').then(res => res.data);
+export const getRuleExecutions = (params) => api.get('/rule-executions', { params }).then(res => res.data);
+export const undoRuleExecution = (executionId) => api.post(`/rule-executions/${executionId}/undo`).then(res => res.data);
 
 // Templates
 export const getTemplates = (params) => api.get('/templates', { params }).then(res => res.data);

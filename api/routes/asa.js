@@ -2060,6 +2060,253 @@ router.post('/rules/execute-all', async (req, res) => {
   }
 });
 
+/**
+ * GET /asa/rule-executions
+ * Get all rule executions with filters and stats
+ */
+router.get('/rule-executions', async (req, res) => {
+  try {
+    const { status, ruleId, entityType, dateFrom, dateTo, actionType, limit = 100 } = req.query;
+
+    let query = `
+      SELECT
+        e.*,
+        r.name as rule_name
+      FROM asa_rule_executions e
+      LEFT JOIN asa_automation_rules r ON e.rule_id = r.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (status) {
+      params.push(status);
+      query += ` AND e.status = $${params.length}`;
+    }
+
+    if (ruleId) {
+      params.push(parseInt(ruleId));
+      query += ` AND e.rule_id = $${params.length}`;
+    }
+
+    if (entityType) {
+      params.push(entityType);
+      query += ` AND e.entity_type = $${params.length}`;
+    }
+
+    if (actionType) {
+      params.push(actionType);
+      query += ` AND e.action_type = $${params.length}`;
+    }
+
+    if (dateFrom) {
+      params.push(dateFrom);
+      query += ` AND DATE(e.executed_at) >= $${params.length}`;
+    }
+
+    if (dateTo) {
+      params.push(dateTo);
+      query += ` AND DATE(e.executed_at) <= $${params.length}`;
+    }
+
+    query += ` ORDER BY e.executed_at DESC LIMIT ${parseInt(limit)}`;
+
+    const executions = await db.query(query, params);
+
+    // Get today's stats
+    const statsQuery = await db.query(`
+      SELECT
+        COUNT(*) as today_total,
+        COUNT(*) FILTER (WHERE status = 'executed') as today_executed,
+        COUNT(*) FILTER (WHERE status = 'failed') as today_failed
+      FROM asa_rule_executions
+      WHERE DATE(executed_at) = CURRENT_DATE
+    `);
+
+    const weekStatsQuery = await db.query(`
+      SELECT COUNT(*) as week_total
+      FROM asa_rule_executions
+      WHERE executed_at >= CURRENT_DATE - INTERVAL '7 days'
+    `);
+
+    // Get rules that ran today
+    const todayRulesQuery = await db.query(`
+      SELECT
+        e.rule_id,
+        r.name as rule_name,
+        COUNT(*) as execution_count,
+        MAX(e.executed_at) as last_executed_at
+      FROM asa_rule_executions e
+      LEFT JOIN asa_automation_rules r ON e.rule_id = r.id
+      WHERE DATE(e.executed_at) = CURRENT_DATE
+        AND e.status = 'executed'
+      GROUP BY e.rule_id, r.name
+      ORDER BY execution_count DESC
+    `);
+
+    res.json({
+      success: true,
+      data: executions.rows,
+      stats: {
+        todayTotal: parseInt(statsQuery.rows[0].today_total),
+        todayExecuted: parseInt(statsQuery.rows[0].today_executed),
+        todayFailed: parseInt(statsQuery.rows[0].today_failed),
+        weekTotal: parseInt(weekStatsQuery.rows[0].week_total),
+      },
+      todayRules: todayRulesQuery.rows,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /asa/rule-executions/:id/undo
+ * Undo a rule execution by reverting the change
+ */
+router.post('/rule-executions/:id/undo', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the execution record
+    const executionResult = await db.query(
+      'SELECT * FROM asa_rule_executions WHERE id = $1',
+      [id]
+    );
+
+    if (executionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Execution not found' });
+    }
+
+    const execution = executionResult.rows[0];
+
+    // Check if execution can be undone
+    if (execution.status !== 'executed') {
+      return res.status(400).json({ error: 'Only executed actions can be undone' });
+    }
+
+    const executedAt = new Date(execution.executed_at);
+    const now = new Date();
+    const hoursSince = (now - executedAt) / (1000 * 60 * 60);
+
+    if (hoursSince > 24) {
+      return res.status(400).json({ error: 'Cannot undo executions older than 24 hours' });
+    }
+
+    // Parse previous and new values
+    const previousValue = execution.previous_value
+      ? (typeof execution.previous_value === 'string' ? JSON.parse(execution.previous_value) : execution.previous_value)
+      : null;
+
+    if (!previousValue) {
+      return res.status(400).json({ error: 'No previous value to restore' });
+    }
+
+    // Undo the action based on type
+    switch (execution.action_type) {
+      case 'adjust_bid':
+      case 'set_bid':
+        const previousBid = parseFloat(previousValue);
+        await appleAds.updateKeywordBid(
+          execution.campaign_id,
+          execution.adgroup_id,
+          execution.keyword_id,
+          previousBid
+        );
+
+        // Log the undo action
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ('keyword', $1, $2, $3, $1, 'bid_update', 'bidAmount', $4, $5, 'undo')
+        `, [execution.keyword_id, execution.campaign_id, execution.adgroup_id,
+            execution.new_value, String(previousBid)]);
+        break;
+
+      case 'pause':
+        if (execution.entity_type === 'keyword') {
+          await appleAds.updateKeywordStatus(
+            execution.campaign_id,
+            execution.adgroup_id,
+            execution.keyword_id,
+            'ACTIVE'
+          );
+        } else if (execution.entity_type === 'adgroup') {
+          await appleAds.updateAdGroupStatus(
+            execution.campaign_id,
+            execution.adgroup_id,
+            'ENABLED'
+          );
+        } else if (execution.entity_type === 'campaign') {
+          await appleAds.updateCampaignStatus(execution.campaign_id, 'ENABLED');
+        }
+
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ($1, $2, $3, $4, $5, 'status_update', 'status', 'PAUSED', 'ACTIVE', 'undo')
+        `, [
+          execution.entity_type,
+          execution.entity_id,
+          execution.campaign_id,
+          execution.adgroup_id,
+          execution.keyword_id
+        ]);
+        break;
+
+      case 'enable':
+        if (execution.entity_type === 'keyword') {
+          await appleAds.updateKeywordStatus(
+            execution.campaign_id,
+            execution.adgroup_id,
+            execution.keyword_id,
+            'PAUSED'
+          );
+        } else if (execution.entity_type === 'adgroup') {
+          await appleAds.updateAdGroupStatus(
+            execution.campaign_id,
+            execution.adgroup_id,
+            'PAUSED'
+          );
+        } else if (execution.entity_type === 'campaign') {
+          await appleAds.updateCampaignStatus(execution.campaign_id, 'PAUSED');
+        }
+
+        await db.query(`
+          INSERT INTO asa_change_history (
+            entity_type, entity_id, campaign_id, adgroup_id, keyword_id,
+            change_type, field_name, old_value, new_value, source
+          ) VALUES ($1, $2, $3, $4, $5, 'status_update', 'status', 'ENABLED', 'PAUSED', 'undo')
+        `, [
+          execution.entity_type,
+          execution.entity_id,
+          execution.campaign_id,
+          execution.adgroup_id,
+          execution.keyword_id
+        ]);
+        break;
+
+      default:
+        return res.status(400).json({ error: `Cannot undo action type: ${execution.action_type}` });
+    }
+
+    // Mark the execution as undone
+    await db.query(
+      'UPDATE asa_rule_executions SET status = $1 WHERE id = $2',
+      ['undone', id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Successfully undone rule execution',
+      executionId: id,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================
 // TEMPLATES
 // ================================================

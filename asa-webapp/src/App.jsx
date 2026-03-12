@@ -13,6 +13,7 @@ const SearchTerms = lazy(() => import('./pages/SearchTerms'));
 const NegativeKeywords = lazy(() => import('./pages/NegativeKeywords'));
 const Rules = lazy(() => import('./pages/Rules'));
 const RuleEdit = lazy(() => import('./pages/RuleEdit'));
+const RulesExecutionLog = lazy(() => import('./pages/RulesExecutionLog'));
 const Templates = lazy(() => import('./pages/Templates'));
 const History = lazy(() => import('./pages/History'));
 const Countries = lazy(() => import('./pages/Countries'));
@@ -43,6 +44,7 @@ function App() {
             <Route path="/rules" element={<Rules />} />
             <Route path="/rules/new" element={<RuleEdit />} />
             <Route path="/rules/:id/edit" element={<RuleEdit />} />
+            <Route path="/rules/execution-log" element={<RulesExecutionLog />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/history" element={<History />} />
             <Route path="/countries" element={<Countries />} />

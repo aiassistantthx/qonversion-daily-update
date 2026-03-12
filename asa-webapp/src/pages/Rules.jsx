@@ -10,7 +10,7 @@ import { EmptyState } from '../components/EmptyState';
 import RuleTemplates from '../components/RuleTemplates';
 import RuleExecutionHistory from '../components/RuleExecutionHistory';
 import { getRules, getRule, createRule, updateRule, deleteRule, executeRule, previewRule } from '../lib/api';
-import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2, Zap } from 'lucide-react';
+import { Plus, Play, Trash2, Edit2, Eye, X, Check, ChevronDown, ChevronRight, Sparkles, Wand2, Zap, History } from 'lucide-react';
 
 const ACTION_TYPES = [
   { value: 'adjust_bid', label: 'Adjust Bid (%)' },
@@ -342,6 +342,9 @@ export default function Rules() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => navigate('/rules/execution-log')}>
+            <History size={16} /> Execution Log
+          </Button>
           <Button variant="secondary" onClick={() => setShowTemplates(!showTemplates)}>
             <Sparkles size={16} /> Templates
           </Button>
