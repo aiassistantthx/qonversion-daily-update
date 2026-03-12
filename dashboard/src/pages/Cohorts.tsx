@@ -6,6 +6,13 @@ import { RevenueByDayChart, PayerShareChart } from '../components';
 import type { RevenueByDayData, PayerShareData } from '../components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+const fetchWithAuth = (url: string) => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  return fetch(url, { headers }).then(r => r.json());
+};
 
 interface Country {
   country: string;
@@ -21,7 +28,7 @@ export function Cohorts() {
 
   const { data: countriesData } = useQuery<{ data: Country[] }>({
     queryKey: ['countries'],
-    queryFn: () => fetch(`${API_URL}/asa/countries?days=90`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`${API_URL}/asa/countries?days=90`),
   });
 
   const { data, refetch, isFetching } = useQuery<CohortsData>({
@@ -40,18 +47,18 @@ export function Cohorts() {
       if (productType !== 'all') {
         params.set('product_type', productType);
       }
-      return fetch(`${API_URL}/asa/cohorts?${params}`).then(r => r.json());
+      return fetchWithAuth(`${API_URL}/asa/cohorts?${params}`);
     },
   });
 
   const { data: revenueByDayData } = useQuery<RevenueByDayData>({
     queryKey: ['revenue-by-day'],
-    queryFn: () => fetch(`${API_URL}/dashboard/revenue-by-day?months=12`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`${API_URL}/dashboard/revenue-by-day?months=12`),
   });
 
   const { data: payerShareData } = useQuery<PayerShareData>({
     queryKey: ['payer-share'],
-    queryFn: () => fetch(`${API_URL}/dashboard/payer-share?months=12`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`${API_URL}/dashboard/payer-share?months=12`),
   });
 
   const [isCountryOpen, setIsCountryOpen] = useState(false);

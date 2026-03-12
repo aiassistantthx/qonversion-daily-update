@@ -5,6 +5,7 @@ import { RefreshCw, Calendar } from 'lucide-react';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -41,7 +42,12 @@ export function RoasEvolution() {
 
   const { data: roasEvolution, refetch, isFetching } = useQuery<RoasEvolutionData>({
     queryKey: ['roas-evolution', monthsBack],
-    queryFn: () => fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}`).then(r => r.json()),
+    queryFn: async () => {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (API_KEY) headers['X-API-Key'] = API_KEY;
+      const res = await fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}`, { headers });
+      return res.json();
+    },
   });
 
   const cohortMonths = roasEvolution?.cohorts?.map(c => c.month) || [];
