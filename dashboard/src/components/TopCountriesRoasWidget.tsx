@@ -31,20 +31,12 @@ export function TopCountriesRoasWidget({ countries, filterBySpend = true }: TopC
   // Filter to top 50% by spend if enabled
   let filteredCountries = countries;
   if (filterBySpend && countries.length > 0) {
-    // Sort by spend descending
+    // Sort by spend descending and take top half
     const sortedBySpend = [...countries].sort((a, b) => b.spend - a.spend);
-    // Calculate total spend
-    const totalSpend = sortedBySpend.reduce((sum, c) => sum + c.spend, 0);
-    // Take countries until we reach 50% of spend
-    let cumulativeSpend = 0;
-    const top50Percent: TopCountryRoas[] = [];
-    for (const country of sortedBySpend) {
-      top50Percent.push(country);
-      cumulativeSpend += country.spend;
-      if (cumulativeSpend >= totalSpend * 0.5) break;
-    }
+    const halfCount = Math.max(1, Math.ceil(sortedBySpend.length / 2));
+    const topHalf = sortedBySpend.slice(0, halfCount);
     // Sort by ROAS for display
-    filteredCountries = top50Percent.sort((a, b) => (b.roas || 0) - (a.roas || 0));
+    filteredCountries = topHalf.sort((a, b) => (b.roas || 0) - (a.roas || 0));
   }
 
   return (
