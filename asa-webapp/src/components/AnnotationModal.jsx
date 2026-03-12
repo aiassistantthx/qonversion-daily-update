@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal } from './Modal';
-import Input from './Input';
-import Button from './Button';
+import { Input } from './Input';
+import { Button } from './Button';
 
 export default function AnnotationModal({ isOpen, onClose, onSave, annotation = null }) {
   const [formData, setFormData] = useState({

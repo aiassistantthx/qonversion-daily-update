@@ -42,12 +42,37 @@
 @media (max-width: 640px) {
   button, input[type="checkbox"], select {
     min-height: 44px;
+  }
+
+  button:not(.icon-only) {
     min-width: 44px;
   }
 
   input[type="checkbox"] {
     width: 20px;
     height: 20px;
+  }
+
+  /* Ensure padding for safe area on mobile */
+  .page-container {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Improve touch target for table rows */
+  table tbody tr {
+    min-height: 52px;
+  }
+
+  table td {
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+  }
+}
+
+/* Smooth scroll behavior */
+@media (prefers-reduced-motion: no-preference) {
+  .overflow-x-auto {
+    scroll-behavior: smooth;
   }
 }
 

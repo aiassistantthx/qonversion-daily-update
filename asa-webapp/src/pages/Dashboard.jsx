@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import AnnotationModal from '../components/AnnotationModal';
 import { createAnnotation } from '../lib/api';
-import Button from '../components/Button';
+import { Button } from '../components/Button';
 
 // Cohort KPI Card - shows CAC by D1, D4, D7, D14, D30 windows (closed cohorts only)
 function CohortKpiCard({ data, isLoading }) {

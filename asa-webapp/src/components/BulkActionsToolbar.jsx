@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { Button } from './Button';
 import { Modal } from './Modal';
-import { Play, Pause, TrendingUp, Trash2 } from 'lucide-react';
+import { BottomSheet } from './BottomSheet';
+import { StickyActionBar } from './StickyActionBar';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { Play, Pause, TrendingUp, Trash2, MoreHorizontal } from 'lucide-react';
 
 export function BulkActionsToolbar({
   selectedCount,
@@ -21,6 +24,8 @@ export function BulkActionsToolbar({
   const [bidAdjustmentType, setBidAdjustmentType] = useState('percent');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleAction = (action, actionFn) => {
     setPendingAction({ action, actionFn });
@@ -71,6 +76,97 @@ export function BulkActionsToolbar({
 
   if (selectedCount === 0) return null;
 
+  const ModalComponent = isMobile ? BottomSheet : Modal;
+
+  // Mobile view
+  if (isMobile) {
+    return (
+      <>
+        <StickyActionBar show={selectedCount > 0}>
+          <div className="flex-1">
+            <div className="text-sm font-medium text-gray-900">
+              {selectedCount} {entityType}
+            </div>
+            <button
+              onClick={onDeselectAll}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              Deselect all
+            </button>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowMobileMenu(true)}
+          >
+            <MoreHorizontal size={16} /> Actions
+          </Button>
+        </StickyActionBar>
+
+        <BottomSheet
+          open={showMobileMenu}
+          onClose={() => setShowMobileMenu(false)}
+          title="Bulk Actions"
+        >
+          <div className="space-y-2">
+            {onEnable && (
+              <Button
+                variant="success"
+                className="w-full"
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  handleAction('enable', onEnable);
+                }}
+                loading={isLoading}
+              >
+                <Play size={16} /> Enable
+              </Button>
+            )}
+            {onPause && (
+              <Button
+                variant="danger"
+                className="w-full"
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  handleAction('pause', onPause);
+                }}
+                loading={isLoading}
+              >
+                <Pause size={16} /> Pause
+              </Button>
+            )}
+            {canAdjustBid && onAdjustBid && (
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  handleBidAdjustment();
+                }}
+                loading={isLoading}
+              >
+                <TrendingUp size={16} /> Adjust Bid
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="danger"
+                className="w-full"
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  handleAction('delete', onDelete);
+                }}
+                loading={isLoading}
+              >
+                <Trash2 size={16} /> Delete
+              </Button>
+            )}
+          </div>
+        </BottomSheet>
+      </>
+    );
+  }
+
+  // Desktop view
   return (
     <>
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white shadow-lg rounded-lg border border-gray-200 px-6 py-4">
@@ -141,7 +237,7 @@ export function BulkActionsToolbar({
         </div>
       </div>
 
-      <Modal
+      <ModalComponent
         open={showBidModal}
         onClose={() => setShowBidModal(false)}
         title="Adjust Bid"
@@ -202,9 +298,9 @@ export function BulkActionsToolbar({
             </Button>
           </div>
         </div>
-      </Modal>
+      </ModalComponent>
 
-      <Modal
+      <ModalComponent
         open={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
         title="Confirm Action"
@@ -253,7 +349,7 @@ export function BulkActionsToolbar({
             </Button>
           </div>
         </div>
-      </Modal>
+      </ModalComponent>
     </>
   );
 }

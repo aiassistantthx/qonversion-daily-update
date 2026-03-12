@@ -1,9 +1,52 @@
-export function Table({ children, className = '', stickyFirstColumn = false }) {
+import { useState, useEffect, useRef } from 'react';
+import { ChevronRight } from 'lucide-react';
+
+export function Table({ children, className = '', stickyFirstColumn = false, showScrollHint = true }) {
+  const [showHint, setShowHint] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !showScrollHint) return;
+
+    const checkScroll = () => {
+      const hasHorizontalScroll = container.scrollWidth > container.clientWidth;
+      const isAtStart = container.scrollLeft === 0;
+      setShowHint(hasHorizontalScroll && isAtStart);
+    };
+
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+
+    const handleScroll = () => {
+      if (container.scrollLeft > 20) {
+        setShowHint(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+
+    return () => {
+      window.removeEventListener('resize', checkScroll);
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [showScrollHint]);
+
   return (
-    <div className={`overflow-x-auto ${className}`}>
-      <table className={`min-w-full divide-y divide-gray-200 ${stickyFirstColumn ? 'mobile-sticky-table' : ''}`}>
-        {children}
-      </table>
+    <div className="relative">
+      <div ref={containerRef} className={`overflow-x-auto ${className}`}>
+        <table className={`min-w-full divide-y divide-gray-200 ${stickyFirstColumn ? 'mobile-sticky-table' : ''}`}>
+          {children}
+        </table>
+      </div>
+
+      {showHint && (
+        <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-white dark:from-gray-900 to-transparent pointer-events-none flex items-center justify-end pr-2 md:hidden">
+          <div className="bg-blue-500 text-white rounded-full p-1 animate-pulse">
+            <ChevronRight className="w-4 h-4" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
