@@ -687,11 +687,11 @@ export function WhatIf() {
           </div>
         </div>
 
-        {/* Chart */}
+        {/* Charts */}
         <div style={styles.chartCard}>
-          <h3 style={styles.cardTitle}>Revenue: Actual vs Predicted</h3>
-          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-            Solid line = historical actual, dashed = cohort model prediction, shaded = forecast
+          <h3 style={styles.cardTitle}>Revenue Forecast</h3>
+          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
+            Green = actual revenue, Purple = model prediction, Blue bars = ad spend
           </p>
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -741,13 +741,14 @@ export function WhatIf() {
                   />
                 )}
 
-                {/* Spend bars */}
+                {/* Spend bars - blue tint */}
                 <Bar
                   yAxisId="spend"
                   dataKey="spend"
-                  fill="#e5e7eb"
-                  opacity={0.5}
+                  fill="#60a5fa"
+                  opacity={0.35}
                   name="Spend"
+                  radius={[2, 2, 0, 0]}
                 />
 
                 {/* Predicted (full line - both historical and forecast) */}
@@ -755,10 +756,10 @@ export function WhatIf() {
                   yAxisId="revenue"
                   type="monotone"
                   dataKey="predicted"
-                  stroke="#8b5cf6"
+                  stroke="#a78bfa"
                   strokeWidth={2}
-                  strokeDasharray="5 5"
-                  fill="#8b5cf620"
+                  fill="#a78bfa"
+                  fillOpacity={0.15}
                   name="Predicted"
                 />
 
@@ -767,9 +768,9 @@ export function WhatIf() {
                   yAxisId="revenue"
                   type="monotone"
                   dataKey="actual"
-                  stroke="#111827"
+                  stroke="#10b981"
                   strokeWidth={3}
-                  dot={{ fill: '#111827', r: 3 }}
+                  dot={{ fill: '#10b981', r: 4, strokeWidth: 2, stroke: '#fff' }}
                   name="Actual"
                   connectNulls={false}
                 />
@@ -778,9 +779,9 @@ export function WhatIf() {
           </div>
 
           {/* Subscribers Chart */}
-          <h3 style={{ ...styles.cardTitle, marginTop: 32 }}>Subscribers Growth</h3>
-          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-            Active subscribers and new acquisitions per month
+          <h3 style={{ ...styles.cardTitle, marginTop: 32 }}>Subscribers</h3>
+          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
+            Blue area = total active, Orange = weekly, Purple = yearly, Green bars = new subs
           </p>
           <div style={{ height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -837,9 +838,10 @@ export function WhatIf() {
                 <Bar
                   yAxisId="new"
                   dataKey="newSubs"
-                  fill="#10b981"
-                  opacity={0.6}
+                  fill="#34d399"
+                  opacity={0.5}
                   name="newSubs"
+                  radius={[2, 2, 0, 0]}
                 />
 
                 {/* Total active subscribers (area) */}
@@ -849,7 +851,8 @@ export function WhatIf() {
                   dataKey="totalActive"
                   stroke="#3b82f6"
                   strokeWidth={2}
-                  fill="#3b82f620"
+                  fill="#3b82f6"
+                  fillOpacity={0.12}
                   name="totalActive"
                 />
 
@@ -860,7 +863,6 @@ export function WhatIf() {
                   dataKey="weeklyActive"
                   stroke="#f59e0b"
                   strokeWidth={2}
-                  strokeDasharray="5 5"
                   dot={false}
                   name="weeklyActive"
                 />
@@ -870,9 +872,8 @@ export function WhatIf() {
                   yAxisId="active"
                   type="monotone"
                   dataKey="yearlyActive"
-                  stroke="#8b5cf6"
+                  stroke="#a78bfa"
                   strokeWidth={2}
-                  strokeDasharray="5 5"
                   dot={false}
                   name="yearlyActive"
                 />
