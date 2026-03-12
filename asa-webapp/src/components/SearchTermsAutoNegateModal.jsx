@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { Badge } from './Badge';
 import { Input } from './Input';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from './Table';
 import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -68,6 +69,8 @@ export function SearchTermsAutoNegateModal({
   const [useCustom, setUseCustom] = useState(false);
   const [sortField, setSortField] = useState('spend');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pendingTerms, setPendingTerms] = useState([]);
 
   const filteredTerms = useMemo(() => {
     let result = searchTerms;
@@ -176,14 +179,15 @@ export function SearchTermsAutoNegateModal({
       return;
     }
 
-    const confirmed = confirm(
-      `Add ${termsToAdd.length} search term${termsToAdd.length > 1 ? 's' : ''} as negative keyword${termsToAdd.length > 1 ? 's' : ''}?`
-    );
+    setPendingTerms(termsToAdd);
+    setShowConfirm(true);
+  };
 
-    if (confirmed) {
-      onAddNegatives(termsToAdd);
-      setSelectedTerms(new Set());
-    }
+  const confirmAddNegatives = () => {
+    onAddNegatives(pendingTerms);
+    setSelectedTerms(new Set());
+    setShowConfirm(false);
+    setPendingTerms([]);
   };
 
   const getColorClasses = (color, active) => {
@@ -431,6 +435,20 @@ export function SearchTermsAutoNegateModal({
             <Sparkles size={14} /> Add {selectedTerms.size > 0 ? `${selectedTerms.size} ` : ''}as Negative
           </Button>
         </div>
+
+        <ConfirmDialog
+          open={showConfirm}
+          onClose={() => {
+            setShowConfirm(false);
+            setPendingTerms([]);
+          }}
+          onConfirm={confirmAddNegatives}
+          title="Add Negative Keywords"
+          message="Add selected search terms as negative keywords?"
+          confirmText="Add as Negative"
+          items={pendingTerms.map(t => t.search_term)}
+          itemLabel="search terms"
+        />
       </div>
     </Modal>
   );

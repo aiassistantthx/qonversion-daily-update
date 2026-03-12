@@ -3,6 +3,7 @@ import { Button } from './Button';
 import { Modal } from './Modal';
 import { BottomSheet } from './BottomSheet';
 import { StickyActionBar } from './StickyActionBar';
+import { ConfirmDialog } from './ConfirmDialog';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { Play, Pause, TrendingUp, Trash2, MoreHorizontal } from 'lucide-react';
 
@@ -56,21 +57,35 @@ export function BulkActionsToolbar({
     }
   };
 
-  const getActionPreview = () => {
-    if (!pendingAction) return null;
+  const getActionMessage = () => {
+    if (!pendingAction) return '';
 
     const action = pendingAction.action;
-    const count = selectedCount;
 
     switch (action) {
       case 'pause':
-        return `Pause ${count} ${entityType}`;
+        return 'Pause selected items?';
       case 'enable':
-        return `Enable ${count} ${entityType}`;
+        return 'Enable selected items?';
       case 'delete':
-        return `Delete ${count} ${entityType}`;
+        return 'Delete selected items? This cannot be undone.';
       default:
-        return `Update ${count} ${entityType}`;
+        return 'Apply this action?';
+    }
+  };
+
+  const getActionTitle = () => {
+    if (!pendingAction) return 'Confirm Action';
+
+    switch (pendingAction.action) {
+      case 'pause':
+        return 'Pause Items';
+      case 'enable':
+        return 'Enable Items';
+      case 'delete':
+        return 'Delete Items';
+      default:
+        return 'Confirm Action';
     }
   };
 
@@ -300,56 +315,18 @@ export function BulkActionsToolbar({
         </div>
       </ModalComponent>
 
-      <ModalComponent
+      <ConfirmDialog
         open={showConfirmModal}
         onClose={() => setShowConfirmModal(false)}
-        title="Confirm Action"
-        size="md"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Are you sure you want to perform this action?
-          </p>
-
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-900">
-              {getActionPreview()}
-            </div>
-            {selectedItems && selectedItems.length > 0 && (
-              <div className="mt-2 text-xs text-gray-600 max-h-40 overflow-y-auto">
-                <div className="font-medium mb-1">Affected {entityType}:</div>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {selectedItems.slice(0, 10).map((item, idx) => (
-                    <li key={idx}>{item.name || item.id}</li>
-                  ))}
-                  {selectedItems.length > 10 && (
-                    <li className="text-gray-500">
-                      ... and {selectedItems.length - 10} more
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2 justify-end pt-4">
-            <Button
-              variant="secondary"
-              onClick={() => setShowConfirmModal(false)}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={confirmAction}
-              loading={isLoading}
-            >
-              Confirm
-            </Button>
-          </div>
-        </div>
-      </ModalComponent>
+        onConfirm={confirmAction}
+        title={getActionTitle()}
+        message={getActionMessage()}
+        confirmText={pendingAction?.action === 'delete' ? 'Delete' : 'Confirm'}
+        variant={pendingAction?.action === 'delete' || pendingAction?.action === 'pause' ? 'destructive' : 'default'}
+        items={selectedItems || []}
+        itemLabel={entityType}
+        isLoading={isLoading}
+      />
     </>
   );
 }

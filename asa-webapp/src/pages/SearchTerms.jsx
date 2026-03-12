@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { SearchTermsAutoNegateModal } from '../components/SearchTermsAutoNegateModal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { getSearchTerms, getCampaigns, createNegativeKeywords, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import {
@@ -30,6 +31,7 @@ export default function SearchTerms() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [page, setPage] = useState(1);
   const [showAutoNegateModal, setShowAutoNegateModal] = useState(false);
+  const [confirmNegative, setConfirmNegative] = useState({ open: false, term: null });
   const itemsPerPage = 20;
 
   const negativeKeywordMutation = useMutation({
@@ -467,16 +469,7 @@ export default function SearchTerms() {
                             size="sm"
                             variant="ghost"
                             onClick={() => {
-                              if (confirm(`Add "${st.search_term}" as negative keyword?`)) {
-                                negativeKeywordMutation.mutate({
-                                  campaignId: st.campaign_id,
-                                  adGroupId: st.adgroup_id,
-                                  negativeKeywords: [{
-                                    text: st.search_term,
-                                    matchType: 'EXACT'
-                                  }]
-                                });
-                              }
+                              setConfirmNegative({ open: true, term: st });
                             }}
                             title="Add as negative keyword"
                             disabled={negativeKeywordMutation.isPending}

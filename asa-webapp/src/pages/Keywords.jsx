@@ -8,6 +8,7 @@ import { StatusBadge, Badge } from '../components/Badge';
 import { Input } from '../components/Input';
 import { HoverActions } from '../components/HoverActions';
 import { EmptyState } from '../components/EmptyState';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { getKeywords, getCampaigns, updateKeywordBid, bulkUpdateKeywordBids, bulkUpdateKeywordStatus, createKeywords } from '../lib/api';
 import { useDateRange } from '../context/DateRangeContext';
 import { useColumnSettings } from '../hooks/useColumnSettings';
@@ -630,7 +631,7 @@ export default function Keywords() {
     setConfirmModal({
       open: true,
       action: 'pause',
-      message: `Pause ${selectedKeywords.length} keywords?`,
+      selectedKeywords,
       onConfirm: () => {
         const firstKeyword = selectedKeywords[0];
         bulkStatusMutation.mutate({
@@ -648,7 +649,7 @@ export default function Keywords() {
     setConfirmModal({
       open: true,
       action: 'enable',
-      message: `Enable ${selectedKeywords.length} keywords?`,
+      selectedKeywords,
       onConfirm: () => {
         const firstKeyword = selectedKeywords[0];
         bulkStatusMutation.mutate({
@@ -1045,27 +1046,17 @@ export default function Keywords() {
 
       {/* Confirmation Modal */}
       {confirmModal.open && (
-        <Modal
+        <ConfirmDialog
           open={confirmModal.open}
-          onClose={() => setConfirmModal({ open: false, action: null, message: '' })}
-          title="Confirm Action"
-        >
-          <p className="text-gray-600 mb-4">{confirmModal.message}</p>
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="ghost"
-              onClick={() => setConfirmModal({ open: false, action: null, message: '' })}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmModal.onConfirm}
-              loading={bulkStatusMutation.isPending}
-            >
-              Confirm
-            </Button>
-          </div>
-        </Modal>
+          onClose={() => setConfirmModal({ open: false, action: null, selectedKeywords: [] })}
+          onConfirm={confirmModal.onConfirm}
+          title={confirmModal.action === 'pause' ? 'Pause Keywords' : 'Enable Keywords'}
+          message={confirmModal.action === 'pause' ? 'Pause selected keywords?' : 'Enable selected keywords?'}
+          confirmText={confirmModal.action === 'pause' ? 'Pause' : 'Enable'}
+          items={confirmModal.selectedKeywords?.map(k => k.keyword_text) || []}
+          itemLabel="keywords"
+          isLoading={bulkStatusMutation.isPending}
+        />
       )}
 
       {/* Bulk Optimization Preview Modal */}
