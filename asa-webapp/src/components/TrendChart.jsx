@@ -1,10 +1,25 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Label
 } from 'recharts';
+import { getAnnotations } from '../lib/api';
 
 export default function TrendChart({ data }) {
   const [selectedMetric, setSelectedMetric] = useState('spend');
+  const [showAnnotations, setShowAnnotations] = useState(true);
+
+  // Fetch annotations for the date range
+  const { data: annotationsData } = useQuery({
+    queryKey: ['annotations', data?.data?.[0]?.date, data?.data?.[data.data.length - 1]?.date],
+    queryFn: () => {
+      if (!data?.data || data.data.length === 0) return { data: [] };
+      const from = data.data[0].date;
+      const to = data.data[data.data.length - 1].date;
+      return getAnnotations({ from, to });
+    },
+    enabled: !!data?.data && data.data.length > 0
+  });
 
   if (!data || !data.data || data.data.length === 0) {
     return (
@@ -63,6 +78,50 @@ export default function TrendChart({ data }) {
     }
   };
 
+  // Group annotations by date for efficient lookup
+  const annotationsByDate = {};
+  if (annotationsData?.data) {
+    annotationsData.data.forEach(annotation => {
+      const dateKey = new Date(annotation.annotation_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (!annotationsByDate[dateKey]) {
+        annotationsByDate[dateKey] = [];
+      }
+      annotationsByDate[dateKey].push(annotation);
+    });
+  }
+
+  // Custom tooltip that shows annotations
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const annotations = annotationsByDate[label] || [];
+
+    return (
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg">
+        <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">{label}</p>
+        {payload.map((entry, index) => (
+          <p key={index} className="text-sm font-semibold" style={{ color: entry.color }}>
+            {entry.name}: {currentMetric.prefix || ''}{formatValue(entry.value)}{currentMetric.suffix || ''}
+          </p>
+        ))}
+        {annotations.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+            {annotations.map((annotation, idx) => (
+              <div key={idx} className="mt-1">
+                <p className="text-xs font-medium" style={{ color: annotation.color }}>
+                  📌 {annotation.title}
+                </p>
+                {annotation.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{annotation.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-5 border border-gray-200 dark:border-gray-700">
       <div className="flex justify-between items-center mb-4">
@@ -75,6 +134,17 @@ export default function TrendChart({ data }) {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowAnnotations(!showAnnotations)}
+            className={`px-3 py-2 text-xs font-medium rounded-xs cursor-pointer transition-all ${
+              showAnnotations
+                ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-2 border-purple-500'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+            }`}
+            title="Toggle annotations"
+          >
+            📌 Notes
+          </button>
           {metrics.map((metric) => (
             <button
               key={metric.key}
@@ -105,13 +175,7 @@ export default function TrendChart({ data }) {
               domain={[0, 'auto']}
               tickFormatter={(v) => selectedMetric === 'roas' ? `${(v * 100).toFixed(0)}%` : v}
             />
-            <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-              formatter={(v) => {
-                const formatted = formatValue(v);
-                return `${currentMetric.prefix || ''}${formatted}${currentMetric.suffix || ''}`;
-              }}
-            />
+            <Tooltip content={<CustomTooltip />} />
             <Line
               type="monotone"
               dataKey={selectedMetric}
@@ -132,6 +196,24 @@ export default function TrendChart({ data }) {
                 opacity={0.6}
               />
             )}
+            {showAnnotations && annotationsData?.data && annotationsData.data.map((annotation) => {
+              const dateKey = new Date(annotation.annotation_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              return (
+                <ReferenceLine
+                  key={annotation.id}
+                  x={dateKey}
+                  stroke={annotation.color || '#3b82f6'}
+                  strokeDasharray="3 3"
+                  strokeWidth={2}
+                >
+                  <Label
+                    value="📌"
+                    position="top"
+                    style={{ fontSize: '16px' }}
+                  />
+                </ReferenceLine>
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>

@@ -18,7 +18,11 @@ import {
   Download,
   BarChart3,
   Target,
+  Plus,
 } from 'lucide-react';
+import AnnotationModal from '../components/AnnotationModal';
+import { createAnnotation } from '../lib/api';
+import Button from '../components/Button';
 
 // Cohort KPI Card - shows CAC by D1, D4, D7, D14, D30 windows (closed cohorts only)
 function CohortKpiCard({ data, isLoading }) {
@@ -159,6 +163,7 @@ function MetricCard({ title, value, prevValue, icon: Icon, prefix = '', suffix =
 export default function Dashboard() {
   const { queryParams, label: dateLabel } = useDateRange();
   const [showConversionChart, setShowConversionChart] = useState(false);
+  const [showAnnotationModal, setShowAnnotationModal] = useState(false);
 
   const { data: campaignsData, isLoading: campaignsLoading } = useQuery({
     queryKey: ['campaigns', queryParams],
@@ -184,6 +189,18 @@ export default function Dashboard() {
     queryKey: ['cohortCac'],
     queryFn: () => getCohortCac(),
   });
+
+  const handleSaveAnnotation = async (data) => {
+    try {
+      await createAnnotation(data);
+      setShowAnnotationModal(false);
+      // Refetch trends to update annotations
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to create annotation:', error);
+      alert('Failed to create annotation');
+    }
+  };
 
   // Helper to get performance value
   const getPerf = (campaign, field) => {
@@ -373,7 +390,25 @@ export default function Dashboard() {
       </Card>
 
       {/* Trends Chart */}
-      <TrendChart data={trendsData} />
+      <div className="relative">
+        <div className="absolute top-5 right-5 z-10">
+          <Button
+            onClick={() => setShowAnnotationModal(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2 px-3 py-2 text-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add Note
+          </Button>
+        </div>
+        <TrendChart data={trendsData} />
+      </div>
+
+      {/* Annotation Modal */}
+      <AnnotationModal
+        isOpen={showAnnotationModal}
+        onClose={() => setShowAnnotationModal(false)}
+        onSave={handleSaveAnnotation}
+      />
 
       {/* Conversion Funnel Chart */}
       <Card>

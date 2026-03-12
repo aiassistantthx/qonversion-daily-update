@@ -3979,4 +3979,246 @@ router.get('/alerts/summary', async (req, res) => {
   }
 });
 
+// ================================================
+// PERFORMANCE ANNOTATIONS
+// ================================================
+
+/**
+ * GET /asa/annotations
+ * Get performance annotations for charts
+ *
+ * Query params:
+ * - from: start date (YYYY-MM-DD)
+ * - to: end date (YYYY-MM-DD)
+ * - campaign_id: filter by campaign
+ * - event_type: filter by event type
+ */
+router.get('/annotations', async (req, res) => {
+  try {
+    const { from, to, campaign_id, event_type } = req.query;
+
+    let whereConditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (from) {
+      whereConditions.push(`annotation_date >= $${paramIndex++}`);
+      params.push(from);
+    }
+
+    if (to) {
+      whereConditions.push(`annotation_date <= $${paramIndex++}`);
+      params.push(to);
+    }
+
+    if (campaign_id) {
+      whereConditions.push(`(campaign_id = $${paramIndex++} OR campaign_id IS NULL)`);
+      params.push(campaign_id);
+    }
+
+    if (event_type) {
+      whereConditions.push(`event_type = $${paramIndex++}`);
+      params.push(event_type);
+    }
+
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+
+    const result = await db.query(`
+      SELECT
+        id,
+        annotation_date,
+        event_type,
+        campaign_id,
+        adgroup_id,
+        keyword_id,
+        title,
+        description,
+        color,
+        marker_style,
+        created_by,
+        created_at
+      FROM asa_performance_annotations
+      ${whereClause}
+      ORDER BY annotation_date DESC, created_at DESC
+    `, params);
+
+    res.json({
+      success: true,
+      data: result.rows
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch annotations:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /asa/annotations
+ * Create a new performance annotation
+ *
+ * Body:
+ * - annotation_date: date (YYYY-MM-DD) - required
+ * - event_type: string - required
+ * - title: string - required
+ * - description: string (optional)
+ * - campaign_id: number (optional)
+ * - adgroup_id: number (optional)
+ * - keyword_id: number (optional)
+ * - color: hex color code (optional, default #3b82f6)
+ * - marker_style: circle|square|triangle|star (optional, default circle)
+ */
+router.post('/annotations', async (req, res) => {
+  try {
+    const {
+      annotation_date,
+      event_type,
+      title,
+      description,
+      campaign_id,
+      adgroup_id,
+      keyword_id,
+      color = '#3b82f6',
+      marker_style = 'circle'
+    } = req.body;
+
+    // Validation
+    if (!annotation_date || !event_type || !title) {
+      return res.status(400).json({
+        error: 'Missing required fields: annotation_date, event_type, title'
+      });
+    }
+
+    const result = await db.query(`
+      INSERT INTO asa_performance_annotations (
+        annotation_date,
+        event_type,
+        campaign_id,
+        adgroup_id,
+        keyword_id,
+        title,
+        description,
+        color,
+        marker_style,
+        created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `, [
+      annotation_date,
+      event_type,
+      campaign_id || null,
+      adgroup_id || null,
+      keyword_id || null,
+      title,
+      description || null,
+      color,
+      marker_style,
+      req.user?.id || 'web'
+    ]);
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Failed to create annotation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PUT /asa/annotations/:id
+ * Update an existing annotation
+ */
+router.put('/annotations/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      annotation_date,
+      event_type,
+      title,
+      description,
+      campaign_id,
+      adgroup_id,
+      keyword_id,
+      color,
+      marker_style
+    } = req.body;
+
+    const result = await db.query(`
+      UPDATE asa_performance_annotations
+      SET
+        annotation_date = COALESCE($1, annotation_date),
+        event_type = COALESCE($2, event_type),
+        title = COALESCE($3, title),
+        description = COALESCE($4, description),
+        campaign_id = COALESCE($5, campaign_id),
+        adgroup_id = COALESCE($6, adgroup_id),
+        keyword_id = COALESCE($7, keyword_id),
+        color = COALESCE($8, color),
+        marker_style = COALESCE($9, marker_style),
+        updated_at = NOW()
+      WHERE id = $10
+      RETURNING *
+    `, [
+      annotation_date,
+      event_type,
+      title,
+      description,
+      campaign_id,
+      adgroup_id,
+      keyword_id,
+      color,
+      marker_style,
+      id
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Annotation not found' });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Failed to update annotation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /asa/annotations/:id
+ * Delete an annotation
+ */
+router.delete('/annotations/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await db.query(`
+      DELETE FROM asa_performance_annotations
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Annotation not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Annotation deleted',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Failed to delete annotation:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

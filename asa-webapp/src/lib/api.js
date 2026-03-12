@@ -94,4 +94,10 @@ export const getAlerts = (params = {}) => api.get('/alerts', { params }).then(re
 export const acknowledgeAlert = (id) => api.patch(`/alerts/${id}/acknowledge`).then(res => res.data);
 export const getAlertsSummary = () => api.get('/alerts/summary').then(res => res.data);
 
+// Annotations
+export const getAnnotations = (params = {}) => api.get('/annotations', { params }).then(res => res.data);
+export const createAnnotation = (data) => api.post('/annotations', data).then(res => res.data);
+export const updateAnnotation = (id, data) => api.put(`/annotations/${id}`, data).then(res => res.data);
+export const deleteAnnotation = (id) => api.delete(`/annotations/${id}`).then(res => res.data);
+
 export default api;
