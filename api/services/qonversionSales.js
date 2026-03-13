@@ -70,7 +70,11 @@ async function fetchDailySales() {
     const result = {};
     for (const point of salesSeries.data) {
       const date = new Date(point.start_time * 1000).toISOString().split('T')[0];
-      result[date] = point.value || 0;
+      // Convert proceeds (after Apple commission) to gross price
+      // Apple takes ~26% commission on average (mix of 15% and 30%), so proceeds = price * 0.74
+      // Gross = proceeds / 0.74
+      const proceeds = point.value || 0;
+      result[date] = proceeds / 0.74;
     }
 
     // Update cache

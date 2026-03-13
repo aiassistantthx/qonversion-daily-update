@@ -2901,7 +2901,8 @@ router.get('/trends', async (req, res) => {
       daily_total_revenue AS (
         SELECT
           DATE(event_date) as date,
-          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue
+          -- Use gross price (before Apple commission) for Total Sales
+          SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
         FROM events_v2
         WHERE event_date >= $1 AND event_date <= $2
           AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
@@ -2987,10 +2988,10 @@ router.get('/trends', async (req, res) => {
         AND campaign_id IS NOT NULL
     `, [from, to]);
 
-    // Total revenue (all sources, by event_date)
+    // Total revenue (all sources, by event_date) - use gross price
     const totalRevenueQuery = await db.query(`
       SELECT
-        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as total_revenue
+        SUM(CASE WHEN refund = false THEN COALESCE(price_usd, 0) ELSE 0 END) as total_revenue
       FROM events_v2
       WHERE event_date >= $1 AND event_date <= $2
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
