@@ -386,7 +386,8 @@ async function saveAttribution(userId, attribution) {
 // POST /webhook - handle Qonversion webhook events
 router.post('/', async (req, res) => {
   try {
-    const authHeader = req.headers['authorization'];
+    // Qonversion sends "Authorization-Token" header, not standard "Authorization"
+    const authHeader = req.headers['authorization-token'] || req.headers['authorization'];
     const signature = req.headers['x-qonversion-signature'];
     const payload = req.body;
 
