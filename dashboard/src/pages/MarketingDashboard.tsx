@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';

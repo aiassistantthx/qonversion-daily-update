@@ -553,12 +553,15 @@ class AppleAdsService {
   }
 
   /**
-   * Update keyword bid
+   * Update keyword bid (uses bulk API as single keyword PUT returns 404)
    */
   async updateKeywordBid(campaignId, adGroupId, keywordId, bidAmount, currency = 'USD') {
-    return this.updateKeyword(campaignId, adGroupId, keywordId, {
+    const updates = [{
+      id: keywordId,
       bidAmount: { amount: String(bidAmount), currency }
-    });
+    }];
+    const result = await this.bulkUpdateKeywords(campaignId, adGroupId, updates);
+    return result[0] || null;
   }
 
   /**

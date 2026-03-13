@@ -1293,7 +1293,7 @@ router.get('/keywords', async (req, res) => {
       ),
       keyword_base AS (
         SELECT DISTINCT ON (keyword_id)
-          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount
+          keyword_id, campaign_id, adgroup_id, keyword_text, match_type, bid_amount, keyword_status
         FROM apple_ads_keywords
         ${campaignFilter ? `WHERE ${campaignFilter}` : ''}
         ORDER BY keyword_id, date DESC
@@ -1302,6 +1302,7 @@ router.get('/keywords', async (req, res) => {
         k.keyword_id,
         k.campaign_id,
         k.adgroup_id,
+        k.keyword_status as status,
         k.keyword_text,
         k.match_type,
         k.bid_amount,
@@ -1439,27 +1440,24 @@ router.post('/keywords/bulk', async (req, res) => {
 router.patch('/keywords/:keywordId/bid', async (req, res) => {
   try {
     const { keywordId } = req.params;
-    const { campaignId, adGroupId, bidAmount, currency = 'USD' } = req.body;
+    const { campaignId, adGroupId, bidAmount, previousBid, currency = 'USD' } = req.body;
 
     if (!campaignId || !adGroupId || !bidAmount) {
       return res.status(400).json({ error: 'campaignId, adGroupId, and bidAmount required' });
     }
 
-    // Get current keyword
-    const current = await appleAds.getKeyword(campaignId, adGroupId, keywordId);
-
-    // Update bid
+    // Update bid directly (Apple API doesn't support GET for single keyword)
     const result = await appleAds.updateKeywordBid(campaignId, adGroupId, keywordId, bidAmount, currency);
 
     // Record change
-    await recordChange('keyword', keywordId, 'bid_update', 'bidAmount', current.bidAmount?.amount, String(bidAmount), 'api', null, req);
+    await recordChange('keyword', keywordId, 'bid_update', 'bidAmount', previousBid || null, String(bidAmount), 'api', null, req);
 
     // Invalidate cache
     invalidateCache('keyword', keywordId);
 
     res.json({
       success: true,
-      previousBid: current.bidAmount?.amount,
+      previousBid: previousBid || null,
       newBid: String(bidAmount),
       data: result
     });

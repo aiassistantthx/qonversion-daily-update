@@ -31,6 +31,7 @@ import {
 const TARGET_CAC = 65.68;
 
 const DEFAULT_COLUMNS = {
+  status: true,
   matchType: true,
   bid: true,
   bidVsCpa: true,
@@ -54,6 +55,7 @@ const DEFAULT_COLUMNS = {
 };
 
 const COLUMN_DEFINITIONS = [
+  { id: 'status', label: 'Status' },
   { id: 'matchType', label: 'Match' },
   { id: 'bid', label: 'Bid' },
   { id: 'bidVsCpa', label: 'Bid vs CPA' },
@@ -271,11 +273,30 @@ export default function Keywords() {
   });
 
   const bidMutation = useMutation({
-    mutationFn: ({ keywordId, campaignId, adGroupId, bidAmount }) =>
-      updateKeywordBid(keywordId, { campaignId, adGroupId, bidAmount }),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['keywords']);
+    mutationFn: ({ keywordId, campaignId, adGroupId, bidAmount }) => {
+      console.log('Updating bid:', { keywordId, campaignId, adGroupId, bidAmount });
+      return updateKeywordBid(keywordId, { campaignId, adGroupId, bidAmount });
+    },
+    onSuccess: (data, variables) => {
+      console.log('Bid updated successfully:', data);
+      // Update cache optimistically since DB has synced data, not live
+      queryClient.setQueryData(['keywords', campaignIds, adGroupIds, queryParams], (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map(kw =>
+            kw.keyword_id === variables.keywordId
+              ? { ...kw, bid_amount: String(variables.bidAmount) }
+              : kw
+          )
+        };
+      });
       setEditingKeywordId(null);
+      setNewBid('');
+    },
+    onError: (error) => {
+      console.error('Bid update failed:', error);
+      alert('Failed to update bid: ' + error.message);
     },
   });
 
@@ -533,6 +554,7 @@ export default function Keywords() {
     t.cvr = t.taps > 0 ? t.installs / t.taps : 0;
     t.cpt = t.taps > 0 ? t.spend / t.taps : 0;
     t.cpm = t.impressions > 0 ? (t.spend / t.impressions) * 1000 : 0;
+    t.sov = 0; // SOV calculated per-keyword, total not meaningful
     return t;
   }, [keywords]);
 
@@ -945,7 +967,7 @@ export default function Keywords() {
           <Card>
             <div className="p-4">
               <p className="text-sm text-gray-500">SOV</p>
-              <p className="text-xl font-bold text-blue-600">{totals.sov.toFixed(2)}%</p>
+              <p className="text-xl font-bold text-blue-600">{totals.sov ? totals.sov.toFixed(2) : '—'}%</p>
             </div>
           </Card>
           <Card>
@@ -1336,6 +1358,7 @@ export default function Keywords() {
                   {columnOrder.map((columnId) => {
                     if (!visibleColumns[columnId]) return null;
                     switch (columnId) {
+                      case 'status':
                       case 'matchType':
                       case 'bid':
                       case 'bidVsCpa':
@@ -1471,6 +1494,12 @@ export default function Keywords() {
 
                   const renderCell = (columnId) => {
                     switch (columnId) {
+                      case 'status':
+                        return (
+                          <TableCell key={columnId}>
+                            <StatusBadge status={kw.status || 'ACTIVE'} />
+                          </TableCell>
+                        );
                       case 'matchType':
                         return (
                           <TableCell key={columnId}>
@@ -1594,6 +1623,15 @@ export default function Keywords() {
                                 installs_7d: kw.installs_7d
                               }}
                               inline={true}
+                              onApply={(newBid) => {
+                                bidMutation.mutate({
+                                  keywordId: kw.keyword_id,
+                                  campaignId: kw.campaign_id,
+                                  adGroupId: kw.adgroup_id,
+                                  bidAmount: newBid,
+                                });
+                              }}
+                              isApplying={bidMutation.isPending}
                             />
                           </div>
                         )}

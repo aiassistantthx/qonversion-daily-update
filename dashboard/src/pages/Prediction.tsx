@@ -6,6 +6,13 @@ import {
 import { Download, TrendingUp, DollarSign, Users, Calculator, RotateCcw } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+const apiFetch = (url: string) => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  return fetch(url, { headers }).then(r => r.json());
+};
 
 interface PredictionParams {
   monthlyBudget: number;
@@ -62,7 +69,7 @@ export function Prediction() {
   // Fetch current base from API
   const { data: activeData } = useQuery({
     queryKey: ['active-subscribers'],
-    queryFn: () => fetch(`${API_BASE}/dashboard/active-subscribers`).then(r => r.json()),
+    queryFn: () => apiFetch(`${API_BASE}/dashboard/active-subscribers`),
   });
 
   // Generate month keys for the forecast period

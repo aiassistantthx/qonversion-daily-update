@@ -45,7 +45,7 @@ interface ChurnRateChartProps {
 export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateChartProps) {
   const [showTooltip, setShowTooltip] = React.useState(false);
 
-  if (!data) {
+  if (!data || !data.weekly || !data.yearly || !data.summary) {
     return (
       <div style={{ background: '#fff', borderRadius: 12, padding: 40, border: '1px solid #e5e7eb', marginBottom: 16, textAlign: 'center' }}>
         <div style={{ fontSize: 14, color: '#9ca3af', marginBottom: 8 }}>Churn Rate Analysis</div>

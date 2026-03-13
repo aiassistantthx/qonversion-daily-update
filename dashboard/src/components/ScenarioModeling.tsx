@@ -6,6 +6,13 @@ import {
 import { TrendingUp, TrendingDown, Target, Users, Activity } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+const getHeaders = (): HeadersInit => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  return headers;
+};
 
 interface Assumptions {
   copTarget: number;
@@ -73,8 +80,8 @@ export function ScenarioModeling() {
     const fetchMetrics = async () => {
       try {
         const [activeRes, churnRes] = await Promise.all([
-          fetch(`${API_BASE}/dashboard/active-subscribers`),
-          fetch(`${API_BASE}/dashboard/weekly-churn`),
+          fetch(`${API_BASE}/dashboard/active-subscribers`, { headers: getHeaders() }),
+          fetch(`${API_BASE}/dashboard/weekly-churn`, { headers: getHeaders() }),
         ]);
 
         const activeData = await activeRes.json();

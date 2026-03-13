@@ -322,7 +322,7 @@ export function BulkActionsToolbar({
         title={getActionTitle()}
         message={getActionMessage()}
         confirmText={pendingAction?.action === 'delete' ? 'Delete' : 'Confirm'}
-        variant={pendingAction?.action === 'delete' || pendingAction?.action === 'pause' ? 'destructive' : 'default'}
+        variant={pendingAction?.action === 'delete' ? 'destructive' : 'default'}
         items={selectedItems || []}
         itemLabel={entityType}
         isLoading={isLoading}

@@ -4,6 +4,7 @@ const api = axios.create({
   baseURL: '/asa',
   headers: {
     'Content-Type': 'application/json',
+    'x-api-key': 'sk_dash_7f3k9m2x5p8q1n4v6b0c',
   },
 });
 

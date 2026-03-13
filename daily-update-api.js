@@ -27,12 +27,23 @@ const CONFIG = {
     trialToPaidConversion: 64, // Trial-to-Paid %
     cohortRevenue: 93      // Cohort LTV
   },
-  // API endpoint
+  // API endpoints
   apiUrl: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
+  apiKey: '0f2c53cb2211180b5d731a9ed90dd5ccac0e55f9286c2ddf',
+  // SSH fallback for when Traefik routing is broken
+  ssh: {
+    host: 'root@46.225.26.104',
+    key: `${process.env.HOME}/.ssh/coolify`,
+    // Use container name (DNS) instead of IP - more stable
+    containerName: 'rwwc84wcsgkc48g88wsoco4o',
+    containerPort: 3000,
+  },
   // Базовая колонка (AMP = колонка 1030 = 26.02.2026)
   baseDate: new Date(2026, 1, 26),
   baseColumnIndex: 1030,
 };
+
+const { execSync } = require('child_process');
 
 // ============ CLI ARGS PARSING ============
 
@@ -111,32 +122,82 @@ function formatDate(date) {
 const QONVERSION_API_KEY = 'bfGiq4khkfuQNe-Dxmvuspxtboqmcuy-';
 const QONVERSION_API_URL = `https://api.qonversion.io/v1/analytics/${QONVERSION_API_KEY}`;
 
+// SSH-based API call (bypasses broken Traefik routing)
+// Uses docker exec to call API from inside the coolify network
+function fetchViaSSH(endpoint) {
+  const { host, key, containerName, containerPort } = CONFIG.ssh;
+  // Use docker exec with a proxy container that has curl, or use wget
+  // Traefik container has wget, use it to reach the app via Docker DNS
+  const cmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker exec coolify-proxy wget -qO- --header='X-API-Key: ${CONFIG.apiKey}' 'http://${containerName}:${containerPort}${endpoint}'"`;
+
+  try {
+    const result = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+    return JSON.parse(result);
+  } catch (error) {
+    throw new Error(`SSH API error for ${endpoint}: ${error.message}`);
+  }
+}
+
 async function fetchDashboardMain() {
   log('Fetching /dashboard/main...');
-  const response = await fetch(`${CONFIG.apiUrl}/dashboard/main`);
-  if (!response.ok) {
-    throw new Error(`Dashboard API error: ${response.status}`);
+
+  // Try direct URL first
+  try {
+    const response = await fetch(`${CONFIG.apiUrl}/dashboard/main`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'X-API-Key': CONFIG.apiKey }
+    });
+    if (response.ok) {
+      return response.json();
+    }
+  } catch (e) {
+    log(`Direct API failed (${e.message}), falling back to SSH...`);
   }
-  return response.json();
+
+  // Fallback to SSH
+  return fetchViaSSH('/dashboard/main');
 }
 
 async function fetchWebhookStats() {
   log('Fetching /webhook/stats...');
-  const response = await fetch(`${CONFIG.apiUrl}/webhook/stats`);
-  if (!response.ok) {
-    throw new Error(`Webhook stats API error: ${response.status}`);
+
+  // Try direct URL first
+  try {
+    const response = await fetch(`${CONFIG.apiUrl}/webhook/stats`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'X-API-Key': CONFIG.apiKey }
+    });
+    if (response.ok) {
+      return response.json();
+    }
+  } catch (e) {
+    log(`Direct API failed (${e.message}), falling back to SSH...`);
   }
-  return response.json();
+
+  // Fallback to SSH
+  return fetchViaSSH('/webhook/stats');
 }
 
 // Получить daily trials и yearly subscribers из webhook events
 async function fetchWebhookDaily(days = 14) {
   log('Fetching /webhook/daily...');
-  const response = await fetch(`${CONFIG.apiUrl}/webhook/daily?days=${days}`);
-  if (!response.ok) {
-    throw new Error(`Webhook daily API error: ${response.status}`);
+
+  let data;
+  // Try direct URL first
+  try {
+    const response = await fetch(`${CONFIG.apiUrl}/webhook/daily?days=${days}`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'X-API-Key': CONFIG.apiKey }
+    });
+    if (response.ok) {
+      data = await response.json();
+    } else {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (e) {
+    log(`Direct API failed (${e.message}), falling back to SSH...`);
+    data = fetchViaSSH(`/webhook/daily?days=${days}`);
   }
-  const data = await response.json();
 
   // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers } }
   const result = {};

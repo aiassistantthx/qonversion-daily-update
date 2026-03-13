@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import Modal from './Modal';
-import BottomSheet from './BottomSheet';
-import Button from './Button';
-import Input from './Input';
+import { Modal } from './Modal';
+import { BottomSheet } from './BottomSheet';
+import { Button } from './Button';
+import { Input } from './Input';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { Calendar, Mail, Clock } from 'lucide-react';
 
-const ScheduledExportModal = ({ isOpen, onClose, config, onSave }) => {
+const ScheduledExportModal = ({ open, onClose, config, onSave }) => {
   const isMobile = useIsMobile();
   const [formData, setFormData] = useState({
     name: config?.name || '',
@@ -144,11 +144,11 @@ const ScheduledExportModal = ({ isOpen, onClose, config, onSave }) => {
   );
 
   return isMobile ? (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title="Schedule Export">
+    <BottomSheet open={open} onClose={onClose} title="Schedule Export">
       <Content />
     </BottomSheet>
   ) : (
-    <Modal isOpen={isOpen} onClose={onClose} title="Schedule Export">
+    <Modal open={open} onClose={onClose} title="Schedule Export">
       <Content />
     </Modal>
   );

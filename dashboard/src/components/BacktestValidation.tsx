@@ -3,6 +3,15 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { CheckCircle, AlertTriangle, XCircle, BarChart2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+const apiFetch = async (url: string) => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`Failed to fetch: ${url}`);
+  return response.json();
+};
 
 interface BacktestResult {
   month: string;
@@ -46,11 +55,7 @@ interface BacktestData {
 export function BacktestValidation() {
   const { data, isLoading, error } = useQuery<BacktestData>({
     queryKey: ['backtest'],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE}/dashboard/backtest`);
-      if (!response.ok) throw new Error('Failed to fetch backtest data');
-      return response.json();
-    },
+    queryFn: () => apiFetch(`${API_BASE}/dashboard/backtest`),
   });
 
   if (isLoading) {

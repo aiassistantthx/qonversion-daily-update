@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Download, ChevronDown } from 'lucide-react';
-import Button from './Button';
-import Modal from './Modal';
+import { Button } from './Button';
+import { Modal } from './Modal';
 import { useIsMobile } from '../hooks/useIsMobile';
-import BottomSheet from './BottomSheet';
+import { BottomSheet } from './BottomSheet';
 import ScheduledExportModal from './ScheduledExportModal';
 
 const ExportButton = ({
@@ -254,7 +254,7 @@ const ExportButton = ({
 
       {isMobile ? (
         <BottomSheet
-          isOpen={showExportModal}
+          open={showExportModal}
           onClose={() => setShowExportModal(false)}
           title="Export Data"
         >
@@ -262,7 +262,7 @@ const ExportButton = ({
         </BottomSheet>
       ) : (
         <Modal
-          isOpen={showExportModal}
+          open={showExportModal}
           onClose={() => setShowExportModal(false)}
           title="Export Data"
         >
@@ -271,7 +271,7 @@ const ExportButton = ({
       )}
 
       <ScheduledExportModal
-        isOpen={showScheduleModal}
+        open={showScheduleModal}
         onClose={() => setShowScheduleModal(false)}
         config={{ columns: selectedColumns, format: exportFormat }}
         onSave={handleSaveSchedule}

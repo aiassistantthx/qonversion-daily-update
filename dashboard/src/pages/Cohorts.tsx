@@ -221,7 +221,6 @@ export function Cohorts() {
           </button>
         </div>
       </div>
-    </div>
 
       {selectedCountries.length > 0 && (
         <div style={{

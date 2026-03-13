@@ -4,6 +4,15 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { Download, TrendingUp, TrendingDown, Target } from 'lucide-react';
 import { BacktestValidation } from '../components/BacktestValidation';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
+
+const apiFetch = async (url: string) => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`Failed to fetch: ${url}`);
+  return response.json();
+};
 
 interface Assumptions {
   cacTarget: number;
@@ -75,21 +84,13 @@ export function Planning() {
   // Fetch historical cohort data
   const { data: historicalData, isLoading } = useQuery({
     queryKey: ['planning-data'],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE}/dashboard/planning-data`);
-      if (!response.ok) throw new Error('Failed to fetch planning data');
-      return response.json();
-    },
+    queryFn: () => apiFetch(`${API_BASE}/dashboard/planning-data`),
   });
 
   // Fetch cohort-based forecast from API
   const { data: forecastApiData, isLoading: forecastLoading } = useQuery({
     queryKey: ['forecast'],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE}/dashboard/forecast`);
-      if (!response.ok) throw new Error('Failed to fetch forecast');
-      return response.json();
-    },
+    queryFn: () => apiFetch(`${API_BASE}/dashboard/forecast`),
   });
 
   // Calculate forecast based on scenarios using actual current base

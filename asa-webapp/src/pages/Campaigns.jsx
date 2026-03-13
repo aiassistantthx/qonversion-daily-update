@@ -622,7 +622,7 @@ export default function Campaigns() {
         <Table stickyFirstColumn={true}>
           <TableHead>
             <TableRow>
-              <TableHeader className="w-10" sticky>
+              <TableHeader className="w-8" sticky>
                 <input
                   type="checkbox"
                   checked={selectedIds.size === campaigns.length && campaigns.length > 0}
@@ -630,7 +630,7 @@ export default function Campaigns() {
                   className="rounded border-gray-300"
                 />
               </TableHeader>
-              <TableHeader sticky className="cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort('name')}>
+              <TableHeader sticky className="w-48 max-w-48 cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort('name')}>
                 <div className="flex items-center gap-1">
                   Campaign
                   {sortField === 'name' && (
@@ -681,8 +681,8 @@ export default function Campaigns() {
             {/* Totals Row */}
             {data?.totals && (
               <TableRow className="bg-blue-50 font-semibold border-b-2 border-blue-200">
-                <TableHeader></TableHeader>
-                <TableHeader sticky className="text-blue-700">TOTAL ({campaigns.length})</TableHeader>
+                <TableHeader className="w-8"></TableHeader>
+                <TableHeader sticky className="w-48 max-w-48 text-blue-700">TOTAL ({campaigns.length})</TableHeader>
                 {columnOrder.map((columnId) => {
                   if (!visibleColumns[columnId]) return null;
                   const totals = data.totals;
@@ -898,16 +898,16 @@ export default function Campaigns() {
                         className="rounded border-gray-300"
                       />
                     </TableCell>
-                    <TableCell sticky>
+                    <TableCell sticky className="w-48 max-w-48">
                       <button
                         onClick={() => navigate(`/adgroups?campaigns=${campaign.id}`)}
-                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate"
                       >
                         {campaign.name}
-                        <ArrowRight size={14} />
+                        <ArrowRight size={14} className="flex-shrink-0" />
                       </button>
                       {campaign.countriesOrRegions && (
-                        <span className="text-xs text-gray-400 ml-1">{campaign.countriesOrRegions.join(', ')}</span>
+                        <span className="text-xs text-gray-400">{campaign.countriesOrRegions.join(', ')}</span>
                       )}
                     </TableCell>
                     {columnOrder.map((columnId) => {

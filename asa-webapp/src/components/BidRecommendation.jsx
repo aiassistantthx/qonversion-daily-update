@@ -1,4 +1,5 @@
-import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Info, Check } from 'lucide-react';
+import { Button } from './Button';
 
 const TARGET_CAC = 65.68;
 
@@ -80,7 +81,7 @@ function calculateBidRecommendation(currentBid, metrics) {
   };
 }
 
-export default function BidRecommendation({ currentBid, metrics, inline = false }) {
+export default function BidRecommendation({ currentBid, metrics, inline = false, onApply, isApplying = false }) {
   const recommendation = calculateBidRecommendation(currentBid, metrics);
 
   if (!recommendation) return null;
@@ -106,7 +107,7 @@ export default function BidRecommendation({ currentBid, metrics, inline = false 
           ${recommendedBid.toFixed(2)}
         </span>
 
-        <div className="invisible group-hover:visible absolute z-50 left-0 top-full mt-1 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
+        <div className="invisible group-hover:visible absolute z-50 left-0 bottom-full mb-1 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -150,9 +151,26 @@ export default function BidRecommendation({ currentBid, metrics, inline = false 
                 Target CAC: ${TARGET_CAC.toFixed(2)}
               </div>
             </div>
+
+            {onApply && !isOptimal && (
+              <div className="border-t border-gray-700 pt-2 mt-2">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  className="w-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onApply(recommendedBid);
+                  }}
+                  loading={isApplying}
+                >
+                  <Check size={14} /> Apply ${recommendedBid.toFixed(2)}
+                </Button>
+              </div>
+            )}
           </div>
 
-          <div className="absolute left-4 -top-1 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+          <div className="absolute left-4 -bottom-1 w-2 h-2 bg-gray-900 transform rotate-45"></div>
         </div>
       </div>
     );

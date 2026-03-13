@@ -198,6 +198,11 @@ export default function AdGroups() {
     enabled: !!campaignsData,
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ campaignId, adGroupId, status }) => updateAdGroupStatus(campaignId, adGroupId, status),
+    onSuccess: () => queryClient.invalidateQueries(['adgroups']),
+  });
+
   // Helper to get performance value
   const getPerf = (ag, field) => {
     const p = ag.performance;
