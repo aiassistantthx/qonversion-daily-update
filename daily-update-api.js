@@ -199,12 +199,14 @@ async function fetchWebhookDaily(days = 14) {
     data = fetchViaSSH(`/webhook/daily?days=${days}`);
   }
 
-  // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers } }
+  // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers, converted, cohortRevenue } }
   const result = {};
   for (const day of data.daily || []) {
     result[day.date] = {
       trials: day.trials || 0,
       yearlySubscribers: day.yearlySubscribers || 0,
+      converted: day.converted || 0,
+      cohortRevenue: day.cohortRevenue || 0,
     };
   }
   log(`Got webhook daily data for ${Object.keys(result).length} days`);
@@ -506,6 +508,28 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.newTrials}`,
         value: webhookData.trials
+      });
+    }
+
+    // Trial-to-Paid Conversion Rate (row 64) - только для когорт с достаточным возрастом
+    // Используем данные когорты на N дней раньше (cohortAge = 7 дней)
+    const cohortDate = new Date(date);
+    cohortDate.setDate(cohortDate.getDate() - 7);
+    const cohortDateStr = formatDate(cohortDate);
+    const cohortData = webhookDaily[cohortDateStr];
+    if (cohortData?.trials > 0 && cohortData?.converted > 0) {
+      const crToPaid = (cohortData.converted / cohortData.trials * 100).toFixed(1);
+      updates.push({
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.trialToPaidConversion}`,
+        value: `${crToPaid}%`
+      });
+    }
+
+    // Cohort Revenue (row 93) - revenue для когорты этого дня
+    if (webhookData?.cohortRevenue > 0) {
+      updates.push({
+        range: `${CONFIG.sheet}!${column}${CONFIG.rows.cohortRevenue}`,
+        value: Math.round(webhookData.cohortRevenue)
       });
     }
   }

@@ -507,6 +507,52 @@ router.get('/daily', async (req, res) => {
       dailyMap[dateStr].yearlySubscribers = parseInt(row.subscribers);
     }
 
+    // Get Trial Converted events (for CR calculation)
+    // We look at trials that started N days ago and count how many converted
+    const converted = await db.query(`
+      SELECT
+        DATE(event_date) as date,
+        COUNT(*) as converted
+      FROM events_v2
+      WHERE event_name = 'Trial Converted'
+        AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
+      GROUP BY DATE(event_date)
+      ORDER BY date DESC
+    `);
+
+    // Add converted to daily map
+    for (const row of converted.rows) {
+      const dateStr = row.date.toISOString().split('T')[0];
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, trials: 0, yearlySubscribers: 0, converted: 0 };
+      }
+      dailyMap[dateStr].converted = parseInt(row.converted);
+    }
+
+    // Get daily cohort revenue (revenue for users who started trial on that date)
+    const cohortRevenue = await db.query(`
+      SELECT
+        DATE(t.event_date) as cohort_date,
+        COALESCE(SUM(r.proceeds_usd), 0) as total_revenue
+      FROM events_v2 t
+      LEFT JOIN events_v2 r ON t.q_user_id = r.q_user_id
+        AND r.event_name IN ('Subscription Started', 'Trial Converted', 'Subscription Renewed')
+        AND r.proceeds_usd > 0
+      WHERE t.event_name = 'Trial Started'
+        AND t.event_date >= CURRENT_DATE - INTERVAL '${days} days'
+      GROUP BY DATE(t.event_date)
+      ORDER BY cohort_date DESC
+    `);
+
+    // Add cohort revenue to daily map
+    for (const row of cohortRevenue.rows) {
+      const dateStr = row.cohort_date.toISOString().split('T')[0];
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, trials: 0, yearlySubscribers: 0, converted: 0, cohortRevenue: 0 };
+      }
+      dailyMap[dateStr].cohortRevenue = parseFloat(row.total_revenue) || 0;
+    }
+
     // Sort by date descending
     const daily = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
 

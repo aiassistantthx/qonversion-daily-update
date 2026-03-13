@@ -7,10 +7,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        // Use local API for development - production: http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io
-        target: 'http://localhost:3001',
+        // Use local API for development: http://localhost:3001
+        target: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        headers: {
+          'X-API-Key': '0f2c53cb2211180b5d731a9ed90dd5ccac0e55f9286c2ddf',
+        },
       },
     },
   },
