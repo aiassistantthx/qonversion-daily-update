@@ -1,19 +1,51 @@
+import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
+import { RefreshCw, Calendar, Users } from 'lucide-react';
 import { api } from '../api';
+import { useTheme, themes } from '../styles/themes';
+import { MetricSelector, type MetricOption } from '../components/MetricSelector';
 
-const COLORS = ['#00d4ff', '#00ff88', '#a371f7', '#ffcc00', '#ff4444', '#ff88aa'];
+const COHORT_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#eab308', '#f43f5e', '#0ea5e9', '#22c55e',
+  '#a855f7', '#eab308', '#fb923c', '#2dd4bf', '#facc15'
+];
 
 export function CohortsDashboard() {
-  const { data: cohortsData, isLoading, error } = useQuery({
-    queryKey: ['cohorts'],
-    queryFn: () => api.getCohorts(6),
+  const { theme } = useTheme();
+  const t = themes[theme];
+  const [selectedCohorts, setSelectedCohorts] = useState<string[]>([]);
+  const [monthsCount, setMonthsCount] = useState(6);
+
+  const { data: cohortsData, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['cohorts', monthsCount],
+    queryFn: () => api.getCohorts(monthsCount),
     refetchInterval: 60000,
   });
+
+  const cohortMonths = cohortsData?.cohorts?.map(c => c.cohortMonth) || [];
+
+  // Create options for MetricSelector
+  const cohortOptions: MetricOption[] = cohortMonths.map((month, i) => ({
+    key: month,
+    label: month,
+    color: COHORT_COLORS[i % COHORT_COLORS.length],
+  }));
+
+  const handleCohortChange = useCallback((selected: string[]) => {
+    setSelectedCohorts(selected);
+  }, []);
+
+  const visibleCohorts = selectedCohorts.length > 0
+    ? cohortMonths.filter(month => selectedCohorts.includes(month))
+    : cohortMonths;
 
   // Transform cohort data for chart
   const chartData: Record<number, Record<string, number>> = {};
   cohortsData?.cohorts.forEach((cohort) => {
+    if (!visibleCohorts.includes(cohort.cohortMonth)) return;
     cohort.curve.forEach((point) => {
       if (!chartData[point.day]) {
         chartData[point.day] = { day: point.day };
@@ -34,11 +66,24 @@ export function CohortsDashboard() {
   const bestCohort = sortedCohorts[0];
   const worstCohort = sortedCohorts[sortedCohorts.length - 1];
 
+  // Calculate dynamic Y-axis max
+  const maxLtv = chartDataArray.reduce((max, point) => {
+    visibleCohorts.forEach(cohort => {
+      const value = point[cohort];
+      if (typeof value === 'number' && value > max) {
+        max = value;
+      }
+    });
+    return max;
+  }, 0);
+
+  const yAxisMax = Math.ceil(maxLtv * 1.1 / 10) * 10;
+
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading cohorts data...</div>
+      <div style={{ ...styles.container, background: t.bg }}>
+        <div style={styles.loadingContainer}>
+          <div style={{ color: t.textMuted }}>Loading cohorts data...</div>
         </div>
       </div>
     );
@@ -46,56 +91,107 @@ export function CohortsDashboard() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="text-red-800 font-medium mb-1">Error loading cohorts</div>
-          <div className="text-red-600 text-sm">{error.message}</div>
+      <div style={{ ...styles.container, background: t.bg }}>
+        <div style={styles.errorContainer}>
+          <div style={styles.errorTitle}>Error loading cohorts</div>
+          <div style={styles.errorMessage}>{error.message}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 bg-white">
-      {/* Revenue curves */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-        <div className="text-sm text-gray-600 mb-4 font-medium">Revenue per User by Cohort</div>
-        <div className="h-80">
+    <div style={{ ...styles.container, background: t.bg }}>
+      {/* Header */}
+      <div style={styles.header}>
+        <div>
+          <h1 style={{ ...styles.title, color: t.text }}>
+            <Users size={24} style={{ marginRight: 8, color: t.accent }} />
+            Revenue per User by Cohort
+          </h1>
+          <p style={{ ...styles.subtitle, color: t.textMuted }}>
+            How LTV grows as cohorts mature. Each line represents one monthly cohort.
+          </p>
+        </div>
+        <div style={styles.headerRight}>
+          <select
+            value={monthsCount}
+            onChange={(e) => setMonthsCount(Number(e.target.value))}
+            style={{ ...styles.select, background: t.cardBg, borderColor: t.border, color: t.text }}
+          >
+            <option value={6}>Last 6 months</option>
+            <option value={9}>Last 9 months</option>
+            <option value={12}>Last 12 months</option>
+          </select>
+          <button
+            style={{ ...styles.refreshBtn, background: t.cardBg, borderColor: t.border, color: t.textMuted }}
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw
+              size={16}
+              style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Cohort Selector */}
+      <div style={{ ...styles.selectorContainer, background: t.cardBg, borderColor: t.border }}>
+        <div style={{ ...styles.selectorLabel, color: t.text }}>
+          <Calendar size={16} />
+          Select Cohorts to Display ({visibleCohorts.length} of {cohortMonths.length})
+        </div>
+        <MetricSelector
+          options={cohortOptions}
+          onChange={handleCohortChange}
+          storageKey="cohorts-selectedCohorts"
+        />
+      </div>
+
+      {/* Main Chart */}
+      <div style={{ ...styles.chartCard, background: t.cardBg, borderColor: t.border }}>
+        <div style={{ ...styles.chartContainer, height: 450 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartDataArray}>
+              <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
               <XAxis
                 dataKey="day"
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                label={{ value: 'Days since signup', position: 'bottom', fill: '#6b7280', fontSize: 12 }}
+                tick={{ fill: t.textMuted, fontSize: 11 }}
+                label={{ value: 'Days since signup', position: 'insideBottom', offset: -5, fill: t.textMuted, fontSize: 12 }}
               />
               <YAxis
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
+                tick={{ fill: t.textMuted, fontSize: 11 }}
                 tickFormatter={(val) => `$${val}`}
+                domain={[0, yAxisMax]}
+                label={{ value: 'LTV', angle: -90, position: 'insideLeft', fill: t.textMuted, fontSize: 12 }}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  color: '#111827'
+                  backgroundColor: t.cardBg,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 8,
+                  padding: 12,
+                  color: t.text
                 }}
                 formatter={(value) => [`$${Number(value)?.toFixed(2) || 0}`, 'Rev/User']}
                 labelFormatter={(label) => `Day ${label}`}
               />
-              <Legend />
-              {cohortsData?.cohorts.map((cohort, i) => (
+              <Legend
+                wrapperStyle={{ paddingTop: 20 }}
+                iconType="line"
+              />
+              {visibleCohorts.map((month) => (
                 <Line
-                  key={cohort.cohortMonth}
+                  key={month}
                   type="monotone"
-                  dataKey={cohort.cohortMonth}
-                  stroke={COLORS[i % COLORS.length]}
+                  dataKey={month}
+                  stroke={COHORT_COLORS[cohortMonths.indexOf(month) % COHORT_COLORS.length]}
                   strokeWidth={2}
-                  dot={false}
-                  name={cohort.cohortMonth}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                  name={month}
                 />
               ))}
             </LineChart>
@@ -104,71 +200,69 @@ export function CohortsDashboard() {
       </div>
 
       {/* Cohort summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-          <div className="text-sm text-gray-600 mb-3 font-medium">Best Cohort</div>
+      <div style={styles.summaryGrid}>
+        <div style={{ ...styles.card, background: t.cardBg, borderColor: t.border }}>
+          <div style={{ ...styles.cardTitle, color: t.textMuted }}>Best Cohort</div>
           {bestCohort && (
             <>
-              <div className="text-2xl font-mono text-green-600 mb-1">
+              <div style={{ ...styles.cohortValue, color: '#10b981' }}>
                 {bestCohort.cohortMonth}
               </div>
-              <div className="text-sm text-gray-500">
+              <div style={{ ...styles.cohortSubtitle, color: t.textMuted }}>
                 {bestCohort.cohortSize} users
               </div>
-              <div className="text-sm text-gray-900 mt-2">
+              <div style={{ ...styles.ltvValue, color: t.text }}>
                 LTV: ${Math.max(...bestCohort.curve.map(c => c.revenuePerUser)).toFixed(2)}
               </div>
             </>
           )}
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-          <div className="text-sm text-gray-600 mb-3 font-medium">Worst Cohort</div>
+        <div style={{ ...styles.card, background: t.cardBg, borderColor: t.border }}>
+          <div style={{ ...styles.cardTitle, color: t.textMuted }}>Worst Cohort</div>
           {worstCohort && (
             <>
-              <div className="text-2xl font-mono text-red-600 mb-1">
+              <div style={{ ...styles.cohortValue, color: '#ef4444' }}>
                 {worstCohort.cohortMonth}
               </div>
-              <div className="text-sm text-gray-500">
+              <div style={{ ...styles.cohortSubtitle, color: t.textMuted }}>
                 {worstCohort.cohortSize} users
               </div>
-              <div className="text-sm text-gray-900 mt-2">
+              <div style={{ ...styles.ltvValue, color: t.text }}>
                 LTV: ${Math.max(...worstCohort.curve.map(c => c.revenuePerUser)).toFixed(2)}
               </div>
             </>
           )}
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-          <div className="text-sm text-gray-600 mb-3 font-medium">Average LTV</div>
-          <div className="text-2xl font-mono text-blue-600 mb-1">
+        <div style={{ ...styles.card, background: t.cardBg, borderColor: t.border }}>
+          <div style={{ ...styles.cardTitle, color: t.textMuted }}>Average LTV</div>
+          <div style={{ ...styles.cohortValue, color: t.accent }}>
             ${cohortsData?.cohorts.length
               ? (cohortsData.cohorts.reduce((sum, c) =>
                   sum + Math.max(...c.curve.map(p => p.revenuePerUser)), 0
                 ) / cohortsData.cohorts.length).toFixed(2)
               : '—'}
           </div>
-          <div className="text-sm text-gray-500">
+          <div style={{ ...styles.cohortSubtitle, color: t.textMuted }}>
             Across {cohortsData?.cohorts.length || 0} cohorts
           </div>
         </div>
       </div>
 
       {/* Cohort table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-          <div className="text-sm text-gray-700 font-medium">Cohort Summary</div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
+      <div style={{ ...styles.tableCard, background: t.cardBg, borderColor: t.border }}>
+        <h3 style={{ ...styles.tableTitle, color: t.text }}>Cohort Summary</h3>
+        <div style={styles.tableWrapper}>
+          <table style={styles.table}>
             <thead>
-              <tr className="text-xs text-gray-600 border-b border-gray-200 bg-gray-50">
-                <th className="text-left px-4 py-2 font-medium">Cohort</th>
-                <th className="text-right px-4 py-2 font-medium">Size</th>
-                <th className="text-right px-4 py-2 font-medium">d7 LTV</th>
-                <th className="text-right px-4 py-2 font-medium">d30 LTV</th>
-                <th className="text-right px-4 py-2 font-medium">d60 LTV</th>
-                <th className="text-right px-4 py-2 font-medium">Max LTV</th>
+              <tr>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border }}>Cohort</th>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border, textAlign: 'right' }}>Size</th>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border, textAlign: 'right' }}>d7 LTV</th>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border, textAlign: 'right' }}>d30 LTV</th>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border, textAlign: 'right' }}>d60 LTV</th>
+                <th style={{ ...styles.th, color: t.textMuted, borderColor: t.border, textAlign: 'right' }}>Max LTV</th>
               </tr>
             </thead>
             <tbody>
@@ -176,33 +270,33 @@ export function CohortsDashboard() {
                 const d7 = cohort.curve.find(p => p.day <= 7)?.revenuePerUser;
                 const d30 = cohort.curve.find(p => p.day <= 30)?.revenuePerUser;
                 const d60 = cohort.curve.find(p => p.day <= 60)?.revenuePerUser;
-                const maxLtv = Math.max(...cohort.curve.map(p => p.revenuePerUser));
+                const maxLtvValue = Math.max(...cohort.curve.map(p => p.revenuePerUser));
+                const colorIndex = cohortMonths.indexOf(cohort.cohortMonth);
 
                 return (
-                  <tr key={cohort.cohortMonth} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                  <tr key={cohort.cohortMonth} style={{ borderBottom: `1px solid ${t.border}` }}>
+                    <td style={{ ...styles.td, color: t.text }}>
+                      <div style={styles.cohortCell}>
                         <div
-                          className="w-3 h-3 rounded"
-                          style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                          style={{ ...styles.colorDot, backgroundColor: COHORT_COLORS[colorIndex % COHORT_COLORS.length] }}
                         />
-                        <span className="font-mono text-gray-900">{cohort.cohortMonth}</span>
+                        <span style={{ ...styles.mono, fontWeight: 500 }}>{cohort.cohortMonth}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-600">
+                    <td style={{ ...styles.td, ...styles.mono, color: t.textMuted, textAlign: 'right' }}>
                       {cohort.cohortSize}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-900">
+                    <td style={{ ...styles.td, ...styles.mono, color: t.text, textAlign: 'right' }}>
                       {d7 ? `$${d7.toFixed(2)}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-900">
+                    <td style={{ ...styles.td, ...styles.mono, color: t.text, textAlign: 'right' }}>
                       {d30 ? `$${d30.toFixed(2)}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-900">
+                    <td style={{ ...styles.td, ...styles.mono, color: t.text, textAlign: 'right' }}>
                       {d60 ? `$${d60.toFixed(2)}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-blue-600 font-medium">
-                      ${maxLtv.toFixed(2)}
+                    <td style={{ ...styles.td, ...styles.mono, color: t.accent, textAlign: 'right', fontWeight: 500 }}>
+                      ${maxLtvValue.toFixed(2)}
                     </td>
                   </tr>
                 );
@@ -214,3 +308,166 @@ export function CohortsDashboard() {
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: 24,
+    fontFamily: "'Inter', -apple-system, sans-serif",
+  },
+  loadingContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 256,
+  },
+  errorContainer: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    padding: 16,
+  },
+  errorTitle: {
+    color: '#991b1b',
+    fontWeight: 500,
+    marginBottom: 4,
+  },
+  errorMessage: {
+    color: '#dc2626',
+    fontSize: 14,
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 700,
+    marginBottom: 4,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  subtitle: {
+    fontSize: 14,
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  select: {
+    padding: '8px 16px',
+    border: '1px solid',
+    borderRadius: 8,
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  refreshBtn: {
+    padding: 10,
+    border: '1px solid',
+    borderRadius: 8,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectorContainer: {
+    border: '1px solid',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 24,
+  },
+  selectorLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 500,
+    marginBottom: 16,
+  },
+  chartCard: {
+    border: '1px solid',
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 24,
+  },
+  chartContainer: {
+    width: '100%',
+  },
+  card: {
+    borderRadius: 12,
+    padding: 20,
+    border: '1px solid',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: 500,
+    marginBottom: 12,
+  },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 16,
+    marginBottom: 24,
+  },
+  cohortValue: {
+    fontSize: 24,
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+    marginBottom: 4,
+    fontWeight: 600,
+  },
+  cohortSubtitle: {
+    fontSize: 14,
+  },
+  ltvValue: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+  tableCard: {
+    borderRadius: 12,
+    border: '1px solid',
+    padding: 24,
+  },
+  tableTitle: {
+    fontSize: 18,
+    fontWeight: 600,
+    marginBottom: 16,
+  },
+  tableWrapper: {
+    overflowX: 'auto',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+  },
+  th: {
+    padding: '12px 16px',
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: 'left',
+    borderBottom: '2px solid',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  },
+  td: {
+    padding: '12px 16px',
+    fontSize: 14,
+  },
+  cohortCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  colorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  mono: {
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  },
+};

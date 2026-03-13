@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const { fetchDailySales } = require('../services/qonversionSales');
 
 const router = express.Router();
 
@@ -172,6 +173,8 @@ router.get('/main', async (req, res) => {
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const currentDay = today.getDate();
+    // For comparison: exclude today (incomplete day)
+    const comparisonDay = currentDay - 1;
 
     // Previous month for comparison
     const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -200,16 +203,58 @@ router.get('/main', async (req, res) => {
     const spendResult = await db.query(spendQuery, [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
-    // Revenue this month (only actual revenue events) - total revenue
-    const revenueQuery = `
-      SELECT COALESCE(SUM(price_usd), 0) as revenue
-      FROM events_v2
-      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
-        AND refund = false
-        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    // Spend for comparison (excluding today)
+    const spendForComparisonQuery = `
+      SELECT COALESCE(SUM(spend), 0) as spend
+      FROM apple_ads_campaigns
+      WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM date) <= $2
+        AND ${campaignCondition}
     `;
-    const revenueResult = await db.query(revenueQuery, [currentMonth]);
-    const monthRevenue = parseFloat(revenueResult.rows[0]?.revenue) || 0;
+    const spendForComparisonResult = await db.query(spendForComparisonQuery, [currentMonth, comparisonDay]);
+    const monthSpendForComparison = parseFloat(spendForComparisonResult.rows[0]?.spend) || 0;
+
+    // Revenue this month - use Qonversion API (gross sales after refunds)
+    // Qonversion API returns ~8 days, use events_v2 as fallback for older days
+    const qonversionSales = await fetchDailySales();
+    let monthRevenue = 0;
+    let monthRevenueForComparison = 0;
+
+    // Yesterday's date for comparison (exclude today)
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDate(yesterday);
+
+    // Sum Qonversion sales for current month
+    const monthStart = `${currentMonth}-01`;
+    for (const [date, revenue] of Object.entries(qonversionSales)) {
+      if (date >= monthStart && date <= formatDate(today)) {
+        monthRevenue += revenue;
+      }
+      // For comparison: exclude today
+      if (date >= monthStart && date <= yesterdayStr) {
+        monthRevenueForComparison += revenue;
+      }
+    }
+
+    // If Qonversion doesn't have data for early days of month, add from events_v2
+    const qonversionDates = Object.keys(qonversionSales).filter(d => d >= monthStart);
+    const oldestQonversionDate = qonversionDates.length > 0 ? qonversionDates.sort()[0] : null;
+
+    if (oldestQonversionDate && oldestQonversionDate > monthStart) {
+      // Get revenue from events_v2 for days before Qonversion data
+      const earlyRevenueQuery = `
+        SELECT COALESCE(SUM(price_usd), 0) as revenue
+        FROM events_v2
+        WHERE event_date >= $1 AND event_date < $2
+          AND refund = false
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+      `;
+      const earlyRevenueResult = await db.query(earlyRevenueQuery, [monthStart, oldestQonversionDate]);
+      const earlyRevenue = parseFloat(earlyRevenueResult.rows[0]?.revenue) || 0;
+      monthRevenue += earlyRevenue;
+      monthRevenueForComparison += earlyRevenue;
+    }
 
     // Cohort revenue from Apple Ads users (for ROAS calculation)
     // Revenue from users who installed THIS month AND came from Apple Ads
@@ -225,6 +270,20 @@ router.get('/main', async (req, res) => {
     const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
     const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
+    // Cohort revenue for comparison (excluding today)
+    const cohortRevenueForComparisonQuery = `
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM install_date) <= $2
+        AND media_source = 'Apple AdServices'
+        AND ${campaignCondition}
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `;
+    const cohortRevenueForComparisonResult = await db.query(cohortRevenueForComparisonQuery, [currentMonth, comparisonDay]);
+    const monthCohortRevenueForComparison = parseFloat(cohortRevenueForComparisonResult.rows[0]?.revenue) || 0;
+
     // New subscribers this month (trial_converted + subscription_started for yearly)
     const subscribersQuery = `
       SELECT COUNT(DISTINCT q_user_id) as subscribers
@@ -237,6 +296,20 @@ router.get('/main', async (req, res) => {
     `;
     const subscribersResult = await db.query(subscribersQuery, [currentMonth]);
     const monthSubscribers = parseInt(subscribersResult.rows[0]?.subscribers) || 0;
+
+    // Subscribers for comparison (excluding today)
+    const subscribersForComparisonQuery = `
+      SELECT COUNT(DISTINCT q_user_id) as subscribers
+      FROM events_v2
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM event_date) <= $2
+        AND (
+          event_name = 'Trial Converted'
+          OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
+        )
+    `;
+    const subscribersForComparisonResult = await db.query(subscribersForComparisonQuery, [currentMonth, comparisonDay]);
+    const monthSubscribersForComparison = parseInt(subscribersForComparisonResult.rows[0]?.subscribers) || 0;
 
     // COHORT COP calculation (excluding last 4 days for closed cohorts)
     // Group by install_date (cohort), not event_date
@@ -365,10 +438,10 @@ router.get('/main', async (req, res) => {
         AND EXTRACT(DAY FROM date) <= $2
         AND ${campaignCondition}
     `;
-    const prevSpendResult = await db.query(prevSpendQuery, [prevMonth, currentDay]);
+    const prevSpendResult = await db.query(prevSpendQuery, [prevMonth, comparisonDay]);
     const prevMonthSpend = parseFloat(prevSpendResult.rows[0]?.spend) || 0;
 
-    // Revenue for first N days of previous month
+    // Revenue for first N days of previous month (excluding today)
     const prevRevenueQuery = `
       SELECT COALESCE(SUM(price_usd), 0) as revenue
       FROM events_v2
@@ -377,14 +450,23 @@ router.get('/main', async (req, res) => {
         AND refund = false
         AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
     `;
-    const prevRevenueResult = await db.query(prevRevenueQuery, [prevMonth, currentDay]);
+    const prevRevenueResult = await db.query(prevRevenueQuery, [prevMonth, comparisonDay]);
     const prevMonthRevenue = parseFloat(prevRevenueResult.rows[0]?.revenue) || 0;
 
-    // Cohort revenue from Apple Ads (for ROAS comparison)
-    const prevCohortRevenueResult = await db.query(cohortRevenueQuery, [prevMonth]);
+    // Cohort revenue from Apple Ads for first N days (for ROAS comparison)
+    const prevCohortRevenueQuery = `
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+        AND EXTRACT(DAY FROM install_date) <= $2
+        AND media_source = 'Apple AdServices'
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `;
+    const prevCohortRevenueResult = await db.query(prevCohortRevenueQuery, [prevMonth, comparisonDay]);
     const prevMonthCohortRevenue = parseFloat(prevCohortRevenueResult.rows[0]?.revenue) || 0;
 
-    // Subscribers for first N days of previous month
+    // Subscribers for first N days of previous month (excluding today)
     const prevSubscribersQuery = `
       SELECT COUNT(DISTINCT q_user_id) as subscribers
       FROM events_v2
@@ -395,15 +477,17 @@ router.get('/main', async (req, res) => {
           OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
         )
     `;
-    const prevSubscribersResult = await db.query(prevSubscribersQuery, [prevMonth, currentDay]);
+    const prevSubscribersResult = await db.query(prevSubscribersQuery, [prevMonth, comparisonDay]);
     const prevMonthSubscribers = parseInt(prevSubscribersResult.rows[0]?.subscribers) || 0;
 
-    // COP (full month, closed cohorts)
+    // COP for first (N-4) days of previous month (closed cohorts comparison)
+    const closedDays = Math.max(1, comparisonDay - 4);
     const prevCopQuery = `
       WITH cohort_conversions AS (
         SELECT COUNT(DISTINCT q_user_id) as subscribers
         FROM events_v2
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND EXTRACT(DAY FROM install_date) <= $2
           AND (
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
@@ -413,32 +497,35 @@ router.get('/main', async (req, res) => {
         SELECT COALESCE(SUM(spend), 0) as spend
         FROM apple_ads_campaigns
         WHERE TO_CHAR(date, 'YYYY-MM') = $1
+          AND EXTRACT(DAY FROM date) <= $2
       )
       SELECT spend, subscribers FROM monthly_spend, cohort_conversions
     `;
-    const prevCopResult = await db.query(prevCopQuery, [prevMonth]);
+    const prevCopResult = await db.query(prevCopQuery, [prevMonth, closedDays]);
     const prevCopSpend = parseFloat(prevCopResult.rows[0]?.spend) || 0;
     const prevCopSubs = parseInt(prevCopResult.rows[0]?.subscribers) || 0;
     const prevCop = prevCopSubs > 0 ? prevCopSpend / prevCopSubs : null;
 
-    // CR to Paid (full previous month)
+    // CR to Paid for first (N-4) days of previous month (closed cohorts comparison)
     const prevCrQuery = `
       WITH cohort_trials AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND EXTRACT(DAY FROM install_date) <= $2
           AND event_name = 'Trial Started'
       ),
       cohort_converted AS (
         SELECT COUNT(DISTINCT q_user_id) as cnt
         FROM events_v2
         WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
+          AND EXTRACT(DAY FROM install_date) <= $2
           AND event_name = 'Trial Converted'
       )
       SELECT cohort_trials.cnt as trials, cohort_converted.cnt as converted
       FROM cohort_trials, cohort_converted
     `;
-    const prevCrResult = await db.query(prevCrQuery, [prevMonth]);
+    const prevCrResult = await db.query(prevCrQuery, [prevMonth, closedDays]);
     const prevTrials = parseInt(prevCrResult.rows[0]?.trials) || 0;
     const prevConverted = parseInt(prevCrResult.rows[0]?.converted) || 0;
     const prevCrToPaid = prevTrials > 0 ? (prevConverted / prevTrials) * 100 : null;
@@ -447,14 +534,17 @@ router.get('/main', async (req, res) => {
     const roas = monthSpend > 0 ? monthCohortRevenue / monthSpend : null;
     const prevRoas = prevMonthSpend > 0 ? prevMonthCohortRevenue / prevMonthSpend : null;
 
-    // Calculate % changes (comparing first N days of current month vs first N days of previous month)
-    const spendChange = prevMonthSpend > 0 ? ((monthSpend / prevMonthSpend) - 1) * 100 : null;
-    const revenueChange = prevMonthRevenue > 0 ? ((monthRevenue / prevMonthRevenue) - 1) * 100 : null;
-    const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribers / prevMonthSubscribers) - 1) * 100 : null;
+    // ROAS for comparison (excluding today)
+    const roasForComparison = monthSpendForComparison > 0 ? monthCohortRevenueForComparison / monthSpendForComparison : null;
+
+    // Calculate % changes (comparing days 1-(N-1) of current month vs days 1-(N-1) of previous month, excluding today)
+    const spendChange = prevMonthSpend > 0 ? ((monthSpendForComparison / prevMonthSpend) - 1) * 100 : null;
+    const revenueChange = prevMonthRevenue > 0 ? ((monthRevenueForComparison / prevMonthRevenue) - 1) * 100 : null;
+    const subscribersChange = prevMonthSubscribers > 0 ? ((monthSubscribersForComparison / prevMonthSubscribers) - 1) * 100 : null;
     const copChange = prevCop && cop ? ((cop / prevCop) - 1) * 100 : null;
     const crChange = prevCrToPaid && crToPaid ? ((crToPaid / prevCrToPaid) - 1) * 100 : null;
-    // ROAS change - NOT normalized by day (ratio metric)
-    const roasChange = prevRoas && roas ? ((roas / prevRoas) - 1) * 100 : null;
+    // ROAS change - comparing same periods
+    const roasChange = prevRoas && roasForComparison ? ((roasForComparison / prevRoas) - 1) * 100 : null;
 
     // Forecasts
     const avgDailySpend = currentDay > 0 ? monthSpend / currentDay : 0;
@@ -571,15 +661,19 @@ router.get('/main', async (req, res) => {
       const predictedFinalSubs = subs > 0 ? subs / decayFactor : 0;
       const predictedCop = predictedFinalSubs > 0 ? spend / predictedFinalSubs : null;
 
+      // Use Qonversion API for revenue if available, fallback to events_v2
+      const dateStr = formatDate(row.day);
+      const revenue = qonversionSales[dateStr] ?? parseFloat(row.revenue) ?? 0;
+
       return {
-        date: formatDate(row.day),
-        revenue: parseFloat(row.revenue) || 0,
+        date: dateStr,
+        revenue,
         spend,
         subscribers: subs,
         cohortAge,
         cop: currentCop,  // Always show actual COP (will decrease over time)
         copPredicted: predictedCop,  // Always show predicted final COP
-        roas: cohortAge >= 4 && spend > 0 ? parseFloat(row.revenue) / spend : null,
+        roas: cohortAge >= 4 && spend > 0 ? revenue / spend : null,
       };
     }).reverse();
 
@@ -942,18 +1036,25 @@ router.get('/roas-evolution', async (req, res) => {
         GROUP BY cohort_month
       ),
       roas_by_age AS (
+        -- Revenue calculated as price_usd * 0.78 (proceeds after 22% Apple commission)
         SELECT
           cohort_month,
           MAX(cohort_age) as max_age,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 14 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_14d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 90 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_90d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 120 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_120d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 150 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_150d,
-          SUM(price_usd) FILTER (WHERE days_to_event <= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d,
-          SUM(price_usd) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_total
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 14 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_14d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 90 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_90d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 120 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_120d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 150 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_150d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 210 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_210d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 240 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_240d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 270 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_270d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 300 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_300d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 330 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_330d,
+          SUM(price_usd * 0.78) FILTER (WHERE days_to_event <= 365 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_365d,
+          SUM(price_usd * 0.78) FILTER (WHERE refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_total
         FROM cohort_data
         GROUP BY cohort_month
       )
@@ -970,6 +1071,12 @@ router.get('/roas-evolution', async (req, res) => {
         COALESCE(ra.rev_120d, 0) as rev_120d,
         COALESCE(ra.rev_150d, 0) as rev_150d,
         COALESCE(ra.rev_180d, 0) as rev_180d,
+        COALESCE(ra.rev_210d, 0) as rev_210d,
+        COALESCE(ra.rev_240d, 0) as rev_240d,
+        COALESCE(ra.rev_270d, 0) as rev_270d,
+        COALESCE(ra.rev_300d, 0) as rev_300d,
+        COALESCE(ra.rev_330d, 0) as rev_330d,
+        COALESCE(ra.rev_365d, 0) as rev_365d,
         COALESCE(ra.rev_total, 0) as rev_total
       FROM roas_by_age ra
       JOIN monthly_spend ms ON ra.cohort_month = ms.month
@@ -989,13 +1096,41 @@ router.get('/roas-evolution', async (req, res) => {
         { age: 120, roas: roasData.d120 },
         { age: 150, roas: roasData.d150 },
         { age: 180, roas: roasData.d180 },
+        { age: 210, roas: roasData.d210 },
+        { age: 240, roas: roasData.d240 },
+        { age: 270, roas: roasData.d270 },
+        { age: 300, roas: roasData.d300 },
+        { age: 330, roas: roasData.d330 },
+        { age: 365, roas: roasData.d365 },
       ].filter(v => v.roas !== null && v.age <= maxAge);
 
       if (roasValues.length < 2) return null;
 
+      // If already paid back, find when it crossed 1.0
       if (roasData.total >= 1.0) {
+        // Check if any checkpoint >= 1.0
         const paidBackPoint = roasValues.find(v => v.roas >= 1.0);
-        return paidBackPoint ? Math.floor(paidBackPoint.age / 30) : null;
+        if (paidBackPoint) {
+          return Math.floor(paidBackPoint.age / 30);
+        }
+
+        // Interpolate between last checkpoint and current total
+        // Find last checkpoint below 1.0 and interpolate to when it crossed
+        const lastCheckpoint = roasValues[roasValues.length - 1];
+        if (lastCheckpoint && lastCheckpoint.roas < 1.0) {
+          // Interpolate between lastCheckpoint and maxAge (where total is)
+          const roasGrowth = roasData.total - lastCheckpoint.roas;
+          const daysGrowth = maxAge - lastCheckpoint.age;
+          if (roasGrowth > 0 && daysGrowth > 0) {
+            const roasPerDay = roasGrowth / daysGrowth;
+            const roasNeeded = 1.0 - lastCheckpoint.roas;
+            const daysToPayback = roasNeeded / roasPerDay;
+            return Math.ceil((lastCheckpoint.age + daysToPayback) / 30);
+          }
+        }
+
+        // Fallback: use maxAge
+        return Math.ceil(maxAge / 30);
       }
 
       const lastTwo = roasValues.slice(-2);
@@ -1029,6 +1164,12 @@ router.get('/roas-evolution', async (req, res) => {
         d120: maxAge >= 120 ? capRoas(parseFloat(row.rev_120d) / spend) : null,
         d150: maxAge >= 150 ? capRoas(parseFloat(row.rev_150d) / spend) : null,
         d180: maxAge >= 180 ? capRoas(parseFloat(row.rev_180d) / spend) : null,
+        d210: maxAge >= 210 ? capRoas(parseFloat(row.rev_210d) / spend) : null,
+        d240: maxAge >= 240 ? capRoas(parseFloat(row.rev_240d) / spend) : null,
+        d270: maxAge >= 270 ? capRoas(parseFloat(row.rev_270d) / spend) : null,
+        d300: maxAge >= 300 ? capRoas(parseFloat(row.rev_300d) / spend) : null,
+        d330: maxAge >= 330 ? capRoas(parseFloat(row.rev_330d) / spend) : null,
+        d365: maxAge >= 365 ? capRoas(parseFloat(row.rev_365d) / spend) : null,
         total: capRoas(parseFloat(row.rev_total) / spend),
       };
 
@@ -1042,7 +1183,7 @@ router.get('/roas-evolution', async (req, res) => {
     });
 
     // Also create data for line chart (age on X axis, multiple cohort lines)
-    const ages = [7, 14, 30, 60, 90, 120, 150, 180];
+    const ages = [7, 14, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 365];
     const chartData = ages.map(age => {
       const point = { age };
       cohorts.forEach(c => {
@@ -1054,7 +1195,13 @@ router.get('/roas-evolution', async (req, res) => {
       return point;
     });
 
-    res.json({ cohorts, chartData, ages });
+    res.json({
+      cohorts,
+      chartData,
+      ages,
+      revenueFormula: 'price_usd * 0.78',
+      revenueNote: 'Proceeds after 22% Apple commission'
+    });
   } catch (error) {
     console.error('ROAS evolution error:', error);
     res.status(500).json({ error: error.message });

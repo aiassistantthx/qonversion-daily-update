@@ -28,7 +28,8 @@ async function getQonversionCookies() {
 
 /**
  * Fetch daily sales from Qonversion Dashboard API
- * Returns { 'YYYY-MM-DD': revenue } map
+ * Returns { 'YYYY-MM-DD': grossSales } map
+ * Note: "After refunds" = gross sales minus refunds (Apple commission NOT deducted)
  */
 async function fetchDailySales() {
   // Check cache
@@ -68,13 +69,16 @@ async function fetchDailySales() {
     }
 
     const result = {};
-    for (const point of salesSeries.data) {
+    const points = salesSeries.data;
+
+    // Skip the first (oldest) day - API returns ~8 days but first day is often incomplete
+    // (API returns rolling window, oldest day may be partial)
+    for (let i = 1; i < points.length; i++) {
+      const point = points[i];
       const date = new Date(point.start_time * 1000).toISOString().split('T')[0];
-      // Convert proceeds (after Apple commission) to gross price
-      // Apple takes ~26% commission on average (mix of 15% and 30%), so proceeds = price * 0.74
-      // Gross = proceeds / 0.74
-      const proceeds = point.value || 0;
-      result[date] = proceeds / 0.74;
+      // "After refunds" = gross sales minus refunds (Apple commission NOT deducted)
+      // This is revenue before Apple takes their cut
+      result[date] = point.value || 0;
     }
 
     // Update cache

@@ -691,7 +691,7 @@ export function WhatIf() {
         <div style={styles.chartCard}>
           <h3 style={styles.cardTitle}>Revenue Forecast</h3>
           <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
-            Green = actual revenue, Purple = model prediction, Blue bars = ad spend
+            Green = actual revenue, Purple = model prediction, Gray bars = ad spend
           </p>
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -741,12 +741,12 @@ export function WhatIf() {
                   />
                 )}
 
-                {/* Spend bars - blue tint */}
+                {/* Spend bars - subtle gray background */}
                 <Bar
                   yAxisId="spend"
                   dataKey="spend"
-                  fill="#60a5fa"
-                  opacity={0.35}
+                  fill="#e5e7eb"
+                  opacity={0.5}
                   name="Spend"
                   radius={[2, 2, 0, 0]}
                 />
@@ -756,21 +756,21 @@ export function WhatIf() {
                   yAxisId="revenue"
                   type="monotone"
                   dataKey="predicted"
-                  stroke="#a78bfa"
-                  strokeWidth={2}
-                  fill="#a78bfa"
-                  fillOpacity={0.15}
+                  stroke="#8b5cf6"
+                  strokeWidth={2.5}
+                  fill="#8b5cf6"
+                  fillOpacity={0.2}
                   name="Predicted"
                 />
 
-                {/* Actual (only for historical) */}
+                {/* Actual (only for historical) - main focus */}
                 <Line
                   yAxisId="revenue"
                   type="monotone"
                   dataKey="actual"
                   stroke="#10b981"
-                  strokeWidth={3}
-                  dot={{ fill: '#10b981', r: 4, strokeWidth: 2, stroke: '#fff' }}
+                  strokeWidth={3.5}
+                  dot={{ fill: '#10b981', r: 5, strokeWidth: 2, stroke: '#fff' }}
                   name="Actual"
                   connectNulls={false}
                 />

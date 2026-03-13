@@ -28,6 +28,12 @@ interface RoasEvolutionData {
       d120: number | null;
       d150: number | null;
       d180: number | null;
+      d210: number | null;
+      d240: number | null;
+      d270: number | null;
+      d300: number | null;
+      d330: number | null;
+      d365: number | null;
       total: number
     };
     paybackMonths: number | null;
