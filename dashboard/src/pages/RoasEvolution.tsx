@@ -69,8 +69,8 @@ export function RoasEvolution() {
     const currentRoas = cohort.roas.total;
     const isPaidBack = currentRoas >= 1.0;
 
-    // Validate ROAS - cap at 10x (1000%) to prevent display of anomalous values
-    const validRoas = Math.min(currentRoas, 10);
+    // Validate ROAS - cap at 30x (3000%) to prevent display of anomalous values
+    const validRoas = Math.min(currentRoas, 30);
 
     return {
       month: cohort.month,

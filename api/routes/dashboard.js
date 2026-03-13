@@ -974,7 +974,7 @@ router.get('/roas-evolution', async (req, res) => {
       FROM roas_by_age ra
       JOIN monthly_spend ms ON ra.cohort_month = ms.month
       JOIN cohort_users cu ON ra.cohort_month = cu.cohort_month
-      WHERE ms.spend >= ${minSpend} AND cu.user_count > 0
+      WHERE ms.spend >= ${minSpend} AND cu.user_count >= 5
       ORDER BY ra.cohort_month
     `);
 
@@ -1014,20 +1014,22 @@ router.get('/roas-evolution', async (req, res) => {
     };
 
     // Transform to chart-friendly format
+    const MAX_ROAS = 30; // Cap at 30x (3000%) to filter anomalous values
     const cohorts = result.rows.map(row => {
       const spend = parseFloat(row.spend);
       const maxAge = parseInt(row.max_age) || 0;
+      const capRoas = (v) => Math.min(v, MAX_ROAS);
 
       const roasData = {
-        d7: maxAge >= 7 ? parseFloat(row.rev_7d) / spend : null,
-        d14: maxAge >= 14 ? parseFloat(row.rev_14d) / spend : null,
-        d30: maxAge >= 30 ? parseFloat(row.rev_30d) / spend : null,
-        d60: maxAge >= 60 ? parseFloat(row.rev_60d) / spend : null,
-        d90: maxAge >= 90 ? parseFloat(row.rev_90d) / spend : null,
-        d120: maxAge >= 120 ? parseFloat(row.rev_120d) / spend : null,
-        d150: maxAge >= 150 ? parseFloat(row.rev_150d) / spend : null,
-        d180: maxAge >= 180 ? parseFloat(row.rev_180d) / spend : null,
-        total: parseFloat(row.rev_total) / spend,
+        d7: maxAge >= 7 ? capRoas(parseFloat(row.rev_7d) / spend) : null,
+        d14: maxAge >= 14 ? capRoas(parseFloat(row.rev_14d) / spend) : null,
+        d30: maxAge >= 30 ? capRoas(parseFloat(row.rev_30d) / spend) : null,
+        d60: maxAge >= 60 ? capRoas(parseFloat(row.rev_60d) / spend) : null,
+        d90: maxAge >= 90 ? capRoas(parseFloat(row.rev_90d) / spend) : null,
+        d120: maxAge >= 120 ? capRoas(parseFloat(row.rev_120d) / spend) : null,
+        d150: maxAge >= 150 ? capRoas(parseFloat(row.rev_150d) / spend) : null,
+        d180: maxAge >= 180 ? capRoas(parseFloat(row.rev_180d) / spend) : null,
+        total: capRoas(parseFloat(row.rev_total) / spend),
       };
 
       return {
