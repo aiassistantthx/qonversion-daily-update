@@ -31,7 +31,7 @@ function DashboardLayout() {
     { path: '/dashboard/marketing', label: 'Marketing' },
     { path: '/dashboard/cohorts', label: 'Cohorts' },
     { path: '/dashboard/roas-evolution', label: 'ROAS Evolution' },
-    { path: '/dashboard/what-if', label: 'What-If' },
+    { path: '/dashboard/planning', label: 'Planning' },
   ];
 
   return (

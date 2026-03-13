@@ -282,6 +282,15 @@ export function Planning() {
         </button>
       </div>
 
+      {/* Section: Forecast */}
+      <div style={{ ...styles.sectionHeader, borderTop: 'none', paddingTop: 0 }}>
+        <div style={styles.sectionBadge}>Auto</div>
+        <div>
+          <h2 style={styles.sectionTitle}>Forecast</h2>
+          <p style={styles.sectionSubtitle}>Automatic 12-month projection based on current trends — no manual input needed</p>
+        </div>
+      </div>
+
       {/* Automated Revenue Forecast */}
       {forecastApiData && (
         <div style={styles.card}>
@@ -401,10 +410,13 @@ export function Planning() {
         </div>
       )}
 
-      {/* Scenario Planning Section */}
-      <div style={styles.sectionDivider}>
-        <h2 style={styles.sectionTitle}>Scenario Planning Tool</h2>
-        <p style={styles.sectionSubtitle}>Test different growth strategies by adjusting assumptions</p>
+      {/* Section: Planning Tool */}
+      <div style={{ ...styles.sectionHeader, marginTop: 16 }}>
+        <div style={{ ...styles.sectionBadge, background: '#7c3aed20', color: '#7c3aed', borderColor: '#7c3aed40' }}>Manual</div>
+        <div>
+          <h2 style={styles.sectionTitle}>Planning Tool</h2>
+          <p style={styles.sectionSubtitle}>What-if scenarios — adjust assumptions manually to explore different growth strategies</p>
+        </div>
       </div>
 
       {/* Scenario Selector */}
@@ -631,9 +643,10 @@ const styles: Record<string, React.CSSProperties> = {
   table: { width: '100%', borderCollapse: 'collapse' as const },
   th: { padding: '12px 16px', textAlign: 'left' as const, fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const, borderBottom: '2px solid #e5e7eb' },
   td: { padding: '12px 16px', fontSize: 14, borderBottom: '1px solid #f3f4f6' },
-  sectionDivider: { borderTop: '2px solid #e5e7eb', paddingTop: 32, marginTop: 32, marginBottom: 20 },
-  sectionTitle: { fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 4 },
-  sectionSubtitle: { fontSize: 14, color: '#6b7280' },
+  sectionHeader: { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20, paddingTop: 28, borderTop: '2px solid #e5e7eb' },
+  sectionBadge: { fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#3b82f620', color: '#3b82f6', border: '1px solid #3b82f640', letterSpacing: '0.05em', textTransform: 'uppercase' as const, marginTop: 4, whiteSpace: 'nowrap' as const },
+  sectionTitle: { fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 2 },
+  sectionSubtitle: { fontSize: 13, color: '#6b7280' },
   scenarioGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 },
   scenarioBtn: {
     padding: 20, borderRadius: 12, border: '2px solid', background: '#fff',
