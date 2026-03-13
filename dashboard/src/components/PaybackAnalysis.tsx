@@ -65,7 +65,7 @@ export function PaybackAnalysis() {
     return null;
   }
 
-  const hasValidData = avgCac > 0 && avgLtv > 0 && ltvCacRatio > 0;
+  const hasValidData = avgCac > 0 && avgLtv > 0 && ltvCacRatio > 0 && avgCurrentPercent > 0;
 
   if (!hasValidData) {
     return null;
@@ -193,7 +193,7 @@ export function PaybackAnalysis() {
               </tr>
             </thead>
             <tbody>
-              {paybackData.payback.map((cohort, i) => {
+              {paybackData.payback.filter(c => c.cac > 0 && c.curve.length > 0).map((cohort, i) => {
                 const beData = breakEvenDays.find(b => b.cohort === cohort.cohortMonth);
                 const isBreakEven = beData && beData.currentPercent >= 100;
 
