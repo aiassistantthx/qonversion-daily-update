@@ -12,6 +12,7 @@ const appleAds = require('../services/appleAds');
 const rulesEngine = require('../services/rulesEngine');
 const { predictRoas, findPaybackDays } = require('../lib/predictions');
 const cache = require('../lib/cache');
+const { fetchDailySales } = require('../services/qonversionSales');
 
 // ================================================
 // CONSTANTS
@@ -3013,10 +3014,20 @@ router.get('/trends', async (req, res) => {
 
     const totalSpend = parseFloat(totalsQuery.rows[0]?.total_spend) || 0;
     const totalCohortRevenue = parseFloat(revenueQuery.rows[0]?.total_revenue) || 0;
-    const totalAllRevenue = parseFloat(totalRevenueQuery.rows[0]?.total_revenue) || 0;
+    let totalAllRevenue = parseFloat(totalRevenueQuery.rows[0]?.total_revenue) || 0;
     const totalInstalls = parseInt(totalsQuery.rows[0]?.total_installs) || 0;
     const totalTrials = parseInt(trialsQuery.rows[0]?.total_trials) || 0;
     const totalPaidUsers = parseInt(paidQuery.rows[0]?.total_paid_users) || 0;
+
+    // Fetch accurate total sales from Qonversion API (includes all revenue, not just webhook events)
+    const qonversionSales = await fetchDailySales();
+
+    // Override totalAllRevenue with Qonversion data if available
+    if (Object.keys(qonversionSales).length > 0) {
+      totalAllRevenue = Object.entries(qonversionSales)
+        .filter(([date]) => date >= from && date <= to)
+        .reduce((sum, [, revenue]) => sum + revenue, 0);
+    }
 
     const responseData = {
       from,
@@ -3034,20 +3045,26 @@ router.get('/trends', async (req, res) => {
         trial_to_paid_rate: totalTrials > 0 ? (totalPaidUsers / totalTrials) * 100 : 0,
         install_to_paid_rate: totalInstalls > 0 ? (totalPaidUsers / totalInstalls) * 100 : 0
       },
-      data: result.rows.map(row => ({
-        date: row.date,
-        spend: parseFloat(row.spend) || 0,
-        revenue: parseFloat(row.revenue) || 0,
-        totalRevenue: parseFloat(row.total_revenue) || 0,
-        roas: parseFloat(row.roas) || 0,
-        totalRoas: parseFloat(row.total_roas) || 0,
-        installs: parseInt(row.installs) || 0,
-        trials: parseInt(row.trials) || 0,
-        paid_users: parseInt(row.paid_users) || 0,
-        cop: row.cop != null ? parseFloat(row.cop) : null,
-        install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
-        trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
-      }))
+      data: result.rows.map(row => {
+        const dateStr = row.date.toISOString().split('T')[0];
+        const spend = parseFloat(row.spend) || 0;
+        // Use Qonversion sales for totalRevenue if available, fallback to events_v2
+        const totalRevenue = qonversionSales[dateStr] ?? parseFloat(row.total_revenue) ?? 0;
+        return {
+          date: row.date,
+          spend,
+          revenue: parseFloat(row.revenue) || 0,
+          totalRevenue,
+          roas: parseFloat(row.roas) || 0,
+          totalRoas: spend > 0 ? totalRevenue / spend : 0,
+          installs: parseInt(row.installs) || 0,
+          trials: parseInt(row.trials) || 0,
+          paid_users: parseInt(row.paid_users) || 0,
+          cop: row.cop != null ? parseFloat(row.cop) : null,
+          install_to_trial_rate: parseFloat(row.install_to_trial_rate) || 0,
+          trial_to_paid_rate: parseFloat(row.trial_to_paid_rate) || 0
+        };
+      })
     };
 
     if (compare === 'true' && prevResult) {
