@@ -576,17 +576,32 @@ async function fullSync(days = 90) {
   }
 }
 
-// Run
-// Default: 7 days (incremental sync - update recent data)
-// Use: node apple-ads-sync.js 90 - for full historical sync
-const days = parseInt(process.argv[2]) || 7;
+// Sync interval configuration
+const SYNC_INTERVAL_HOURS = parseInt(process.env.SYNC_INTERVAL_HOURS) || 12;
+const SYNC_INTERVAL_MS = SYNC_INTERVAL_HOURS * 60 * 60 * 1000;
 
-fullSync(days)
-  .then(() => {
-    console.log('\n👋 Done');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('\n💥 Fatal error:', error);
-    process.exit(1);
-  });
+// Helper: sleep
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Run sync in a loop
+async function runLoop() {
+  // Default: 7 days (incremental sync - update recent data)
+  // Use: node apple-ads-sync.js 90 - for full historical sync
+  const days = parseInt(process.argv[2]) || 7;
+
+  console.log(`\n⏰ Sync interval: every ${SYNC_INTERVAL_HOURS} hours\n`);
+
+  while (true) {
+    try {
+      await fullSync(days);
+      console.log(`\n✅ Sync completed. Next sync in ${SYNC_INTERVAL_HOURS} hours...`);
+    } catch (error) {
+      console.error('\n❌ Sync failed:', error.message);
+      console.log(`   Will retry in ${SYNC_INTERVAL_HOURS} hours...`);
+    }
+
+    await sleep(SYNC_INTERVAL_MS);
+  }
+}
+
+runLoop();
