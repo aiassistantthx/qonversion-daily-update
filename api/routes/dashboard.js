@@ -237,11 +237,25 @@ router.get('/main', async (req, res) => {
       }
     }
 
-    // If Qonversion doesn't have data for early days of month, add from events_v2
+    // If Qonversion doesn't have data, fallback to events_v2
     const qonversionDates = Object.keys(qonversionSales).filter(d => d >= monthStart);
     const oldestQonversionDate = qonversionDates.length > 0 ? qonversionDates.sort()[0] : null;
 
-    if (oldestQonversionDate && oldestQonversionDate > monthStart) {
+    if (qonversionDates.length === 0) {
+      // No Qonversion data - use events_v2 for all revenue
+      const fullRevenueQuery = `
+        SELECT COALESCE(SUM(price_usd), 0) as revenue
+        FROM events_v2
+        WHERE event_date >= $1 AND event_date <= $2
+          AND refund = false
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+      `;
+      const fullRevenueResult = await db.query(fullRevenueQuery, [monthStart, formatDate(today)]);
+      monthRevenue = parseFloat(fullRevenueResult.rows[0]?.revenue) || 0;
+
+      const comparisonRevenueResult = await db.query(fullRevenueQuery, [monthStart, yesterdayStr]);
+      monthRevenueForComparison = parseFloat(comparisonRevenueResult.rows[0]?.revenue) || 0;
+    } else if (oldestQonversionDate && oldestQonversionDate > monthStart) {
       // Get revenue from events_v2 for days before Qonversion data
       const earlyRevenueQuery = `
         SELECT COALESCE(SUM(price_usd), 0) as revenue

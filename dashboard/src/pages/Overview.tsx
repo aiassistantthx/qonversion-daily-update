@@ -7,13 +7,11 @@ import {
   TrafficSourceFilter, parseTrafficSourceFromURL, updateURLWithTrafficSource,
   CountryFilter, parseCountryFilterFromURL, updateURLWithCountryFilter,
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
-  ActiveSubscribersWidget,
   MonthlyComparisonTable,
   TrendChart,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  ActiveSubscribersData,
   TrendChartData,
 } from '../components';
 import { api } from '../api';
@@ -210,11 +208,6 @@ export function Overview() {
     queryFn: () => apiFetch(`${API_URL}/asa/campaigns?from=${dateRange.from}&to=${dateRange.to}`),
   });
 
-  const { data: activeSubscribersData } = useQuery<ActiveSubscribersData>({
-    queryKey: ['active-subscribers'],
-    queryFn: () => apiFetch(`${API_URL}/dashboard/active-subscribers`),
-  });
-
   const { data: yoyData } = useQuery<YoYData>({
     queryKey: ['yoy'],
     queryFn: api.getYoY,
@@ -298,9 +291,6 @@ export function Overview() {
         <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} sparklineData={copSparkline} invertChange />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
-
-      {/* Active Subscribers Widget */}
-      {activeSubscribersData?.current && <ActiveSubscribersWidget data={activeSubscribersData} />}
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
