@@ -691,7 +691,7 @@ export function WhatIf() {
         <div style={styles.chartCard}>
           <h3 style={styles.cardTitle}>Revenue Forecast</h3>
           <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>
-            Green = actual revenue, Purple = model prediction, Gray bars = ad spend
+            Green = actual revenue, Purple = model prediction, Blue bars = ad spend
           </p>
           <div style={{ height: 400 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -708,14 +708,6 @@ export function WhatIf() {
                 />
                 <YAxis
                   yAxisId="revenue"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickLine={false}
-                  tickFormatter={v => `$${v}k`}
-                />
-                <YAxis
-                  yAxisId="spend"
-                  orientation="right"
                   stroke="#6b7280"
                   fontSize={12}
                   tickLine={false}
@@ -741,12 +733,12 @@ export function WhatIf() {
                   />
                 )}
 
-                {/* Spend bars - subtle gray background */}
+                {/* Spend bars - light blue, same scale as revenue */}
                 <Bar
-                  yAxisId="spend"
+                  yAxisId="revenue"
                   dataKey="spend"
-                  fill="#e5e7eb"
-                  opacity={0.5}
+                  fill="#60a5fa"
+                  opacity={0.25}
                   name="Spend"
                   radius={[2, 2, 0, 0]}
                 />
