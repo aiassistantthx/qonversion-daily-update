@@ -52,7 +52,11 @@ interface DashboardData {
     roas: number | null;
     roasChange: number | null;
     forecastSpend: number;
+    forecastSpendChange: number | null;
     forecastRevenue: number;
+    forecastRevenueChange: number | null;
+    prevMonthSpendActual: number;
+    prevMonthRevenueActual: number;
     predictedCop: number | null;
     forecastSubscribers: number;
     paybackMonths: number | null;
@@ -286,8 +290,8 @@ export function Overview() {
 
       {/* KPI Cards Row 3 - Forecasts */}
       <div style={styles.kpiGrid}>
-        <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="month-end" sparklineData={spendSparkline} />
-        <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="month-end" sparklineData={revenueSparkline} />
+        <KPICard title="Forecast Spend" value={fmtK(cm?.forecastSpend || 0)} subtitle="vs prev month" change={cm?.forecastSpendChange} sparklineData={spendSparkline} />
+        <KPICard title="Forecast Revenue" value={fmtK(cm?.forecastRevenue || 0)} subtitle="vs prev month" change={cm?.forecastRevenueChange} sparklineData={revenueSparkline} />
         <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} sparklineData={copSparkline} invertChange />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>

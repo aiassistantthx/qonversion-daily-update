@@ -566,6 +566,30 @@ router.get('/main', async (req, res) => {
     const forecastSpend = avgDailySpend * daysInMonth;
     const forecastRevenue = avgDailyRevenue * daysInMonth;
 
+    // Full previous month actuals (for forecast comparison)
+    const prevMonthFullSpendQuery = `
+      SELECT COALESCE(SUM(spend), 0) as spend
+      FROM apple_ads_campaigns
+      WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        AND ${campaignCondition}
+    `;
+    const prevMonthFullSpendResult = await db.query(prevMonthFullSpendQuery, [prevMonth]);
+    const prevMonthSpendActual = parseFloat(prevMonthFullSpendResult.rows[0]?.spend) || 0;
+
+    const prevMonthFullRevenueQuery = `
+      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      FROM events_v2
+      WHERE TO_CHAR(event_date, 'YYYY-MM') = $1
+        AND refund = false
+        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+    `;
+    const prevMonthFullRevenueResult = await db.query(prevMonthFullRevenueQuery, [prevMonth]);
+    const prevMonthRevenueActual = parseFloat(prevMonthFullRevenueResult.rows[0]?.revenue) || 0;
+
+    // Forecast vs previous month actual changes
+    const forecastSpendChange = prevMonthSpendActual > 0 ? ((forecastSpend / prevMonthSpendActual) - 1) * 100 : null;
+    const forecastRevenueChange = prevMonthRevenueActual > 0 ? ((forecastRevenue / prevMonthRevenueActual) - 1) * 100 : null;
+
     // Calculate predicted COP for current month cohorts
     // Average cohort age for current month = currentDay / 2 (mid-point)
     const avgCohortAge = Math.floor(currentDay / 2);
@@ -839,7 +863,11 @@ router.get('/main', async (req, res) => {
         roasChange,
         predictedRoas,  // Predicted final ROAS for current month
         forecastSpend,
+        forecastSpendChange,
         forecastRevenue,
+        forecastRevenueChange,
+        prevMonthSpendActual,
+        prevMonthRevenueActual,
         predictedCop,
         forecastSubscribers,
         paybackMonths,
