@@ -37,6 +37,11 @@ const MODEL_DEFAULTS = {
   // Budget & CAC defaults
   monthlyBudget: 57000,            // Default monthly ad spend
   forecastCAC: 33,                 // Blended CAC for forecast (historical: $18-35)
+
+  // Profit calculation
+  operationalCostsPct: 5,          // Operational costs as % of sales
+  otherCosts: 20000,               // Fixed monthly costs (salaries, etc.)
+  proceedsCoef: 0.78,              // Apple takes 22%, developer gets 78%
 };
 
 interface WhatIfParams {
@@ -48,10 +53,18 @@ interface WhatIfParams {
   weeklyShare: number;
   weeklyPrice: number;
   yearlyPrice: number;
+  operationalCostsPct: number;
+  otherCosts: number;
+  proceedsCoef: number;
 }
 
 interface MonthBudget {
   budget: number;
+  isCustom: boolean;
+}
+
+interface MonthCOP {
+  cop: number;
   isCustom: boolean;
 }
 
@@ -66,11 +79,13 @@ interface ForecastPoint {
   actual?: number;
   predicted: number;
   spend: number;
+  cop: number;
   weeklyActive: number;
   yearlyActive: number;
   newSubs: number;
   type: 'historical' | 'current' | 'forecast';
   isCustomBudget?: boolean;
+  isCustomCOP?: boolean;
 }
 
 // ============================================
@@ -173,10 +188,14 @@ export function WhatIf() {
     weeklyShare: MODEL_DEFAULTS.weeklyShare,
     weeklyPrice: MODEL_DEFAULTS.weeklyPrice,
     yearlyPrice: MODEL_DEFAULTS.yearlyPrice,
+    operationalCostsPct: MODEL_DEFAULTS.operationalCostsPct,
+    otherCosts: MODEL_DEFAULTS.otherCosts,
+    proceedsCoef: MODEL_DEFAULTS.proceedsCoef,
   });
 
   const [forecastMonths, setForecastMonths] = useState(12);
   const [monthlyBudgets, setMonthlyBudgets] = useState<Record<string, number>>({});
+  const [monthlyCOPs, setMonthlyCOPs] = useState<Record<string, number>>({});
 
   // Fetch backtest data (has historical + model validation)
   const { data: backtestData, isLoading } = useQuery({
@@ -237,6 +256,35 @@ export function WhatIf() {
   }, []);
 
   const hasCustomBudgets = Object.keys(monthlyBudgets).length > 0;
+
+  // Get COP for a specific month
+  const getCOPForMonth = useCallback((month: string): MonthCOP => {
+    if (monthlyCOPs[month] !== undefined) {
+      return { cop: monthlyCOPs[month], isCustom: true };
+    }
+    return { cop: params.forecastCAC, isCustom: false };
+  }, [monthlyCOPs, params.forecastCAC]);
+
+  // Set COP for a specific month
+  const setMonthCOP = useCallback((month: string, cop: number) => {
+    setMonthlyCOPs(prev => ({ ...prev, [month]: cop }));
+  }, []);
+
+  // Reset a specific month COP to default
+  const resetMonthCOP = useCallback((month: string) => {
+    setMonthlyCOPs(prev => {
+      const next = { ...prev };
+      delete next[month];
+      return next;
+    });
+  }, []);
+
+  // Reset all monthly COPs
+  const resetAllCOPs = useCallback(() => {
+    setMonthlyCOPs({});
+  }, []);
+
+  const hasCustomCOPs = Object.keys(monthlyCOPs).length > 0;
 
   // ============================================
   // COHORT-BASED FORECAST CALCULATION
@@ -332,6 +380,7 @@ export function WhatIf() {
         actual: actualRevenue,
         predicted: totalWeeklyRevenue + totalYearlyRevenue,
         spend: actualSpend,
+        cop: actualSubs > 0 ? actualSpend / actualSubs : 0,
         weeklyActive: Math.round(totalWeeklyActive),
         yearlyActive: Math.round(totalYearlyActive),
         newSubs: actualSubs,
@@ -342,9 +391,10 @@ export function WhatIf() {
     // Generate forecast months
     for (const monthStr of forecastMonthKeys) {
       const { budget: monthBudget, isCustom } = getBudgetForMonth(monthStr);
+      const { cop: monthCOP, isCustom: isCustomCOP } = getCOPForMonth(monthStr);
 
-      // Calculate new subscribers from budget / CAC (blended includes organic)
-      const totalNewSubs = forecastCAC > 0 ? monthBudget / forecastCAC : 0;
+      // Calculate new subscribers from budget / COP (blended includes organic)
+      const totalNewSubs = monthCOP > 0 ? monthBudget / monthCOP : 0;
 
       // Add new cohort for this forecast month
       cohorts.push({
@@ -378,18 +428,20 @@ export function WhatIf() {
         month: monthStr,
         predicted: totalWeeklyRevenue + totalYearlyRevenue,
         spend: monthBudget,
+        cop: monthCOP,
         weeklyActive: Math.round(totalWeeklyActive),
         yearlyActive: Math.round(totalYearlyActive),
         newSubs: Math.round(totalNewSubs),
         type: 'forecast',
         isCustomBudget: isCustom,
+        isCustomCOP: isCustomCOP,
       });
     }
 
     // Results should be in order: historical months first, then forecast months
     // No deduplication needed since forecastMonthKeys starts AFTER last historical month
     return results;
-  }, [backtestData, params, forecastMonthKeys, getBudgetForMonth]);
+  }, [backtestData, params, forecastMonthKeys, getBudgetForMonth, getCOPForMonth]);
 
   // Chart data
   const chartData = forecastData.map(d => ({
@@ -442,23 +494,34 @@ export function WhatIf() {
       weeklyShare: MODEL_DEFAULTS.weeklyShare,
       weeklyPrice: MODEL_DEFAULTS.weeklyPrice,
       yearlyPrice: MODEL_DEFAULTS.yearlyPrice,
+      operationalCostsPct: MODEL_DEFAULTS.operationalCostsPct,
+      otherCosts: MODEL_DEFAULTS.otherCosts,
+      proceedsCoef: MODEL_DEFAULTS.proceedsCoef,
     });
     resetAllBudgets();
+    resetAllCOPs();
   };
 
   const handleExport = () => {
-    const headers = ['Month', 'Type', 'Actual', 'Predicted', 'Error%', 'Spend', 'Weekly Active', 'Yearly Active', 'New Subs'];
-    const rows = forecastData.map(d => [
-      d.month,
-      d.type,
-      d.actual?.toFixed(0) || '',
-      d.predicted.toFixed(0),
-      d.actual ? (((d.predicted - d.actual) / d.actual) * 100).toFixed(1) : '',
-      d.spend.toFixed(0),
-      d.weeklyActive,
-      d.yearlyActive,
-      d.newSubs,
-    ]);
+    const headers = ['Month', 'Type', 'Actual', 'Predicted', 'Error%', 'Spend', 'COP', 'Net Profit', 'Weekly Active', 'Yearly Active', 'New Subs'];
+    const rows = forecastData.map(d => {
+      const revenue = d.actual || d.predicted;
+      const operationalCosts = revenue * params.operationalCostsPct / 100;
+      const netProfit = revenue * params.proceedsCoef - operationalCosts - params.otherCosts - d.spend;
+      return [
+        d.month,
+        d.type,
+        d.actual?.toFixed(0) || '',
+        d.predicted.toFixed(0),
+        d.actual ? (((d.predicted - d.actual) / d.actual) * 100).toFixed(1) : '',
+        d.spend.toFixed(0),
+        d.cop.toFixed(0),
+        netProfit.toFixed(0),
+        d.weeklyActive,
+        d.yearlyActive,
+        d.newSubs,
+      ];
+    });
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -581,6 +644,37 @@ export function WhatIf() {
               min={1}
               max={24}
             />
+          </div>
+
+          <div style={styles.paramSection}>
+            <div style={styles.paramLabel}>Profit Calculation</div>
+            <ParamInput
+              label="Proceeds Coef"
+              value={params.proceedsCoef}
+              onChange={v => setParams(p => ({ ...p, proceedsCoef: v }))}
+              step={0.01}
+            />
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, marginBottom: 8 }}>
+              Apple takes 22%, you get 78% (0.78)
+            </div>
+            <ParamInput
+              label="Operational Costs (%)"
+              value={params.operationalCostsPct}
+              onChange={v => setParams(p => ({ ...p, operationalCostsPct: v }))}
+              step={0.5}
+            />
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, marginBottom: 8 }}>
+              % of sales (default: 5%)
+            </div>
+            <ParamInput
+              label="Other Costs ($)"
+              value={params.otherCosts}
+              onChange={v => setParams(p => ({ ...p, otherCosts: v }))}
+              step={1000}
+            />
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, marginBottom: 8 }}>
+              Fixed monthly (default: $20k)
+            </div>
           </div>
 
           <div style={styles.paramSection}>
@@ -881,20 +975,32 @@ export function WhatIf() {
           <div>
             <h3 style={{ ...styles.cardTitle, marginBottom: 4 }}>Monthly Forecast</h3>
             <p style={{ fontSize: 12, color: '#6b7280' }}>
-              Click on Budget cells in forecast rows to customize spending per month.
+              Click on Budget/COP cells in forecast rows to customize per month.
               <span style={{ color: '#d97706', marginLeft: 8 }}>Current* = extrapolated to full month</span>
               {hasCustomBudgets && (
                 <span style={{ color: '#f59e0b', marginLeft: 8 }}>
                   • {Object.keys(monthlyBudgets).length} custom budget(s)
                 </span>
               )}
+              {hasCustomCOPs && (
+                <span style={{ color: '#0ea5e9', marginLeft: 8 }}>
+                  • {Object.keys(monthlyCOPs).length} custom COP(s)
+                </span>
+              )}
             </p>
           </div>
-          {hasCustomBudgets && (
-            <button onClick={resetAllBudgets} style={styles.resetTableBtn}>
-              <RotateCcw size={14} /> Reset Budgets
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {hasCustomCOPs && (
+              <button onClick={resetAllCOPs} style={{ ...styles.resetTableBtn, background: '#e0f2fe', borderColor: '#0ea5e9', color: '#0369a1' }}>
+                <RotateCcw size={14} /> Reset COPs
+              </button>
+            )}
+            {hasCustomBudgets && (
+              <button onClick={resetAllBudgets} style={styles.resetTableBtn}>
+                <RotateCcw size={14} /> Reset Budgets
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -906,6 +1012,8 @@ export function WhatIf() {
                 <th style={{ ...styles.th, textAlign: 'right' }}>Predicted</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Error</th>
                 <th style={{ ...styles.th, textAlign: 'right', background: '#fef3c7' }}>Budget</th>
+                <th style={{ ...styles.th, textAlign: 'right', background: '#e0f2fe' }}>COP</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Net Profit</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Weekly</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Yearly</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>New Subs</th>
@@ -965,6 +1073,31 @@ export function WhatIf() {
                         <span style={{ color: '#6b7280' }}>${(row.spend / 1000).toFixed(1)}k</span>
                       )}
                     </td>
+                    <td style={{ ...styles.td, textAlign: 'right', padding: 4 }}>
+                      {isForecast ? (
+                        <EditableCell
+                          value={row.cop}
+                          onChange={v => setMonthCOP(row.month, v)}
+                          isCustom={row.isCustomCOP || false}
+                          format="dollar"
+                        />
+                      ) : (
+                        <span style={{ color: '#6b7280' }}>${row.cop.toFixed(0)}</span>
+                      )}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'right' }}>
+                      {(() => {
+                        const revenue = row.actual || row.predicted;
+                        const operationalCosts = revenue * params.operationalCostsPct / 100;
+                        const netProfit = revenue * params.proceedsCoef - operationalCosts - params.otherCosts - row.spend;
+                        const color = netProfit >= 0 ? '#10b981' : '#ef4444';
+                        return (
+                          <span style={{ color, fontWeight: 500 }}>
+                            {netProfit >= 0 ? '' : '-'}${Math.abs(netProfit / 1000).toFixed(1)}k
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td style={{ ...styles.td, textAlign: 'right' }}>
                       {row.weeklyActive.toLocaleString()}
                     </td>
@@ -975,9 +1108,12 @@ export function WhatIf() {
                       {row.newSubs.toLocaleString()}
                     </td>
                     <td style={{ padding: 4, textAlign: 'center' }}>
-                      {row.isCustomBudget && (
+                      {(row.isCustomBudget || row.isCustomCOP) && (
                         <button
-                          onClick={() => resetMonthBudget(row.month)}
+                          onClick={() => {
+                            if (row.isCustomBudget) resetMonthBudget(row.month);
+                            if (row.isCustomCOP) resetMonthCOP(row.month);
+                          }}
                           style={styles.resetRowBtn}
                           title="Reset to default"
                         >
@@ -999,7 +1135,22 @@ export function WhatIf() {
                 <td style={{ ...styles.td, textAlign: 'right', color: '#8b5cf6' }}>
                   ${(totalFutureSpend / 1000).toFixed(0)}k
                 </td>
-                <td style={styles.td} colSpan={4}></td>
+                <td style={styles.td}>-</td>
+                <td style={{ ...styles.td, textAlign: 'right' }}>
+                  {(() => {
+                    const totalNetProfit = futureData.reduce((sum, d) => {
+                      const operationalCosts = d.predicted * params.operationalCostsPct / 100;
+                      return sum + (d.predicted * params.proceedsCoef - operationalCosts - params.otherCosts - d.spend);
+                    }, 0);
+                    const color = totalNetProfit >= 0 ? '#10b981' : '#ef4444';
+                    return (
+                      <span style={{ color }}>
+                        {totalNetProfit >= 0 ? '' : '-'}${Math.abs(totalNetProfit / 1000).toFixed(0)}k
+                      </span>
+                    );
+                  })()}
+                </td>
+                <td style={styles.td} colSpan={3}></td>
               </tr>
             </tfoot>
           </table>
@@ -1009,10 +1160,11 @@ export function WhatIf() {
   );
 }
 
-function EditableCell({ value, onChange, isCustom }: {
+function EditableCell({ value, onChange, isCustom, format = 'budget' }: {
   value: number;
   onChange: (v: number) => void;
   isCustom: boolean;
+  format?: 'budget' | 'dollar';
 }) {
   const [editing, setEditing] = useState(false);
   const [tempValue, setTempValue] = useState(value.toString());
@@ -1034,6 +1186,14 @@ function EditableCell({ value, onChange, isCustom }: {
     }
   };
 
+  const displayValue = format === 'dollar'
+    ? `$${value.toFixed(0)}`
+    : `$${(value / 1000).toFixed(0)}k`;
+
+  const step = format === 'dollar' ? 1 : 1000;
+  const bgColor = isCustom ? '#fef3c7' : (format === 'dollar' ? '#f0f9ff' : '#f9fafb');
+  const borderColor = isCustom ? '#f59e0b' : (format === 'dollar' ? '#bae6fd' : '#e5e7eb');
+
   if (editing) {
     return (
       <input
@@ -1042,7 +1202,7 @@ function EditableCell({ value, onChange, isCustom }: {
         onChange={e => setTempValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        step={1000}
+        step={step}
         autoFocus
         style={styles.editInput}
       />
@@ -1057,12 +1217,12 @@ function EditableCell({ value, onChange, isCustom }: {
       }}
       style={{
         ...styles.editableCell,
-        background: isCustom ? '#fef3c7' : '#f9fafb',
-        borderColor: isCustom ? '#f59e0b' : '#e5e7eb',
+        background: bgColor,
+        borderColor: borderColor,
         fontWeight: isCustom ? 600 : 400,
       }}
     >
-      ${(value / 1000).toFixed(0)}k
+      {displayValue}
     </button>
   );
 }

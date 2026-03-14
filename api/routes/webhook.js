@@ -255,10 +255,8 @@ async function saveToSubscriptionEvents(eventData, attribution) {
 async function saveToEventsV2(eventData, attribution) {
   const payload = eventData.rawPayload;
 
-  const transactionId = payload.transaction?.transaction_id;
-  if (!transactionId) {
-    return null;
-  }
+  // Use transaction_id if available, otherwise generate from eventId
+  const transactionId = payload.transaction?.transaction_id || eventData.eventId;
 
   // If no attribution in payload, try to get from user_attributions
   let finalAttribution = attribution;
@@ -613,27 +611,27 @@ router.get('/stats', async (req, res) => {
       GROUP BY 1
     `);
 
-    // Check qonversion_events campaign text values
+    // Check events_v2 campaign text values
     const qonversionCampaigns = await db.query(`
       SELECT
-        campaign,
+        campaign_name as campaign,
         COUNT(DISTINCT q_user_id) as users,
         MIN(install_date) as first_install,
         MAX(install_date) as last_install
-      FROM qonversion_events
+      FROM events_v2
       WHERE media_source = 'Apple AdServices'
-      GROUP BY campaign
+      GROUP BY campaign_name
       ORDER BY users DESC
       LIMIT 15
     `);
 
-    // Check campaign name matching between qonversion_events and apple_ads_campaigns
+    // Check campaign name matching between events_v2 and apple_ads_campaigns
     const campaignMatching = await db.query(`
       WITH qon_campaigns AS (
-        SELECT campaign, COUNT(DISTINCT q_user_id) as users
-        FROM qonversion_events
-        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
-        GROUP BY campaign
+        SELECT campaign_name as campaign, COUNT(DISTINCT q_user_id) as users
+        FROM events_v2
+        WHERE media_source = 'Apple AdServices' AND campaign_name IS NOT NULL
+        GROUP BY campaign_name
       ),
       apple_campaigns AS (
         SELECT DISTINCT campaign_name, campaign_id FROM apple_ads_campaigns
@@ -661,20 +659,20 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// GET /webhook/debug-campaigns - debug qonversion_events campaigns
+// GET /webhook/debug-campaigns - debug events_v2 campaigns
 router.get('/debug-campaigns', async (req, res) => {
   try {
-    // Check campaign values in qonversion_events for ASA users
+    // Check campaign values in events_v2 for ASA users
     const campaigns = await db.query(`
       SELECT
-        campaign,
+        campaign_name as campaign,
         COUNT(DISTINCT q_user_id) as users,
         SUM(price_usd) as revenue,
         MIN(install_date) as first_install,
         MAX(install_date) as last_install
-      FROM qonversion_events
+      FROM events_v2
       WHERE media_source = 'Apple AdServices'
-      GROUP BY campaign
+      GROUP BY campaign_name
       ORDER BY users DESC
       LIMIT 20
     `);
@@ -682,8 +680,8 @@ router.get('/debug-campaigns', async (req, res) => {
     // Check campaign name matching
     const matching = await db.query(`
       WITH qon AS (
-        SELECT DISTINCT campaign FROM qonversion_events
-        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
+        SELECT DISTINCT campaign_name FROM events_v2
+        WHERE media_source = 'Apple AdServices' AND campaign_name IS NOT NULL
       ),
       apple AS (
         SELECT DISTINCT campaign_name FROM apple_ads_campaigns
@@ -691,23 +689,23 @@ router.get('/debug-campaigns', async (req, res) => {
       SELECT
         (SELECT COUNT(*) FROM qon) as qon_campaigns,
         (SELECT COUNT(*) FROM apple) as apple_campaigns,
-        (SELECT COUNT(*) FROM qon q JOIN apple a ON q.campaign = a.campaign_name) as matched
+        (SELECT COUNT(*) FROM qon q JOIN apple a ON q.campaign_name = a.campaign_name) as matched
     `);
 
     // Sample unmatched campaigns
     const unmatched = await db.query(`
       WITH qon AS (
-        SELECT campaign, COUNT(DISTINCT q_user_id) as users
-        FROM qonversion_events
-        WHERE media_source = 'Apple AdServices' AND campaign IS NOT NULL
-        GROUP BY campaign
+        SELECT campaign_name, COUNT(DISTINCT q_user_id) as users
+        FROM events_v2
+        WHERE media_source = 'Apple AdServices' AND campaign_name IS NOT NULL
+        GROUP BY campaign_name
       ),
       apple AS (
         SELECT DISTINCT campaign_name FROM apple_ads_campaigns
       )
-      SELECT q.campaign, q.users
+      SELECT q.campaign_name as campaign, q.users
       FROM qon q
-      LEFT JOIN apple a ON q.campaign = a.campaign_name
+      LEFT JOIN apple a ON q.campaign_name = a.campaign_name
       WHERE a.campaign_name IS NULL
       ORDER BY q.users DESC
       LIMIT 10

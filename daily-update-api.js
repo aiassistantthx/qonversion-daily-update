@@ -29,7 +29,7 @@ const CONFIG = {
   },
   // API endpoints
   apiUrl: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
-  apiKey: '0f2c53cb2211180b5d731a9ed90dd5ccac0e55f9286c2ddf',
+  apiKey: 'sk_dash_7f3k9m2x5p8q1n4v6b0c',
   // SSH fallback for when Traefik routing is broken
   ssh: {
     host: 'root@46.225.26.104',
@@ -123,12 +123,26 @@ const QONVERSION_API_KEY = 'bfGiq4khkfuQNe-Dxmvuspxtboqmcuy-';
 const QONVERSION_API_URL = `https://api.qonversion.io/v1/analytics/${QONVERSION_API_KEY}`;
 
 // SSH-based API call (bypasses broken Traefik routing)
-// Uses docker exec to call API from inside the coolify network
+// Gets container IP dynamically and uses wget from coolify-proxy
 function fetchViaSSH(endpoint) {
   const { host, key, containerName, containerPort } = CONFIG.ssh;
-  // Use docker exec with a proxy container that has curl, or use wget
-  // Traefik container has wget, use it to reach the app via Docker DNS
-  const cmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker exec coolify-proxy wget -qO- --header='X-API-Key: ${CONFIG.apiKey}' 'http://${containerName}:${containerPort}${endpoint}'"`;
+  const fullContainerName = `${containerName}-085425930777`;
+
+  // Get container IP dynamically
+  const getIpCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker inspect ${fullContainerName} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"`;
+
+  let containerIp;
+  try {
+    containerIp = execSync(getIpCmd, { encoding: 'utf-8', timeout: 10000 }).trim();
+    if (!containerIp) {
+      throw new Error('Container IP not found');
+    }
+  } catch (error) {
+    throw new Error(`Failed to get container IP: ${error.message}`);
+  }
+
+  // Use the IP to make the API call
+  const cmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker exec coolify-proxy wget -qO- --header='X-API-Key: ${CONFIG.apiKey}' 'http://${containerIp}:${containerPort}${endpoint}'"`;
 
   try {
     const result = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });

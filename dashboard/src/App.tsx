@@ -5,7 +5,6 @@ import { Overview } from './pages/Overview';
 import { MarketingDashboard } from './pages/MarketingDashboard';
 import { CohortsDashboard } from './pages/CohortsDashboard';
 import { RoasEvolution } from './pages/RoasEvolution';
-import { Planning } from './pages/Planning';
 import { Prediction } from './pages/Prediction';
 import { WhatIf } from './pages/WhatIf';
 import { ThemeContext, useThemeProvider, themes } from './styles/themes';
@@ -32,7 +31,6 @@ function DashboardLayout() {
     { path: '/dashboard/cohorts', label: 'Cohorts' },
     { path: '/dashboard/roas-evolution', label: 'ROAS Evolution' },
     { path: '/dashboard/what-if', label: 'What-If' },
-    { path: '/dashboard/planning', label: 'Planning' },
   ];
 
   return (
@@ -89,7 +87,6 @@ function DashboardLayout() {
           <Route path="/cohorts" element={<CohortsDashboard />} />
           <Route path="/roas-evolution" element={<RoasEvolution />} />
           <Route path="/what-if" element={<WhatIf />} />
-          <Route path="/planning" element={<Planning />} />
           <Route path="/prediction" element={<Prediction />} />
           <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
         </Routes>

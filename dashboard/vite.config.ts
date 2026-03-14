@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Production API key (from Coolify DASHBOARD_API_KEY)
+const API_KEY = 'sk_dash_7f3k9m2x5p8q1n4v6b0c'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -12,7 +15,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         headers: {
-          'X-API-Key': '0f2c53cb2211180b5d731a9ed90dd5ccac0e55f9286c2ddf',
+          'X-API-Key': API_KEY,
         },
       },
     },
