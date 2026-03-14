@@ -4,6 +4,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Ca
 import { RefreshCw, Calendar, TrendingUp } from 'lucide-react';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
 
+type RoasMode = 'paid' | 'blended';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 
@@ -45,13 +47,14 @@ interface RoasEvolutionData {
 export function RoasEvolution() {
   const [monthsBack, setMonthsBack] = useState(12);
   const [selectedCohorts, setSelectedCohorts] = useState<string[]>([]);
+  const [mode, setMode] = useState<RoasMode>('paid');
 
   const { data: roasEvolution, refetch, isFetching } = useQuery<RoasEvolutionData>({
-    queryKey: ['roas-evolution', monthsBack],
+    queryKey: ['roas-evolution', monthsBack, mode],
     queryFn: async () => {
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (API_KEY) headers['X-API-Key'] = API_KEY;
-      const res = await fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}`, { headers });
+      const res = await fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}&mode=${mode}`, { headers });
       return res.json();
     },
   });
@@ -117,9 +120,30 @@ export function RoasEvolution() {
           </h1>
           <p style={styles.subtitle}>
             How ROAS grows as cohorts mature. Each line represents one monthly cohort.
+            {mode === 'blended' ? ' (All traffic)' : ' (Apple Ads only)'}
           </p>
         </div>
         <div style={styles.headerRight}>
+          <div style={styles.toggleContainer}>
+            <button
+              style={{
+                ...styles.toggleBtn,
+                ...(mode === 'paid' ? styles.toggleBtnActive : {}),
+              }}
+              onClick={() => setMode('paid')}
+            >
+              Paid
+            </button>
+            <button
+              style={{
+                ...styles.toggleBtn,
+                ...(mode === 'blended' ? styles.toggleBtnActive : {}),
+              }}
+              onClick={() => setMode('blended')}
+            >
+              Blended
+            </button>
+          </div>
           <select
             value={monthsBack}
             onChange={(e) => setMonthsBack(Number(e.target.value))}
@@ -338,6 +362,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  toggleContainer: {
+    display: 'flex',
+    background: '#f3f4f6',
+    borderRadius: 8,
+    padding: 4,
+  },
+  toggleBtn: {
+    padding: '6px 14px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: 14,
+    fontWeight: 500,
+    color: '#6b7280',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  toggleBtnActive: {
+    background: '#fff',
+    color: '#111827',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   },
   selectorContainer: {
     background: '#fff',

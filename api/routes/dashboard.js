@@ -1007,7 +1007,13 @@ router.get('/marketing', async (req, res) => {
 router.get('/roas-evolution', async (req, res) => {
   try {
     const monthsBack = parseInt(req.query.months) || 12;
+    const mode = req.query.mode || 'paid'; // 'paid' (Apple Ads only) or 'blended' (all traffic)
     const minSpend = 100; // Minimum spend threshold to filter out anomalous cohorts
+
+    // Build media_source filter based on mode
+    const mediaSourceFilter = mode === 'blended'
+      ? ''
+      : "AND media_source = 'Apple AdServices'";
 
     // Get ROAS at different ages for each cohort month
     const result = await db.query(`
@@ -1022,7 +1028,7 @@ router.get('/roas-evolution', async (req, res) => {
           event_name
         FROM events_v2
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
-          AND media_source = 'Apple AdServices'
+          ${mediaSourceFilter}
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
