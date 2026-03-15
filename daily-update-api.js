@@ -282,6 +282,63 @@ async function fetchQonversionProceeds() {
   return result;
 }
 
+// Получить Trial-to-Paid CR из Qonversion Dashboard API
+async function fetchTrialToPaid() {
+  log('Fetching Trial-to-Paid from Qonversion Dashboard API...');
+
+  const authPath = path.join(__dirname, 'auth.json');
+  if (!fs.existsSync(authPath)) {
+    throw new Error('auth.json not found. Run: cd ~/scripts/qonversion && node login.js');
+  }
+
+  const authData = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
+  const cookies = authData.cookies
+    .filter(c => c.domain && c.domain.includes('qonversion'))
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+
+  // Get last 30 days
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - 30);
+  const fromTs = Math.floor(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()) / 1000);
+  const toTs = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
+
+  const response = await fetch(
+    `https://dash.qonversion.io/api/v1/analytics/chart/trial-to-paid?unit=day&environment=1&project=PcnB70vn&from=${fromTs}&to=${toTs}`,
+    {
+      headers: { 'Cookie': cookies }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Qonversion Dashboard API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!data.success && data.data?.status === 401) {
+    throw new Error('Qonversion auth expired. Run: cd ~/scripts/qonversion && node login.js');
+  }
+
+  // Convert to { 'YYYY-MM-DD': crPercent }
+  const result = {};
+  const series = data.data?.series?.find(s => s.label === 'Total');
+
+  if (series?.data) {
+    for (const point of series.data) {
+      const date = new Date(point.start_time * 1000).toISOString().split('T')[0];
+      const cr = point.value || 0;
+      if (cr > 0) {
+        result[date] = Math.round(cr * 100) / 100;
+      }
+    }
+  }
+
+  log(`Got trial-to-paid CR for ${Object.keys(result).length} days`);
+  return result;
+}
+
 // ============ UNIT ECONOMICS CALCULATIONS ============
 
 function calculateUnitEconomics(dashboardData) {
@@ -439,7 +496,7 @@ async function ensureSheetHasEnoughColumns(updater, maxDate, options) {
   return { added: columnsToAdd, copied: columnsToAdd };
 }
 
-async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, options) {
+async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, trialToPaidData, options) {
   if (options.dryRun) {
     log('DRY RUN: Skipping Google Sheets update');
     return [];
@@ -525,17 +582,12 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
       });
     }
 
-    // Trial-to-Paid Conversion Rate (row 64) - только для когорт с достаточным возрастом
-    // Используем данные когорты на N дней раньше (cohortAge = 7 дней)
-    const cohortDate = new Date(date);
-    cohortDate.setDate(cohortDate.getDate() - 7);
-    const cohortDateStr = formatDate(cohortDate);
-    const cohortData = webhookDaily[cohortDateStr];
-    if (cohortData?.trials > 0 && cohortData?.converted > 0) {
-      const crToPaid = (cohortData.converted / cohortData.trials * 100).toFixed(1);
+    // Trial-to-Paid Conversion Rate (row 64) - из Qonversion Dashboard API
+    const trialToPaidCR = trialToPaidData[day.date];
+    if (trialToPaidCR > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.trialToPaidConversion}`,
-        value: `${crToPaid}%`
+        value: `${trialToPaidCR.toFixed(1)}%`
       });
     }
 
@@ -588,17 +640,19 @@ async function main() {
     const dashboardData = await fetchDashboardMain();
     const qonversionProceeds = await fetchQonversionProceeds();
     const webhookDaily = await fetchWebhookDaily(options.days + 7); // +7 для буфера
+    const trialToPaidData = await fetchTrialToPaid();
 
     log(`Got ${dashboardData.daily.length} daily records`);
     log(`Got ${dashboardData.monthly.length} monthly records`);
     log(`Got proceeds for ${Object.keys(qonversionProceeds).length} days from Qonversion`);
     log(`Got trials/subscribers for ${Object.keys(webhookDaily).length} days from webhook`);
+    log(`Got trial-to-paid CR for ${Object.keys(trialToPaidData).length} days from Qonversion`);
 
     // Вычисляем unit economics
     const metrics = calculateUnitEconomics(dashboardData);
 
     // Обновляем Google Sheets
-    const updates = await updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, options);
+    const updates = await updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, trialToPaidData, options);
 
     // Генерируем отчёт
     const report = generateReport(metrics, options);
