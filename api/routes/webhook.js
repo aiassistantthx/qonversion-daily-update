@@ -395,7 +395,7 @@ router.post('/', async (req, res) => {
     // Verify Authorization token (if configured)
     if (process.env.WEBHOOK_AUTH_TOKEN) {
       const expectedToken = process.env.WEBHOOK_AUTH_TOKEN;
-      if (authHeader !== expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+      if (authHeader !== expectedToken && authHeader !== `Bearer ${expectedToken}` && authHeader !== `Basic ${expectedToken}`) {
         console.error('Invalid authorization token');
         return res.status(401).json({ error: 'Invalid authorization' });
       }
