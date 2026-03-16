@@ -5,6 +5,7 @@ import { RefreshCw, Calendar, Users } from 'lucide-react';
 import { api } from '../api';
 import { useTheme, themes } from '../styles/themes';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
+import { CohortMatrix } from '../components/CohortMatrix';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -22,6 +23,13 @@ export function CohortsDashboard() {
   const { data: cohortsData, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['cohorts', monthsCount],
     queryFn: () => api.getCohorts(monthsCount),
+    refetchInterval: 60000,
+  });
+
+  const [matrixMode, setMatrixMode] = useState<'calendar' | 'rolling30'>('calendar');
+  const { data: matrixData, isLoading: matrixLoading } = useQuery({
+    queryKey: ['cohort-matrix', monthsCount, matrixMode],
+    queryFn: () => api.getCohortMatrix(monthsCount, matrixMode),
     refetchInterval: 60000,
   });
 
@@ -249,6 +257,14 @@ export function CohortsDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Cohort Matrix */}
+      <CohortMatrix
+        data={matrixData}
+        isLoading={matrixLoading}
+        mode={matrixMode}
+        onModeChange={setMatrixMode}
+      />
 
       {/* Cohort table */}
       <div style={{ ...styles.tableCard, background: t.cardBg, borderColor: t.border }}>

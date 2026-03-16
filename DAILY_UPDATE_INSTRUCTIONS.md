@@ -60,7 +60,7 @@ http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io/dashboard/main
 | 55 | New Trials | API: `monthly[].trials` |
 | 58 | New Yearly Subscribers | API: `daily[].subscribers` |
 | 64 | Trial-to-Paid Conversion | API: `currentMonth.crToPaid` |
-| 93 | Cohort Revenue | API: `monthly[]` |
+| 93 | Cohort Rev Gross | Qonversion Dashboard UI: `dash.qonversion.io/cohorts` (Playwright) |
 
 ## Unit Economics метрики
 
@@ -91,6 +91,22 @@ Month: 2026-03
   CR to Paid:   9.77%
 ==================================================
 ```
+
+## Обновление когорт (Cohort Rev Gross, row 93)
+
+Когорты обновляются ежедневно вместе с остальными данными. Значения растут каждый день, т.к. когорты продолжают генерировать revenue.
+
+**Источник:** Qonversion Dashboard UI — `dash.qonversion.io/cohorts`
+- metric=revenue, revenueType=gross, valueType=absolute
+- Колонка **Sum** — total gross revenue по когорте
+- API эндпоинта нет, парсить через **Playwright** с `auth.json`
+
+**URL:**
+```
+https://dash.qonversion.io/cohorts?project=PcnB70vn&metric=revenue&valueType=absolute&revenueType=gross&from=1646092800&to=1773705599&relativeInterval=last48Months&account=8htsgud1
+```
+
+**Обновляемые ячейки:** B93:AI93 (ежемесячные когорты Jun 23 — Mar 26)
 
 ## Корректировки когорт
 
