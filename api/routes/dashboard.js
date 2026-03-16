@@ -5164,6 +5164,118 @@ router.get('/mrr', async (req, res) => {
 });
 
 // ============================================================================
+// MRR MOVEMENT - New MRR, Renewal MRR, Churned MRR, Net MRR by month
+// ============================================================================
+router.get('/mrr-movement', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+
+    const query = `
+      WITH month_series AS (
+        SELECT generate_series(
+          DATE_TRUNC('month', NOW() - INTERVAL '${months} months'),
+          DATE_TRUNC('month', NOW()),
+          '1 month'::interval
+        ) AS month
+      ),
+      first_payment AS (
+        SELECT
+          q_user_id,
+          MIN(created_at) AS first_payment_at
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started')
+        GROUP BY q_user_id
+      ),
+      monthly_events AS (
+        SELECT
+          DATE_TRUNC('month', e.created_at) AS month,
+          e.q_user_id,
+          e.product_id,
+          e.price_usd,
+          e.event_name,
+          fp.first_payment_at,
+          CASE
+            WHEN product_id LIKE '%yearly%' THEN e.price_usd / 12
+            WHEN product_id LIKE '%monthly%' THEN e.price_usd
+            ELSE e.price_usd * 4.33
+          END AS mrr_value
+        FROM events_v2 e
+        LEFT JOIN first_payment fp ON e.q_user_id = fp.q_user_id
+        WHERE e.created_at >= NOW() - INTERVAL '${months + 1} months'
+          AND e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed', 'Subscription Expired', 'Subscription Cancelled')
+          AND e.price_usd > 0
+      ),
+      monthly_mrr AS (
+        SELECT
+          month,
+          SUM(CASE
+            WHEN event_name IN ('Trial Converted', 'Subscription Started')
+              AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', first_payment_at)
+            THEN mrr_value
+            ELSE 0
+          END) AS new_mrr,
+          SUM(CASE
+            WHEN event_name = 'Subscription Renewed'
+            THEN mrr_value
+            ELSE 0
+          END) AS renewal_mrr,
+          SUM(CASE
+            WHEN event_name IN ('Subscription Expired', 'Subscription Cancelled')
+            THEN mrr_value
+            ELSE 0
+          END) AS churned_mrr
+        FROM monthly_events
+        GROUP BY 1
+      )
+      SELECT
+        TO_CHAR(ms.month, 'YYYY-MM') AS month,
+        COALESCE(m.new_mrr, 0) AS new_mrr,
+        COALESCE(m.renewal_mrr, 0) AS renewal_mrr,
+        COALESCE(m.churned_mrr, 0) AS churned_mrr,
+        COALESCE(m.new_mrr, 0) + COALESCE(m.renewal_mrr, 0) - COALESCE(m.churned_mrr, 0) AS net_mrr,
+        LAG(COALESCE(m.new_mrr, 0) + COALESCE(m.renewal_mrr, 0), 1) OVER (ORDER BY ms.month) AS prev_total_mrr
+      FROM month_series ms
+      LEFT JOIN monthly_mrr m ON ms.month = DATE_TRUNC('month', m.month)
+      ORDER BY ms.month
+    `;
+
+    const result = await db.query(query);
+
+    const breakdown = result.rows.map(row => {
+      const newMrr = parseFloat(row.new_mrr) || 0;
+      const renewalMrr = parseFloat(row.renewal_mrr) || 0;
+      const churnedMrr = parseFloat(row.churned_mrr) || 0;
+      const netMrr = parseFloat(row.net_mrr) || 0;
+      const prevTotalMrr = parseFloat(row.prev_total_mrr) || 0;
+      const mrrGrowthRate = prevTotalMrr > 0 ? (netMrr / prevTotalMrr) * 100 : 0;
+
+      return {
+        month: row.month,
+        newMrr,
+        renewalMrr,
+        churnedMrr,
+        netMrr,
+        mrrGrowthRate,
+      };
+    });
+
+    const current = breakdown[breakdown.length - 1] || {
+      month: '',
+      newMrr: 0,
+      renewalMrr: 0,
+      churnedMrr: 0,
+      netMrr: 0,
+      mrrGrowthRate: 0,
+    };
+
+    res.json({ current, breakdown });
+  } catch (error) {
+    console.error('MRR movement error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
 // REVENUE YOY - Year-over-year revenue comparison by month
 // ============================================================================
 router.get('/revenue-yoy', async (req, res) => {
