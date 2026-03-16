@@ -92,3 +92,6 @@ export type { RetentionMatrixData, RetentionRow, RetentionPeriod } from './Reten
 
 export { InstallsChart } from './InstallsChart';
 export type { InstallsData } from './InstallsChart';
+
+export { MrrMovementChart } from './MrrMovementChart';
+export type { MrrMovementData } from './MrrMovementChart';

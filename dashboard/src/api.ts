@@ -429,4 +429,5 @@ export const api = {
     if (to) q.set('to', to);
     return fetchApi<import('./components/InstallsChart').InstallsData>(`/dashboard/installs?${q}`);
   },
+  getMrrMovement: (months = 12) => fetchApi<import('./components/MrrMovementChart').MrrMovementData>(`/dashboard/mrr-movement?months=${months}`),
 };

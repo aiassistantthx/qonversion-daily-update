@@ -9,10 +9,11 @@ import {
   CampaignFilter, parseCampaignFilterFromURL, updateURLWithCampaignFilter,
   MonthlyComparisonTable,
   TrendChart,
+  MrrMovementChart,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  TrendChartData,
+  TrendChartData, MrrMovementData,
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
@@ -228,6 +229,11 @@ export function Overview() {
     queryFn: () => api.getInstalls({ from: dateRange.from, to: dateRange.to, scale: 'month' }),
   });
 
+  const { data: mrrMovementData } = useQuery<MrrMovementData>({
+    queryKey: ['mrr-movement'],
+    queryFn: () => api.getMrrMovement(12),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
 
@@ -334,6 +340,9 @@ export function Overview() {
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}
+
+      {/* MRR Movement */}
+      <MrrMovementChart data={mrrMovementData} />
 
       {/* Navigation Cards to Detailed Tabs */}
       <div style={styles.navCardsGrid}>
