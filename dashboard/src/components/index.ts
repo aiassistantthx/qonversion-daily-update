@@ -83,3 +83,9 @@ export { KeywordTable } from './KeywordTable';
 
 export { SeasonalityChart } from './SeasonalityChart';
 export type { SeasonalityData } from './SeasonalityChart';
+
+export { RetentionCurve } from './RetentionCurve';
+export type { RetentionCurvePoint } from './RetentionCurve';
+
+export { RetentionMatrix } from './RetentionMatrix';
+export type { RetentionMatrixData, RetentionRow, RetentionPeriod } from './RetentionMatrix';

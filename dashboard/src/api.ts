@@ -377,6 +377,31 @@ export interface CohortMatrixData {
   mode: string;
 }
 
+export interface RetentionMatrixData {
+  rows: Array<{
+    cohortMonth: string;
+    cohortSize: number;
+    yearlyCohortSize: number;
+    weeklyCohortSize: number;
+    periods: Array<{
+      period: number;
+      activeSubs: number | null;
+      yearlySubs: number | null;
+      weeklySubs: number | null;
+      retention: number | null;
+      yearlyRetention: number | null;
+      weeklyRetention: number | null;
+    }>;
+  }>;
+  maxPeriod: number;
+  averageCurve: Array<{
+    period: number;
+    retention: number | null;
+    yearlyRetention: number | null;
+    weeklyRetention: number | null;
+  }>;
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -396,4 +421,5 @@ export const api = {
   getKeywords: (days = 30) => fetchApi<{ keywords: KeywordPerformance[]; totals: { spend: number; installs: number; trials: number; conversions: number; revenue: number; keywordsWithAttribution: number; keywordsTotal: number; cop: number | null; roas: number | null; attributionRate: string } }>(`/dashboard/keywords?days=${days}`),
   getSeasonality: (months = 12) => fetchApi<SeasonalityData>(`/dashboard/seasonality?months=${months}`),
   getCohortMatrix: (months = 12, mode = 'calendar') => fetchApi<CohortMatrixData>(`/dashboard/cohort-matrix?months=${months}&mode=${mode}`),
+  getRetentionMatrix: (months = 12) => fetchApi<RetentionMatrixData>(`/dashboard/retention-matrix?months=${months}`),
 };
