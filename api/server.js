@@ -2,6 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
+const { spawn } = require('child_process');
 const db = require('./db');
 const webhookRouter = require('./routes/webhook');
 const dashboardRouter = require('./routes/dashboard');
@@ -146,6 +147,7 @@ app.get('/', (req, res) => {
       'GET /asa/templates': 'List campaign templates',
       'GET /asa/history': 'Get change history',
       'POST /asa/sync': 'Full data sync',
+      'POST /admin/sync-metrics': 'Manually sync Qonversion metrics (optional ?days=N)',
     },
   });
 });
@@ -812,6 +814,57 @@ app.get('/backfill/campaign-mapping', async (req, res) => {
   }
 });
 
+// Qonversion metrics sync
+function runSyncMetrics(days = 7) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, 'scripts', 'sync-qonversion-metrics.js');
+    console.log(`[sync-metrics] Starting sync for last ${days} days...`);
+    const proc = spawn(process.execPath, [scriptPath, `--days=${days}`], {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    proc.stdout.on('data', d => {
+      const text = d.toString();
+      output += text;
+      process.stdout.write(`[sync-metrics] ${text}`);
+    });
+    proc.stderr.on('data', d => {
+      const text = d.toString();
+      output += text;
+      process.stderr.write(`[sync-metrics] ${text}`);
+    });
+    proc.on('close', code => {
+      if (code === 0) resolve({ success: true, output });
+      else reject(new Error(`sync-metrics exited with code ${code}`));
+    });
+  });
+}
+
+function scheduleDailySync() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(2, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const ms = next - now;
+  console.log(`[sync-metrics] Next sync at ${next.toISOString()} (in ${Math.round(ms / 60000)} min)`);
+  setTimeout(() => {
+    runSyncMetrics(7).catch(err => console.error('[sync-metrics] Daily sync failed:', err.message));
+    scheduleDailySync();
+  }, ms);
+}
+
+app.post('/admin/sync-metrics', async (req, res) => {
+  const days = parseInt(req.query.days) || 7;
+  try {
+    const result = await runSyncMetrics(days);
+    res.json({ success: true, days, message: 'Sync completed' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
@@ -838,6 +891,8 @@ async function start() {
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`Webhook URL: http://localhost:${PORT}/webhook`);
     });
+
+    scheduleDailySync();
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
