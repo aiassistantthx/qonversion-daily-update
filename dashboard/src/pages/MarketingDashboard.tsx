@@ -6,6 +6,7 @@ import { api } from '../api';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 import { DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale } from '../components/DateScaleSelector';
 import type { DateScale } from '../components/DateScaleSelector';
+import { InstallsChart } from '../components/InstallsChart';
 
 export function MarketingDashboard() {
   const [dateScale, setDateScale] = useState<DateScale>(() => parseDateScaleFromURL() || 'month');
@@ -23,6 +24,12 @@ export function MarketingDashboard() {
   const { data: marketingData, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['marketing', dateScale],
     queryFn: () => api.getMarketing(6, dateScale),
+    refetchInterval: 60000,
+  });
+
+  const { data: installsData, isLoading: installsLoading } = useQuery({
+    queryKey: ['installs', dateScale],
+    queryFn: () => api.getInstalls({ months: 6, scale: dateScale }),
     refetchInterval: 60000,
   });
 
@@ -204,6 +211,12 @@ export function MarketingDashboard() {
       {topCountriesRoas && topCountriesRoas.countries.length > 0 && (
         <TopCountriesRoasWidget countries={topCountriesRoas.countries} />
       )}
+
+      {/* Installs Details */}
+      <div style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>Installs Analytics</h2>
+        <InstallsChart data={installsData} isLoading={installsLoading} />
+      </div>
 
 
       <style>{`

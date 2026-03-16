@@ -422,4 +422,11 @@ export const api = {
   getSeasonality: (months = 12) => fetchApi<SeasonalityData>(`/dashboard/seasonality?months=${months}`),
   getCohortMatrix: (months = 12, mode = 'calendar') => fetchApi<CohortMatrixData>(`/dashboard/cohort-matrix?months=${months}&mode=${mode}`),
   getRetentionMatrix: (months = 12) => fetchApi<RetentionMatrixData>(`/dashboard/retention-matrix?months=${months}`),
+  getInstalls: (params: { months?: number; scale?: string; from?: string; to?: string } = {}) => {
+    const { months = 3, scale = 'month', from, to } = params;
+    const q = new URLSearchParams({ scale, months: String(months) });
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    return fetchApi<import('./components/InstallsChart').InstallsData>(`/dashboard/installs?${q}`);
+  },
 };

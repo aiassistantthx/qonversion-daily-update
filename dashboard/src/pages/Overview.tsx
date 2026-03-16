@@ -16,6 +16,7 @@ import type {
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
+import type { InstallsData } from '../components';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const API_KEY = import.meta.env.VITE_API_KEY || '';
@@ -222,6 +223,11 @@ export function Overview() {
     queryFn: () => apiFetch(`${API_URL}/asa/trends?from=${dateRange.from}&to=${dateRange.to}`),
   });
 
+  const { data: installsData } = useQuery<InstallsData>({
+    queryKey: ['installs-summary', dateRange],
+    queryFn: () => api.getInstalls({ from: dateRange.from, to: dateRange.to, scale: 'month' }),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
 
@@ -295,6 +301,36 @@ export function Overview() {
         <KPICard title="Predicted COP" value={fmt(cm?.predictedCop)} subtitle="pending conversions" icon={Target} sparklineData={copSparkline} invertChange />
         <KPICard title="Payback" value={fmtMonths(cm?.paybackMonths)} subtitle="months to recover" icon={Clock} />
       </div>
+
+      {/* Installs Summary */}
+      {installsData && (
+        <div style={{ ...styles.kpiGrid, marginTop: 0 }}>
+          <KPICard
+            title="Installs"
+            value={String(installsData.funnel.installs.toLocaleString())}
+            subtitle="selected period"
+            icon={Users}
+          />
+          <KPICard
+            title="Trials"
+            value={String(installsData.funnel.trials.toLocaleString())}
+            subtitle={installsData.funnel.installToTrial != null ? `${installsData.funnel.installToTrial.toFixed(1)}% of installs` : undefined}
+            icon={Users}
+          />
+          <KPICard
+            title="Paid Users"
+            value={String(installsData.funnel.paid.toLocaleString())}
+            subtitle={installsData.funnel.trialToPaid != null ? `${installsData.funnel.trialToPaid.toFixed(1)}% of trials` : undefined}
+            icon={Target}
+          />
+          <KPICard
+            title="Install → Paid"
+            value={installsData.funnel.installToPaid != null ? `${installsData.funnel.installToPaid.toFixed(2)}%` : '—'}
+            subtitle="overall conversion"
+            icon={TrendingUp}
+          />
+        </div>
+      )}
 
       {/* Monthly Comparison Table */}
       {yoyData?.monthlyTrend && <MonthlyComparisonTable data={yoyData} />}

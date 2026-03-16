@@ -6420,4 +6420,96 @@ router.get('/arpu', async (req, res) => {
   }
 });
 
+// ============================================
+// INSTALLS - данные из qonversion_daily_metrics
+// ============================================
+router.get('/installs', async (req, res) => {
+  try {
+    const scale = req.query.scale || 'month';
+    const months = parseInt(req.query.months) || 3;
+    const from = req.query.from;
+    const to = req.query.to;
+
+    const truncMap = { day: 'day', week: 'week', month: 'month', year: 'year' };
+    const trunc = truncMap[scale] || 'month';
+
+    let metricsDateFilter;
+    let eventsDateFilter;
+    if (from && to) {
+      metricsDateFilter = `AND date >= '${from}' AND date <= '${to}'`;
+      eventsDateFilter = `AND event_date >= '${from}' AND event_date <= '${to}'`;
+    } else {
+      metricsDateFilter = `AND date >= CURRENT_DATE - INTERVAL '${months} months'`;
+      eventsDateFilter = `AND event_date >= CURRENT_DATE - INTERVAL '${months} months'`;
+    }
+
+    // 1. Installs trend grouped by scale
+    const trendResult = await db.query(`
+      SELECT
+        DATE_TRUNC('${trunc}', date)::date as period,
+        SUM(value) as installs
+      FROM qonversion_daily_metrics
+      WHERE chart_type = 'users-overview'
+        AND country = '_total'
+        AND series_label = 'Total'
+        AND environment = 1
+        ${metricsDateFilter}
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    // 2. Top 10 countries by installs
+    const countriesResult = await db.query(`
+      SELECT
+        country,
+        SUM(value) as installs
+      FROM qonversion_daily_metrics
+      WHERE chart_type = 'users-overview'
+        AND country != '_total'
+        AND series_label = 'Total'
+        AND environment = 1
+        ${metricsDateFilter}
+      GROUP BY country
+      ORDER BY installs DESC
+      LIMIT 10
+    `);
+
+    // 3. Funnel: Install → Trial → Paid
+    const funnelResult = await db.query(`
+      SELECT
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trials,
+        COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started')) as paid
+      FROM events_v2
+      WHERE 1=1
+        ${eventsDateFilter}
+    `);
+
+    const totalInstalls = trendResult.rows.reduce((sum, r) => sum + parseFloat(r.installs || 0), 0);
+    const trials = parseInt(funnelResult.rows[0]?.trials || 0);
+    const paid = parseInt(funnelResult.rows[0]?.paid || 0);
+
+    res.json({
+      trend: trendResult.rows.map(r => ({
+        period: r.period,
+        installs: Math.round(parseFloat(r.installs || 0)),
+      })),
+      topCountries: countriesResult.rows.map(r => ({
+        country: r.country,
+        installs: Math.round(parseFloat(r.installs || 0)),
+      })),
+      funnel: {
+        installs: Math.round(totalInstalls),
+        trials,
+        paid,
+        installToTrial: totalInstalls > 0 ? (trials / totalInstalls) * 100 : null,
+        trialToPaid: trials > 0 ? (paid / trials) * 100 : null,
+        installToPaid: totalInstalls > 0 ? (paid / totalInstalls) * 100 : null,
+      },
+    });
+  } catch (error) {
+    console.error('Installs error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
