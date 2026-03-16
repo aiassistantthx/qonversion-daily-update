@@ -7,6 +7,7 @@ import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
 import { DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale } from '../components/DateScaleSelector';
 import type { DateScale } from '../components/DateScaleSelector';
 import { InstallsChart } from '../components/InstallsChart';
+import { ConversionFunnel } from '../components/ConversionFunnel';
 
 export function MarketingDashboard() {
   const [dateScale, setDateScale] = useState<DateScale>(() => parseDateScaleFromURL() || 'month');
@@ -30,6 +31,12 @@ export function MarketingDashboard() {
   const { data: installsData, isLoading: installsLoading } = useQuery({
     queryKey: ['installs', dateScale],
     queryFn: () => api.getInstalls({ months: 6, scale: dateScale }),
+    refetchInterval: 60000,
+  });
+
+  const { data: funnelData, isLoading: funnelLoading } = useQuery({
+    queryKey: ['funnel-detailed'],
+    queryFn: () => api.getFunnelDetailed(6),
     refetchInterval: 60000,
   });
 
@@ -211,6 +218,12 @@ export function MarketingDashboard() {
       {topCountriesRoas && topCountriesRoas.countries.length > 0 && (
         <TopCountriesRoasWidget countries={topCountriesRoas.countries} />
       )}
+
+      {/* Conversion Funnel */}
+      <div style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#111827', marginBottom: 16 }}>Conversion Funnel</h2>
+        <ConversionFunnel data={funnelData} isLoading={funnelLoading} />
+      </div>
 
       {/* Installs Details */}
       <div style={{ marginTop: 24 }}>

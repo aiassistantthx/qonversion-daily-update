@@ -6624,4 +6624,155 @@ router.get('/installs', async (req, res) => {
   }
 });
 
+// ============================================
+// FUNNEL DETAILED - Conversion Funnel с retention по шагам
+// ============================================
+router.get('/funnel-detailed', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 6;
+
+    // 1. Overall funnel: Install → Trial Start → Trial End → Paid → Renewal
+    const overallResult = await db.query(`
+      WITH installs AS (
+        SELECT SUM(value) as total
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'users-overview'
+          AND country = '_total'
+          AND series_label = 'Total'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+      ),
+      funnel_events AS (
+        SELECT
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trial_starts,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started')) as paid,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Subscription Renewed') as renewals,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started' AND product_id LIKE '%yearly%') as trial_weekly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started' AND product_id NOT LIKE '%yearly%') as trial_yearly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started') AND product_id LIKE '%yearly%') as paid_weekly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started') AND product_id NOT LIKE '%yearly%') as paid_yearly
+        FROM events_v2
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${months} months'
+      )
+      SELECT
+        i.total as installs,
+        f.trial_starts,
+        f.paid,
+        f.renewals,
+        f.trial_weekly,
+        f.trial_yearly,
+        f.paid_weekly,
+        f.paid_yearly
+      FROM installs i, funnel_events f
+    `);
+
+    // 2. Monthly trend per step
+    const monthlyResult = await db.query(`
+      WITH monthly_installs AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') as month,
+          SUM(value) as installs
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'users-overview'
+          AND country = '_total'
+          AND series_label = 'Total'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      ),
+      monthly_events AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', event_date), 'YYYY-MM') as month,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started') as trial_starts,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started')) as paid,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Subscription Renewed') as renewals,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started' AND product_id LIKE '%weekly%') as trial_weekly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name = 'Trial Started' AND product_id NOT LIKE '%weekly%') as trial_yearly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started') AND product_id LIKE '%weekly%') as paid_weekly,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE event_name IN ('Trial Converted', 'Subscription Started') AND product_id NOT LIKE '%weekly%') as paid_yearly
+        FROM events_v2
+        WHERE event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      )
+      SELECT
+        i.month,
+        COALESCE(i.installs, 0) as installs,
+        COALESCE(e.trial_starts, 0) as trial_starts,
+        COALESCE(e.paid, 0) as paid,
+        COALESCE(e.renewals, 0) as renewals,
+        COALESCE(e.trial_weekly, 0) as trial_weekly,
+        COALESCE(e.trial_yearly, 0) as trial_yearly,
+        COALESCE(e.paid_weekly, 0) as paid_weekly,
+        COALESCE(e.paid_yearly, 0) as paid_yearly
+      FROM monthly_installs i
+      LEFT JOIN monthly_events e ON i.month = e.month
+      ORDER BY i.month
+    `);
+
+    const row = overallResult.rows[0] || {};
+    const installs = parseFloat(row.installs || 0);
+    const trialStarts = parseInt(row.trial_starts || 0);
+    const paid = parseInt(row.paid || 0);
+    const renewals = parseInt(row.renewals || 0);
+
+    const funnel = [
+      {
+        step: 'Install',
+        value: Math.round(installs),
+        conversionFromPrev: null,
+        conversionFromInstall: 100,
+      },
+      {
+        step: 'Trial Start',
+        value: trialStarts,
+        conversionFromPrev: installs > 0 ? (trialStarts / installs) * 100 : null,
+        conversionFromInstall: installs > 0 ? (trialStarts / installs) * 100 : null,
+        weekly: parseInt(row.trial_weekly || 0),
+        yearly: parseInt(row.trial_yearly || 0),
+      },
+      {
+        step: 'Paid',
+        value: paid,
+        conversionFromPrev: trialStarts > 0 ? (paid / trialStarts) * 100 : null,
+        conversionFromInstall: installs > 0 ? (paid / installs) * 100 : null,
+        weekly: parseInt(row.paid_weekly || 0),
+        yearly: parseInt(row.paid_yearly || 0),
+      },
+      {
+        step: 'Renewal',
+        value: renewals,
+        conversionFromPrev: paid > 0 ? (renewals / paid) * 100 : null,
+        conversionFromInstall: installs > 0 ? (renewals / installs) * 100 : null,
+      },
+    ];
+
+    const trend = monthlyResult.rows.map(r => {
+      const inst = parseFloat(r.installs || 0);
+      const trials = parseInt(r.trial_starts || 0);
+      const paidM = parseInt(r.paid || 0);
+      const renewalsM = parseInt(r.renewals || 0);
+      return {
+        month: r.month,
+        installs: Math.round(inst),
+        trialStarts: trials,
+        paid: paidM,
+        renewals: renewalsM,
+        trialWeekly: parseInt(r.trial_weekly || 0),
+        trialYearly: parseInt(r.trial_yearly || 0),
+        paidWeekly: parseInt(r.paid_weekly || 0),
+        paidYearly: parseInt(r.paid_yearly || 0),
+        installToTrial: inst > 0 ? (trials / inst) * 100 : null,
+        trialToPaid: trials > 0 ? (paidM / trials) * 100 : null,
+        paidToRenewal: paidM > 0 ? (renewalsM / paidM) * 100 : null,
+        installToPaid: inst > 0 ? (paidM / inst) * 100 : null,
+      };
+    });
+
+    res.json({ funnel, trend });
+  } catch (error) {
+    console.error('Funnel detailed error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

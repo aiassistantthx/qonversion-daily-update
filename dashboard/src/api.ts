@@ -430,4 +430,5 @@ export const api = {
     return fetchApi<import('./components/InstallsChart').InstallsData>(`/dashboard/installs?${q}`);
   },
   getMrrMovement: (months = 12) => fetchApi<import('./components/MrrMovementChart').MrrMovementData>(`/dashboard/mrr-movement?months=${months}`),
+  getFunnelDetailed: (months = 6) => fetchApi<import('./components/ConversionFunnel').ConversionFunnelData>(`/dashboard/funnel-detailed?months=${months}`),
 };

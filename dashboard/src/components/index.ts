@@ -95,3 +95,6 @@ export type { InstallsData } from './InstallsChart';
 
 export { MrrMovementChart } from './MrrMovementChart';
 export type { MrrMovementData } from './MrrMovementChart';
+
+export { ConversionFunnel } from './ConversionFunnel';
+export type { ConversionFunnelData } from './ConversionFunnel';
