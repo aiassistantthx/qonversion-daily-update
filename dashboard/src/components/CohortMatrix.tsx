@@ -204,7 +204,7 @@ export function CohortMatrix({ data, isLoading, mode, onModeChange }: CohortMatr
       </div>
 
       <div style={{ marginTop: 12, fontSize: 11, color: t.textMuted }}>
-        Heatmap: darker green = higher value within column. Revenue applies 0.82 Apple proceeds factor.
+        Heatmap: darker green = higher value within column. Revenue = Gross Sales (before Apple commission).
       </div>
     </div>
   );

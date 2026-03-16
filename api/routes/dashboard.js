@@ -6004,7 +6004,6 @@ router.get('/seasonality', async (req, res) => {
 router.get('/cohorts', async (req, res) => {
   try {
     const monthsBack = parseInt(req.query.months) || 6;
-    const PROCEEDS_FACTOR = 0.82;
 
     const result = await db.query(`
       WITH cohort_base AS (
@@ -6065,7 +6064,7 @@ router.get('/cohorts', async (req, res) => {
       }
 
       const cohort = cohortMap.get(month);
-      const cumulativeRevenue = parseFloat(row.cumulative_revenue) * PROCEEDS_FACTOR;
+      const cumulativeRevenue = parseFloat(row.cumulative_revenue);
       const revenuePerUser = cumulativeRevenue / cohort.cohortSize;
 
       cohort.curve.push({
@@ -6093,7 +6092,6 @@ router.get('/cohort-matrix', async (req, res) => {
   try {
     const months = Math.min(parseInt(req.query.months) || 12, 24);
     const mode = req.query.mode === 'rolling30' ? 'rolling30' : 'calendar';
-    const PROCEEDS_FACTOR = 0.82;
 
     let periodExpr;
     if (mode === 'calendar') {
@@ -6157,7 +6155,7 @@ router.get('/cohort-matrix', async (req, res) => {
       const cohort = cohortMap.get(month);
       const period = parseInt(row.period);
       cohort.periods[period] = {
-        revenue: (parseFloat(row.revenue) || 0) * PROCEEDS_FACTOR,
+        revenue: parseFloat(row.revenue) || 0,
         activeSubscribers: parseInt(row.active_subs) || 0
       };
     });
@@ -6363,7 +6361,6 @@ router.get('/retention-matrix', async (req, res) => {
 router.get('/arpu', async (req, res) => {
   try {
     const months = parseInt(req.query.months) || 12;
-    const PROCEEDS_FACTOR = 0.82;
 
     // 1. Monthly ARPU from qonversion_daily_metrics
     const monthlyResult = await db.query(`
@@ -6460,7 +6457,7 @@ router.get('/arpu', async (req, res) => {
       }
 
       const cohort = cohortMap.get(month);
-      const cumRev = parseFloat(row.cumulative_revenue) * PROCEEDS_FACTOR;
+      const cumRev = parseFloat(row.cumulative_revenue);
       cohort.curve.push({
         day: parseInt(row.day),
         cumulativeRevenue: cumRev,
@@ -6781,7 +6778,6 @@ router.get('/funnel-detailed', async (req, res) => {
 router.get('/ltv-cac', async (req, res) => {
   try {
     const months = parseInt(req.query.months) || 12;
-    const PROCEEDS_FACTOR = 0.82;
 
     const result = await db.query(`
       WITH monthly_spend AS (
@@ -6814,7 +6810,7 @@ router.get('/ltv-cac', async (req, res) => {
         ms.month,
         COALESCE(ms.spend, 0) as spend,
         COALESCE(subs.new_subs, 0) as new_subs,
-        COALESCE(cr.total_revenue, 0) * ${PROCEEDS_FACTOR} as cohort_revenue
+        COALESCE(cr.total_revenue, 0) as cohort_revenue
       FROM monthly_spend ms
       LEFT JOIN monthly_subs subs ON ms.month = subs.month
       LEFT JOIN cohort_revenue cr ON ms.month = cr.cohort_month
