@@ -6219,4 +6219,179 @@ router.get('/retention-matrix', async (req, res) => {
   }
 });
 
+// ============================================
+// ARPU - Average Revenue Per Install
+// ============================================
+router.get('/arpu', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    const PROCEEDS_FACTOR = 0.82;
+
+    // 1. Monthly ARPU from qonversion_daily_metrics
+    const monthlyResult = await db.query(`
+      WITH monthly_installs AS (
+        SELECT
+          DATE_TRUNC('month', date)::date as month,
+          SUM(value) as installs
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'users-overview'
+          AND country = '_total'
+          AND series_label = 'Total'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      ),
+      monthly_revenue AS (
+        SELECT
+          DATE_TRUNC('month', date)::date as month,
+          SUM(value) as revenue
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'proceeds'
+          AND country = '_total'
+          AND series_label = 'After refunds'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      )
+      SELECT
+        TO_CHAR(i.month, 'YYYY-MM') as month,
+        COALESCE(i.installs, 0) as installs,
+        COALESCE(r.revenue, 0) as revenue,
+        CASE WHEN COALESCE(i.installs, 0) > 0
+          THEN COALESCE(r.revenue, 0) / i.installs
+          ELSE NULL
+        END as arpu
+      FROM monthly_installs i
+      LEFT JOIN monthly_revenue r ON i.month = r.month
+      ORDER BY i.month
+    `);
+
+    // 2. ARPU by cohort curves (revenue/installs, like LTV but per install)
+    const installsByMonth = await db.query(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') as cohort_month,
+        SUM(value) as installs
+      FROM qonversion_daily_metrics
+      WHERE chart_type = 'users-overview'
+        AND country = '_total'
+        AND series_label = 'Total'
+        AND environment = 1
+        AND date >= CURRENT_DATE - INTERVAL '${months} months'
+      GROUP BY 1
+    `);
+
+    const installMap = new Map();
+    installsByMonth.rows.forEach(r => {
+      installMap.set(r.cohort_month, parseFloat(r.installs));
+    });
+
+    const cohortResult = await db.query(`
+      WITH cohort_revenue AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          DATE_PART('day', event_date - install_date)::int as day,
+          SUM(price_usd) FILTER (WHERE refund = false) as daily_revenue
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+        GROUP BY 1, 2
+      )
+      SELECT
+        cohort_month,
+        day,
+        SUM(daily_revenue) OVER (
+          PARTITION BY cohort_month
+          ORDER BY day
+        ) as cumulative_revenue
+      FROM cohort_revenue
+      ORDER BY cohort_month, day
+    `);
+
+    const cohortMap = new Map();
+    cohortResult.rows.forEach(row => {
+      const month = row.cohort_month;
+      const installs = installMap.get(month) || 0;
+      if (installs === 0) return;
+
+      if (!cohortMap.has(month)) {
+        cohortMap.set(month, {
+          cohortMonth: month,
+          cohortSize: Math.round(installs),
+          curve: []
+        });
+      }
+
+      const cohort = cohortMap.get(month);
+      const cumRev = parseFloat(row.cumulative_revenue) * PROCEEDS_FACTOR;
+      cohort.curve.push({
+        day: parseInt(row.day),
+        cumulativeRevenue: cumRev,
+        revenuePerInstall: cumRev / installs
+      });
+    });
+
+    const cohortArpu = Array.from(cohortMap.values());
+
+    // 3. ARPU by country
+    const countryResult = await db.query(`
+      WITH country_installs AS (
+        SELECT
+          country,
+          SUM(value) as installs
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'users-overview'
+          AND country != '_total'
+          AND series_label = 'Total'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY country
+      ),
+      country_revenue AS (
+        SELECT
+          country,
+          SUM(value) as revenue
+        FROM qonversion_daily_metrics
+        WHERE chart_type = 'proceeds'
+          AND country != '_total'
+          AND series_label = 'Total'
+          AND environment = 1
+          AND date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY country
+      )
+      SELECT
+        i.country,
+        COALESCE(i.installs, 0) as installs,
+        COALESCE(r.revenue, 0) as revenue,
+        CASE WHEN COALESCE(i.installs, 0) > 0
+          THEN COALESCE(r.revenue, 0) / i.installs
+          ELSE NULL
+        END as arpu
+      FROM country_installs i
+      LEFT JOIN country_revenue r ON i.country = r.country
+      WHERE i.installs > 10
+      ORDER BY revenue DESC
+      LIMIT 30
+    `);
+
+    res.json({
+      monthly: monthlyResult.rows.map(r => ({
+        month: r.month,
+        installs: parseFloat(r.installs),
+        revenue: parseFloat(r.revenue),
+        arpu: r.arpu ? parseFloat(r.arpu) : null
+      })),
+      cohortArpu,
+      byCountry: countryResult.rows.map(r => ({
+        country: r.country,
+        installs: parseFloat(r.installs),
+        revenue: parseFloat(r.revenue),
+        arpu: r.arpu ? parseFloat(r.arpu) : null
+      }))
+    });
+  } catch (error) {
+    console.error('ARPU error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
