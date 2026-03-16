@@ -6775,4 +6775,67 @@ router.get('/funnel-detailed', async (req, res) => {
   }
 });
 
+// ============================================
+// LTV/CAC RATIO TREND
+// ============================================
+router.get('/ltv-cac', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    const PROCEEDS_FACTOR = 0.82;
+
+    const result = await db.query(`
+      WITH monthly_spend AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') as month,
+          SUM(spend) as spend
+        FROM apple_ads_sync
+        WHERE date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      ),
+      monthly_subs AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', event_date), 'YYYY-MM') as month,
+          COUNT(DISTINCT q_user_id) as new_subs
+        FROM events_v2
+        WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          AND event_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY 1
+      ),
+      cohort_revenue AS (
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', install_date), 'YYYY-MM') as cohort_month,
+          SUM(price_usd) FILTER (WHERE refund = false) as total_revenue
+        FROM events_v2
+        WHERE install_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+        GROUP BY 1
+      )
+      SELECT
+        ms.month,
+        COALESCE(ms.spend, 0) as spend,
+        COALESCE(subs.new_subs, 0) as new_subs,
+        COALESCE(cr.total_revenue, 0) * ${PROCEEDS_FACTOR} as cohort_revenue
+      FROM monthly_spend ms
+      LEFT JOIN monthly_subs subs ON ms.month = subs.month
+      LEFT JOIN cohort_revenue cr ON ms.month = cr.cohort_month
+      ORDER BY ms.month
+    `);
+
+    const trend = result.rows.map(r => {
+      const spend = parseFloat(r.spend || 0);
+      const newSubs = parseInt(r.new_subs || 0);
+      const cohortRevenue = parseFloat(r.cohort_revenue || 0);
+      const cac = newSubs > 0 ? spend / newSubs : null;
+      const ltv = newSubs > 0 ? cohortRevenue / newSubs : null;
+      const ratio = cac && cac > 0 && ltv != null ? ltv / cac : null;
+      return { month: r.month, spend, newSubs, cac, ltv, ratio };
+    }).filter(r => r.newSubs > 0 || r.spend > 0);
+
+    res.json({ trend });
+  } catch (error) {
+    console.error('LTV/CAC error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

@@ -431,4 +431,5 @@ export const api = {
   },
   getMrrMovement: (months = 12) => fetchApi<import('./components/MrrMovementChart').MrrMovementData>(`/dashboard/mrr-movement?months=${months}`),
   getFunnelDetailed: (months = 6) => fetchApi<import('./components/ConversionFunnel').ConversionFunnelData>(`/dashboard/funnel-detailed?months=${months}`),
+  getLtvCac: (months = 12) => fetchApi<import('./components/LtvCacChart').LtvCacData>(`/dashboard/ltv-cac?months=${months}`),
 };

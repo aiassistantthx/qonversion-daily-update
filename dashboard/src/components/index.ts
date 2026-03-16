@@ -98,3 +98,6 @@ export type { MrrMovementData } from './MrrMovementChart';
 
 export { ConversionFunnel } from './ConversionFunnel';
 export type { ConversionFunnelData } from './ConversionFunnel';
+
+export { LtvCacChart } from './LtvCacChart';
+export type { LtvCacData } from './LtvCacChart';

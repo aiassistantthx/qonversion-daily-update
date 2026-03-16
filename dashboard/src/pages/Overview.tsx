@@ -10,10 +10,11 @@ import {
   MonthlyComparisonTable,
   TrendChart,
   MrrMovementChart,
+  LtvCacChart,
 } from '../components';
 import type {
   DateRange, DateScale, TrafficSource, CountrySelection, CampaignSelection,
-  TrendChartData, MrrMovementData,
+  TrendChartData, MrrMovementData, LtvCacData,
 } from '../components';
 import { api } from '../api';
 import type { YoYData } from '../api';
@@ -234,6 +235,11 @@ export function Overview() {
     queryFn: () => api.getMrrMovement(12),
   });
 
+  const { data: ltvCacData } = useQuery<LtvCacData>({
+    queryKey: ['ltv-cac'],
+    queryFn: () => api.getLtvCac(12),
+  });
+
   const cm = data?.currentMonth;
   const daily = data?.daily || [];
 
@@ -343,6 +349,9 @@ export function Overview() {
 
       {/* MRR Movement */}
       <MrrMovementChart data={mrrMovementData} />
+
+      {/* LTV/CAC Ratio Trend */}
+      <LtvCacChart data={ltvCacData} />
 
       {/* Navigation Cards to Detailed Tabs */}
       <div style={styles.navCardsGrid}>
