@@ -89,3 +89,6 @@ export type { RetentionCurvePoint } from './RetentionCurve';
 
 export { RetentionMatrix } from './RetentionMatrix';
 export type { RetentionMatrixData, RetentionRow, RetentionPeriod } from './RetentionMatrix';
+
+export { InstallsChart } from './InstallsChart';
+export type { InstallsData } from './InstallsChart';
