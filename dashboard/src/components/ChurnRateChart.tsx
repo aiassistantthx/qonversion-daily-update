@@ -16,6 +16,16 @@ interface ChurnPeriodData {
   netChange: number;
 }
 
+interface CombinedPeriodData {
+  period: string;
+  totalActive: number;
+  totalChurned: number;
+  totalNew: number;
+  subscriberChurn: number;
+  revenueChurn: number;
+  netRevenueChurn: number;
+}
+
 interface ChurnRateData {
   weekly: {
     data: ChurnPeriodData[];
@@ -27,6 +37,15 @@ interface ChurnRateData {
     avgChurnRate: number;
     currentMonth: { activeAtStart: number; churnRate: number };
   };
+  combined?: {
+    data: CombinedPeriodData[];
+    avgSubscriberChurn: number;
+    avgRevenueChurn: number;
+    avgNetRevenueChurn: number;
+  };
+  subscriberChurn?: number;
+  revenueChurn?: number;
+  netRevenueChurn?: number;
   summary: {
     weeklyAvgChurn: number;
     yearlyAvgChurn: number;
@@ -34,6 +53,9 @@ interface ChurnRateData {
     monthlyChurnFromWeekly: number;
     monthlyChurnFromYearly: number;
     impliedAnnualFromWeekly: number;
+    subscriberChurn?: number;
+    revenueChurn?: number;
+    netRevenueChurn?: number;
   };
 }
 
@@ -378,6 +400,88 @@ export function ChurnRateChart({ data, subscriptionType = 'both' }: ChurnRateCha
                   fill="#f87171"
                   opacity={0.7}
                   name="churned"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Combined Subscriber vs Revenue Churn Chart */}
+      {data.combined && data.combined.data.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h4 style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>Subscriber Churn vs Revenue Churn (Monthly)</h4>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            <div style={{ background: '#fef2f2', borderRadius: 8, padding: 12 }}>
+              <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>Subscriber Churn</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#dc2626' }}>
+                {data.combined.avgSubscriberChurn.toFixed(1)}%
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>6-month avg</div>
+            </div>
+            <div style={{ background: '#fff7ed', borderRadius: 8, padding: 12 }}>
+              <div style={{ fontSize: 12, color: '#f97316', fontWeight: 500 }}>Revenue Churn</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#ea580c' }}>
+                {data.combined.avgRevenueChurn.toFixed(1)}%
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>6-month avg</div>
+            </div>
+            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: 12 }}>
+              <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>Net Revenue Churn</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#15803d' }}>
+                {data.combined.avgNetRevenueChurn.toFixed(1)}%
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>6-month avg</div>
+            </div>
+          </div>
+          <div style={{ height: 280 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={data.combined.data.slice(-12)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="period" tick={{ fill: '#6b7280', fontSize: 10 }} />
+                <YAxis
+                  tick={{ fill: '#6b7280', fontSize: 10 }}
+                  tickFormatter={v => `${v}%`}
+                  domain={['auto', 'auto']}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }}
+                  formatter={(value, name) => {
+                    const numValue = Number(value) || 0;
+                    if (name === 'subscriberChurn') return [`${numValue.toFixed(1)}%`, 'Subscriber Churn'];
+                    if (name === 'revenueChurn') return [`${numValue.toFixed(1)}%`, 'Revenue Churn'];
+                    if (name === 'netRevenueChurn') return [`${numValue.toFixed(1)}%`, 'Net Revenue Churn'];
+                    return [numValue, name];
+                  }}
+                />
+                <Legend />
+                <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
+                <Line
+                  type="monotone"
+                  dataKey="subscriberChurn"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="subscriberChurn"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="revenueChurn"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="revenueChurn"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="netRevenueChurn"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ r: 3 }}
+                  name="netRevenueChurn"
                 />
               </ComposedChart>
             </ResponsiveContainer>

@@ -3802,6 +3802,98 @@ router.get('/churn-rate', async (req, res) => {
     const yearlyWeight = 0.25;
     const avgMonthlyChurn = (monthlyChurnFromWeekly * weeklyWeight) + (monthlyChurnFromYearly * yearlyWeight);
 
+    // Get average revenue per subscription type for revenue churn calculation
+    const avgPriceResult = await db.query(`
+      SELECT
+        CASE
+          WHEN product_id LIKE '%weekly%' THEN 'weekly'
+          WHEN product_id LIKE '%yearly%' THEN 'yearly'
+        END as sub_type,
+        AVG(price_usd) as avg_price
+      FROM events_v2
+      WHERE event_name IN ('Subscription Renewed', 'Trial Converted', 'Subscription Started')
+        AND refund = false
+        AND price_usd > 0
+        AND (product_id LIKE '%weekly%' OR product_id LIKE '%yearly%')
+      GROUP BY sub_type
+    `);
+
+    const avgPrices = {};
+    for (const r of avgPriceResult.rows) {
+      avgPrices[r.sub_type] = parseFloat(r.avg_price) || 0;
+    }
+    const avgWeeklyPrice = avgPrices.weekly || 2.99;
+    const avgYearlyPrice = avgPrices.yearly || 49.99;
+    const weeklyMRR = avgWeeklyPrice * 4.33; // monthly equivalent
+    const yearlyMRR = avgYearlyPrice / 12;
+
+    // Build combined monthly metrics (subscriber + revenue churn)
+    const combinedMonthly = {};
+
+    for (const row of weeklyData) {
+      const month = row.period.substring(0, 7);
+      if (!combinedMonthly[month]) {
+        combinedMonthly[month] = { weeklyActive: 0, weeklyChurned: 0, weeklyNewSubs: 0, yearlyActive: 0, yearlyChurned: 0, yearlyNewSubs: 0, weeklyWeeks: 0 };
+      }
+      combinedMonthly[month].weeklyActive += row.activeAtStart;
+      combinedMonthly[month].weeklyChurned += row.churned;
+      combinedMonthly[month].weeklyNewSubs += row.newSubs;
+      combinedMonthly[month].weeklyWeeks += 1;
+    }
+
+    for (const month of Object.keys(combinedMonthly)) {
+      if (combinedMonthly[month].weeklyWeeks > 0) {
+        combinedMonthly[month].weeklyActive = Math.round(
+          combinedMonthly[month].weeklyActive / combinedMonthly[month].weeklyWeeks
+        );
+      }
+    }
+
+    for (const row of yearlyChurnResult.rows) {
+      const month = (row.month_start || '').substring(0, 7);
+      if (!combinedMonthly[month]) {
+        combinedMonthly[month] = { weeklyActive: 0, weeklyChurned: 0, weeklyNewSubs: 0, yearlyActive: 0, yearlyChurned: 0, yearlyNewSubs: 0, weeklyWeeks: 0 };
+      }
+      combinedMonthly[month].yearlyActive = parseInt(row.active_at_start) || 0;
+      combinedMonthly[month].yearlyChurned = parseInt(row.churned) || 0;
+      combinedMonthly[month].yearlyNewSubs = parseInt(row.new_subs) || 0;
+    }
+
+    const combinedData = Object.entries(combinedMonthly)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, d]) => {
+        const totalActive = d.weeklyActive + d.yearlyActive;
+        const totalChurned = d.weeklyChurned + d.yearlyChurned;
+        const totalNew = d.weeklyNewSubs + d.yearlyNewSubs;
+
+        const subscriberChurn = totalActive > 0 ? (totalChurned / totalActive * 100) : 0;
+
+        const beginningMRR = d.weeklyActive * weeklyMRR + d.yearlyActive * yearlyMRR;
+        const lostMRR = d.weeklyChurned * weeklyMRR + d.yearlyChurned * yearlyMRR;
+        const expansionMRR = d.weeklyNewSubs * weeklyMRR + d.yearlyNewSubs * yearlyMRR;
+
+        const revenueChurn = beginningMRR > 0 ? (lostMRR / beginningMRR * 100) : 0;
+        const netRevenueChurn = beginningMRR > 0 ? ((lostMRR - expansionMRR) / beginningMRR * 100) : 0;
+
+        return {
+          period: month,
+          totalActive,
+          totalChurned,
+          totalNew,
+          subscriberChurn: Math.round(subscriberChurn * 10) / 10,
+          revenueChurn: Math.round(revenueChurn * 10) / 10,
+          netRevenueChurn: Math.round(netRevenueChurn * 10) / 10,
+        };
+      });
+
+    const recentCombined = combinedData.slice(-6);
+    const avgSubscriberChurn = recentCombined.length > 0
+      ? recentCombined.reduce((s, r) => s + r.subscriberChurn, 0) / recentCombined.length : 0;
+    const avgRevenueChurn = recentCombined.length > 0
+      ? recentCombined.reduce((s, r) => s + r.revenueChurn, 0) / recentCombined.length : 0;
+    const avgNetRevenueChurn = recentCombined.length > 0
+      ? recentCombined.reduce((s, r) => s + r.netRevenueChurn, 0) / recentCombined.length : 0;
+
     // Also include daily data for granular view
     const dailyData = dailyMovementResult.rows.map(r => ({
       date: r.day,
@@ -3836,6 +3928,15 @@ router.get('/churn-rate', async (req, res) => {
           churnRate: parseFloat(lastMonth.churn_rate || 0),
         },
       },
+      combined: {
+        data: combinedData,
+        avgSubscriberChurn: Math.round(avgSubscriberChurn * 10) / 10,
+        avgRevenueChurn: Math.round(avgRevenueChurn * 10) / 10,
+        avgNetRevenueChurn: Math.round(avgNetRevenueChurn * 10) / 10,
+      },
+      subscriberChurn: Math.round(avgSubscriberChurn * 10) / 10,
+      revenueChurn: Math.round(avgRevenueChurn * 10) / 10,
+      netRevenueChurn: Math.round(avgNetRevenueChurn * 10) / 10,
       summary: {
         weeklyAvgChurn: Math.round(avgWeeklyChurn * 10) / 10,
         yearlyAvgChurn: Math.round(avgYearlyChurn * 10) / 10,
@@ -3844,6 +3945,9 @@ router.get('/churn-rate', async (req, res) => {
         monthlyChurnFromYearly: Math.round(monthlyChurnFromYearly * 10) / 10,
         // Implied annual churn from weekly (1 - (1-weekly)^52)
         impliedAnnualFromWeekly: Math.round((1 - Math.pow(1 - avgWeeklyChurn/100, 52)) * 1000) / 10,
+        subscriberChurn: Math.round(avgSubscriberChurn * 10) / 10,
+        revenueChurn: Math.round(avgRevenueChurn * 10) / 10,
+        netRevenueChurn: Math.round(avgNetRevenueChurn * 10) / 10,
         // Debug info
         initialActive,
         periodStart: periodStartStr,

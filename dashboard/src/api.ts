@@ -216,10 +216,30 @@ export interface ChurnRateData {
     avgChurnRate: number;
     currentMonth: { activeAtStart: number; churnRate: number };
   };
+  combined?: {
+    data: Array<{
+      period: string;
+      totalActive: number;
+      totalChurned: number;
+      totalNew: number;
+      subscriberChurn: number;
+      revenueChurn: number;
+      netRevenueChurn: number;
+    }>;
+    avgSubscriberChurn: number;
+    avgRevenueChurn: number;
+    avgNetRevenueChurn: number;
+  };
+  subscriberChurn?: number;
+  revenueChurn?: number;
+  netRevenueChurn?: number;
   summary: {
     weeklyAvgChurn: number;
     yearlyAvgChurn: number;
     impliedAnnualFromWeekly: number;
+    subscriberChurn?: number;
+    revenueChurn?: number;
+    netRevenueChurn?: number;
   };
 }
 
