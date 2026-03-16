@@ -1085,6 +1085,17 @@ router.get('/roas-evolution', async (req, res) => {
       ? ''
       : "AND media_source = 'Apple AdServices'";
 
+    // Build country filter
+    const countriesParam = req.query.countries || '';
+    let countryFilter = '';
+    if (countriesParam.trim()) {
+      const countryList = countriesParam.split(',').map(c => c.trim()).filter(Boolean);
+      if (countryList.length > 0) {
+        const quotedCountries = countryList.map(c => `'${c.replace(/'/g, "''")}'`).join(',');
+        countryFilter = `AND country IN (${quotedCountries})`;
+      }
+    }
+
     // Get ROAS at different ages for each cohort month
     const result = await db.query(`
       WITH cohort_data AS (
@@ -1099,6 +1110,7 @@ router.get('/roas-evolution', async (req, res) => {
         FROM events_v2
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           ${mediaSourceFilter}
+          ${countryFilter}
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
@@ -1249,12 +1261,26 @@ router.get('/roas-evolution', async (req, res) => {
         total: capRoas(parseFloat(row.rev_total) / spend),
       };
 
+      // Predict final ROAS for cohorts < 365 days old using decay curve
+      let predictedFinalRoas = null;
+      if (maxAge < 365 && roasData.total > 0) {
+        const decayFactor = getRoasDecayFactor(maxAge);
+        if (decayFactor > 0) {
+          predictedFinalRoas = Math.min(roasData.total / decayFactor, MAX_ROAS);
+        }
+      }
+
+      // Payback days using predicted final ROAS and decay curve
+      const paybackDays = findPaybackDays(roasData.total, maxAge, predictedFinalRoas || roasData.total);
+
       return {
         month: row.cohort_month,
         maxAge,
         spend,
         roas: roasData,
         paybackMonths: predictPaybackMonths(roasData, maxAge),
+        paybackDays,
+        predictedFinalRoas,
       };
     });
 

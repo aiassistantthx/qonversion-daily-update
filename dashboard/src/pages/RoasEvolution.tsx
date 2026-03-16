@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, ReferenceLine } from 'recharts';
 import { RefreshCw, Calendar, TrendingUp } from 'lucide-react';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
+import { RoasMatrix } from '../components/RoasMatrix';
+import { CountryFilter } from '../components/CountryFilter';
 
 type RoasMode = 'paid' | 'blended';
 
@@ -39,6 +41,8 @@ interface RoasEvolutionData {
       total: number
     };
     paybackMonths: number | null;
+    paybackDays: number | null;
+    predictedFinalRoas: number | null;
   }>;
   chartData: Array<{ age: number; [key: string]: number | null }>;
   ages: number[];
@@ -48,13 +52,15 @@ export function RoasEvolution() {
   const [monthsBack, setMonthsBack] = useState(12);
   const [selectedCohorts, setSelectedCohorts] = useState<string[]>([]);
   const [mode, setMode] = useState<RoasMode>('paid');
+  const [countries, setCountries] = useState<string[]>([]);
 
   const { data: roasEvolution, refetch, isFetching } = useQuery<RoasEvolutionData>({
-    queryKey: ['roas-evolution', monthsBack, mode],
+    queryKey: ['roas-evolution', monthsBack, mode, countries],
     queryFn: async () => {
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (API_KEY) headers['X-API-Key'] = API_KEY;
-      const res = await fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}&mode=${mode}`, { headers });
+      const countriesParam = countries.length > 0 ? `&countries=${countries.join(',')}` : '';
+      const res = await fetch(`${API_URL}/dashboard/roas-evolution?months=${monthsBack}&mode=${mode}${countriesParam}`, { headers });
       return res.json();
     },
   });
@@ -88,6 +94,8 @@ export function RoasEvolution() {
       currentRoas: validRoas,
       isPaidBack,
       paybackMonths: cohort.paybackMonths,
+      paybackDays: cohort.paybackDays,
+      predictedFinalRoas: cohort.predictedFinalRoas,
       color: COHORT_COLORS[i % COHORT_COLORS.length],
     };
   }) || [];
@@ -124,6 +132,7 @@ export function RoasEvolution() {
           </p>
         </div>
         <div style={styles.headerRight}>
+          <CountryFilter value={countries} onChange={setCountries} />
           <div style={styles.toggleContainer}>
             <button
               style={{
@@ -245,6 +254,11 @@ export function RoasEvolution() {
         </div>
       </div>
 
+      {/* ROAS Matrix */}
+      {roasEvolution?.cohorts && roasEvolution.cohorts.length > 0 && (
+        <RoasMatrix cohorts={roasEvolution.cohorts} />
+      )}
+
       {/* Cohort Summary Table */}
       <div style={styles.tableCard}>
         <h3 style={styles.tableTitle}>Cohort Summary</h3>
@@ -256,7 +270,8 @@ export function RoasEvolution() {
                 <th style={{ ...styles.th, textAlign: 'right' }}>Spend</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Age (days)</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Current ROAS</th>
-                <th style={{ ...styles.th, textAlign: 'right' }}>Payback Months</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Predicted ROAS</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>Payback Days</th>
                 <th style={{ ...styles.th, textAlign: 'right' }}>Status</th>
               </tr>
             </thead>
@@ -285,8 +300,13 @@ export function RoasEvolution() {
                   <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>
                     {(cohort.currentRoas * 100).toFixed(1)}%
                   </td>
+                  <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace', color: '#6b7280' }}>
+                    {cohort.predictedFinalRoas !== null
+                      ? `${(cohort.predictedFinalRoas * 100).toFixed(0)}%`
+                      : '—'}
+                  </td>
                   <td style={{ ...styles.td, textAlign: 'right', fontFamily: 'monospace' }}>
-                    {cohort.paybackMonths !== null ? cohort.paybackMonths : '∞'}
+                    {cohort.paybackDays !== null ? `${cohort.paybackDays}d` : '∞'}
                   </td>
                   <td style={{ ...styles.td, textAlign: 'right' }}>
                     <span
