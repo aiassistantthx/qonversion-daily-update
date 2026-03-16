@@ -6069,4 +6069,154 @@ router.get('/cohort-matrix', async (req, res) => {
   }
 });
 
+// ============================================
+// RETENTION MATRIX - Cohort retention analysis
+// Rows: install month cohorts, Columns: Month 0, Month 1, ...
+// Metric: retention % relative to initial subscribers
+// ============================================
+router.get('/retention-matrix', async (req, res) => {
+  try {
+    const months = Math.min(parseInt(req.query.months) || 12, 24);
+    const YEARLY_PRICE_THRESHOLD = 20; // USD — yearly plans are typically $40+
+
+    const periodExpr = `(DATE_PART('year', event_date::date)::int - DATE_PART('year', DATE_TRUNC('month', install_date)::date)::int) * 12 + (DATE_PART('month', event_date::date)::int - DATE_PART('month', install_date)::int)`;
+    const period0Condition = `(DATE_PART('year', event_date::date)::int - DATE_PART('year', DATE_TRUNC('month', install_date)::date)::int) * 12 + (DATE_PART('month', event_date::date)::int - DATE_PART('month', install_date)::int) = 0`;
+
+    const result = await db.query(`
+      WITH cohort_events AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          ${periodExpr} as period,
+          q_user_id
+        FROM events_v2
+        WHERE install_date IS NOT NULL
+          AND install_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          AND event_date >= install_date
+          AND event_date <= CURRENT_DATE
+          AND refund = false
+      ),
+      user_plans AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          q_user_id,
+          CASE WHEN MAX(price_usd) >= ${YEARLY_PRICE_THRESHOLD} THEN 'yearly' ELSE 'weekly' END as plan_type
+        FROM events_v2
+        WHERE install_date IS NOT NULL
+          AND install_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND event_name IN ('Trial Converted', 'Subscription Started')
+          AND refund = false
+          AND event_date >= install_date
+          AND ${period0Condition}
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM'), q_user_id
+      ),
+      plan_initial AS (
+        SELECT
+          cohort_month,
+          COUNT(DISTINCT q_user_id) as total_initial,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE plan_type = 'yearly') as yearly_initial,
+          COUNT(DISTINCT q_user_id) FILTER (WHERE plan_type = 'weekly') as weekly_initial
+        FROM user_plans
+        GROUP BY cohort_month
+      )
+      SELECT
+        ce.cohort_month,
+        pi.total_initial,
+        pi.yearly_initial,
+        pi.weekly_initial,
+        ce.period,
+        COUNT(DISTINCT ce.q_user_id) as active_subs,
+        COUNT(DISTINCT CASE WHEN up.plan_type = 'yearly' THEN ce.q_user_id END) as yearly_subs,
+        COUNT(DISTINCT CASE WHEN up.plan_type = 'weekly' THEN ce.q_user_id END) as weekly_subs
+      FROM cohort_events ce
+      JOIN plan_initial pi ON ce.cohort_month = pi.cohort_month
+      LEFT JOIN user_plans up ON ce.q_user_id = up.q_user_id AND ce.cohort_month = up.cohort_month
+      WHERE ce.period >= 0 AND ce.period <= 12
+      GROUP BY ce.cohort_month, pi.total_initial, pi.yearly_initial, pi.weekly_initial, ce.period
+      ORDER BY ce.cohort_month DESC, ce.period
+    `);
+
+    const cohortMap = new Map();
+
+    result.rows.forEach(row => {
+      const month = row.cohort_month;
+      if (!cohortMap.has(month)) {
+        cohortMap.set(month, {
+          cohortMonth: month,
+          cohortSize: parseInt(row.total_initial) || 0,
+          yearlyCohortSize: parseInt(row.yearly_initial) || 0,
+          weeklyCohortSize: parseInt(row.weekly_initial) || 0,
+          periods: {}
+        });
+      }
+      const cohort = cohortMap.get(month);
+      const period = parseInt(row.period);
+      const activeSubs = parseInt(row.active_subs) || 0;
+      const yearlySubs = parseInt(row.yearly_subs) || 0;
+      const weeklySubs = parseInt(row.weekly_subs) || 0;
+
+      cohort.periods[period] = {
+        period,
+        activeSubs,
+        yearlySubs,
+        weeklySubs,
+        retention: cohort.cohortSize > 0 ? parseFloat((activeSubs / cohort.cohortSize * 100).toFixed(1)) : null,
+        yearlyRetention: cohort.yearlyCohortSize > 0 ? parseFloat((yearlySubs / cohort.yearlyCohortSize * 100).toFixed(1)) : null,
+        weeklyRetention: cohort.weeklyCohortSize > 0 ? parseFloat((weeklySubs / cohort.weeklyCohortSize * 100).toFixed(1)) : null,
+      };
+    });
+
+    let maxPeriod = 0;
+    cohortMap.forEach(cohort => {
+      Object.keys(cohort.periods).forEach(p => {
+        maxPeriod = Math.max(maxPeriod, parseInt(p));
+      });
+    });
+
+    const rows = Array.from(cohortMap.values()).map(cohort => {
+      const periods = [];
+      for (let p = 0; p <= maxPeriod; p++) {
+        periods.push(cohort.periods[p] || {
+          period: p,
+          activeSubs: null,
+          yearlySubs: null,
+          weeklySubs: null,
+          retention: null,
+          yearlyRetention: null,
+          weeklyRetention: null
+        });
+      }
+      return {
+        cohortMonth: cohort.cohortMonth,
+        cohortSize: cohort.cohortSize,
+        yearlyCohortSize: cohort.yearlyCohortSize,
+        weeklyCohortSize: cohort.weeklyCohortSize,
+        periods
+      };
+    });
+
+    // Average retention curve across cohorts that have data at each period
+    const averageCurve = [];
+    for (let p = 0; p <= maxPeriod; p++) {
+      const retentions = rows.map(r => r.periods[p]?.retention).filter(v => v !== null && v !== undefined);
+      const yearlyRetentions = rows.map(r => r.periods[p]?.yearlyRetention).filter(v => v !== null && v !== undefined);
+      const weeklyRetentions = rows.map(r => r.periods[p]?.weeklyRetention).filter(v => v !== null && v !== undefined);
+
+      const avg = arr => arr.length > 0 ? parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1)) : null;
+
+      averageCurve.push({
+        period: p,
+        retention: avg(retentions),
+        yearlyRetention: avg(yearlyRetentions),
+        weeklyRetention: avg(weeklyRetentions),
+      });
+    }
+
+    res.json({ rows, maxPeriod, averageCurve });
+  } catch (error) {
+    console.error('Retention matrix error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

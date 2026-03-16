@@ -6,6 +6,8 @@ import { api } from '../api';
 import { useTheme, themes } from '../styles/themes';
 import { MetricSelector, type MetricOption } from '../components/MetricSelector';
 import { CohortMatrix } from '../components/CohortMatrix';
+import { RetentionCurve } from '../components/RetentionCurve';
+import { RetentionMatrix } from '../components/RetentionMatrix';
 
 const COHORT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -30,6 +32,12 @@ export function CohortsDashboard() {
   const { data: matrixData, isLoading: matrixLoading } = useQuery({
     queryKey: ['cohort-matrix', monthsCount, matrixMode],
     queryFn: () => api.getCohortMatrix(monthsCount, matrixMode),
+    refetchInterval: 60000,
+  });
+
+  const { data: retentionData, isLoading: retentionLoading } = useQuery({
+    queryKey: ['retention-matrix', monthsCount],
+    queryFn: () => api.getRetentionMatrix(monthsCount),
     refetchInterval: 60000,
   });
 
@@ -264,6 +272,18 @@ export function CohortsDashboard() {
         isLoading={matrixLoading}
         mode={matrixMode}
         onModeChange={setMatrixMode}
+      />
+
+      {/* Retention Curve */}
+      <RetentionCurve
+        averageCurve={retentionData?.averageCurve}
+        isLoading={retentionLoading}
+      />
+
+      {/* Retention Heatmap */}
+      <RetentionMatrix
+        data={retentionData}
+        isLoading={retentionLoading}
       />
 
       {/* Cohort table */}
