@@ -1,4 +1,4 @@
-export type DateScale = 'day' | 'week' | 'month';
+export type DateScale = 'day' | 'week' | 'month' | 'year';
 
 interface DateScaleSelectorProps {
   value: DateScale;
@@ -9,6 +9,7 @@ const SCALES: { value: DateScale; label: string }[] = [
   { value: 'day', label: 'Day' },
   { value: 'week', label: 'Week' },
   { value: 'month', label: 'Month' },
+  { value: 'year', label: 'Year' },
 ];
 
 export function DateScaleSelector({ value, onChange }: DateScaleSelectorProps) {
@@ -50,7 +51,7 @@ export function DateScaleSelector({ value, onChange }: DateScaleSelectorProps) {
 export function parseDateScaleFromURL(): DateScale | null {
   const params = new URLSearchParams(window.location.search);
   const scale = params.get('scale');
-  if (scale === 'day' || scale === 'week' || scale === 'month') {
+  if (scale === 'day' || scale === 'week' || scale === 'month' || scale === 'year') {
     return scale;
   }
   return null;
