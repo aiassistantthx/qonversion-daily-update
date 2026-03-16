@@ -342,6 +342,21 @@ export interface SeasonalityData {
   };
 }
 
+export interface CohortMatrixData {
+  rows: Array<{
+    cohortMonth: string;
+    cohortSize: number;
+    periods: Array<{
+      period: number;
+      revenue: number | null;
+      cumulativeRevenue: number | null;
+      activeSubscribers: number | null;
+    }>;
+  }>;
+  maxPeriod: number;
+  mode: string;
+}
+
 // API functions
 export const api = {
   getSummary: () => fetchApi<Summary>('/dashboard/summary'),
@@ -360,4 +375,5 @@ export const api = {
   getMarketing: (months = 6) => fetchApi<{ data: MarketingMetrics[] }>(`/dashboard/marketing?months=${months}`),
   getKeywords: (days = 30) => fetchApi<{ keywords: KeywordPerformance[]; totals: { spend: number; installs: number; trials: number; conversions: number; revenue: number; keywordsWithAttribution: number; keywordsTotal: number; cop: number | null; roas: number | null; attributionRate: string } }>(`/dashboard/keywords?days=${days}`),
   getSeasonality: (months = 12) => fetchApi<SeasonalityData>(`/dashboard/seasonality?months=${months}`),
+  getCohortMatrix: (months = 12, mode = 'calendar') => fetchApi<CohortMatrixData>(`/dashboard/cohort-matrix?months=${months}&mode=${mode}`),
 };

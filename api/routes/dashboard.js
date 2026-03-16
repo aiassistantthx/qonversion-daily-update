@@ -5802,4 +5802,127 @@ router.get('/cohorts', async (req, res) => {
   }
 });
 
+// ============================================
+// COHORT MATRIX - Excel-style cohort table
+// Rows: install month cohorts, Columns: Month 0, Month 1, ...
+// Metrics: revenue (incremental + cumulative), active subscribers
+// ============================================
+router.get('/cohort-matrix', async (req, res) => {
+  try {
+    const months = Math.min(parseInt(req.query.months) || 12, 24);
+    const mode = req.query.mode === 'rolling30' ? 'rolling30' : 'calendar';
+    const PROCEEDS_FACTOR = 0.82;
+
+    let periodExpr;
+    if (mode === 'calendar') {
+      periodExpr = `(DATE_PART('year', event_date::date)::int - DATE_PART('year', DATE_TRUNC('month', install_date)::date)::int) * 12 + (DATE_PART('month', event_date::date)::int - DATE_PART('month', install_date)::int)`;
+    } else {
+      periodExpr = `FLOOR(EXTRACT(EPOCH FROM (event_date::date - install_date::date)) / 86400.0 / 30)::int`;
+    }
+
+    const result = await db.query(`
+      WITH cohort_events AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          ${periodExpr} as period,
+          q_user_id,
+          price_usd,
+          refund,
+          event_name
+        FROM events_v2
+        WHERE install_date IS NOT NULL
+          AND install_date >= CURRENT_DATE - INTERVAL '${months} months'
+          AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
+          AND event_date >= install_date
+          AND event_date <= CURRENT_DATE
+      ),
+      cohort_sizes AS (
+        SELECT
+          TO_CHAR(install_date, 'YYYY-MM') as cohort_month,
+          COUNT(DISTINCT q_user_id) FILTER (
+            WHERE event_name IN ('Trial Converted', 'Subscription Started')
+          ) as cohort_size
+        FROM events_v2
+        WHERE install_date IS NOT NULL
+          AND install_date >= CURRENT_DATE - INTERVAL '${months} months'
+        GROUP BY TO_CHAR(install_date, 'YYYY-MM')
+      )
+      SELECT
+        ce.cohort_month,
+        cs.cohort_size,
+        ce.period,
+        SUM(ce.price_usd) FILTER (WHERE ce.refund = false) as revenue,
+        COUNT(DISTINCT ce.q_user_id) FILTER (WHERE ce.refund = false) as active_subs
+      FROM cohort_events ce
+      JOIN cohort_sizes cs ON ce.cohort_month = cs.cohort_month
+      WHERE ce.period >= 0 AND ce.period <= 24
+      GROUP BY ce.cohort_month, cs.cohort_size, ce.period
+      ORDER BY ce.cohort_month DESC, ce.period
+    `);
+
+    // Build matrix
+    const cohortMap = new Map();
+
+    result.rows.forEach(row => {
+      const month = row.cohort_month;
+      if (!cohortMap.has(month)) {
+        cohortMap.set(month, {
+          cohortMonth: month,
+          cohortSize: parseInt(row.cohort_size) || 0,
+          periods: {}
+        });
+      }
+      const cohort = cohortMap.get(month);
+      const period = parseInt(row.period);
+      cohort.periods[period] = {
+        revenue: (parseFloat(row.revenue) || 0) * PROCEEDS_FACTOR,
+        activeSubscribers: parseInt(row.active_subs) || 0
+      };
+    });
+
+    // Find max period across all cohorts
+    let maxPeriod = 0;
+    cohortMap.forEach(cohort => {
+      Object.keys(cohort.periods).forEach(p => {
+        maxPeriod = Math.max(maxPeriod, parseInt(p));
+      });
+    });
+
+    // Build rows with cumulative revenue
+    const rows = Array.from(cohortMap.values()).map(cohort => {
+      let cumulative = 0;
+      const periods = [];
+      for (let p = 0; p <= maxPeriod; p++) {
+        const data = cohort.periods[p];
+        if (data !== undefined) {
+          cumulative += data.revenue;
+          periods.push({
+            period: p,
+            revenue: data.revenue,
+            cumulativeRevenue: cumulative,
+            activeSubscribers: data.activeSubscribers
+          });
+        } else {
+          periods.push({
+            period: p,
+            revenue: null,
+            cumulativeRevenue: null,
+            activeSubscribers: null
+          });
+        }
+      }
+      return {
+        cohortMonth: cohort.cohortMonth,
+        cohortSize: cohort.cohortSize,
+        periods
+      };
+    });
+
+    res.json({ rows, maxPeriod, mode });
+  } catch (error) {
+    console.error('Cohort matrix error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
