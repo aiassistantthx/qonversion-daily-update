@@ -5181,14 +5181,14 @@ router.get('/mrr-movement', async (req, res) => {
       first_payment AS (
         SELECT
           q_user_id,
-          MIN(created_at) AS first_payment_at
+          MIN(event_date) AS first_payment_at
         FROM events_v2
         WHERE event_name IN ('Trial Converted', 'Subscription Started')
         GROUP BY q_user_id
       ),
       monthly_events AS (
         SELECT
-          DATE_TRUNC('month', e.created_at) AS month,
+          DATE_TRUNC('month', e.event_date) AS month,
           e.q_user_id,
           e.product_id,
           e.price_usd,
@@ -5201,7 +5201,7 @@ router.get('/mrr-movement', async (req, res) => {
           END AS mrr_value
         FROM events_v2 e
         LEFT JOIN first_payment fp ON e.q_user_id = fp.q_user_id
-        WHERE e.created_at >= NOW() - INTERVAL '${months + 1} months'
+        WHERE e.event_date >= NOW() - INTERVAL '${months + 1} months'
           AND e.event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed', 'Subscription Expired', 'Subscription Cancelled')
           AND e.price_usd > 0
       ),
@@ -5210,7 +5210,7 @@ router.get('/mrr-movement', async (req, res) => {
           month,
           SUM(CASE
             WHEN event_name IN ('Trial Converted', 'Subscription Started')
-              AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', first_payment_at)
+              AND month = DATE_TRUNC('month', first_payment_at)
             THEN mrr_value
             ELSE 0
           END) AS new_mrr,
