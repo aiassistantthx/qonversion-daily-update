@@ -624,7 +624,7 @@ router.get('/main', async (req, res) => {
 
     // ---- DAILY DATA (using date range from query params) ----
     // Revenue by event_date, but cohort conversions by install_date
-    // Aggregate by scale: day, week, or month
+    // Aggregate by scale: day, week, month, or year
     let dateGroupBy, dateSelect;
     if (scale === 'week') {
       dateGroupBy = "DATE_TRUNC('week', date)";
@@ -632,26 +632,38 @@ router.get('/main', async (req, res) => {
     } else if (scale === 'month') {
       dateGroupBy = "DATE_TRUNC('month', date)";
       dateSelect = "DATE_TRUNC('month', date)";
+    } else if (scale === 'year') {
+      dateGroupBy = "DATE_TRUNC('year', date)";
+      dateSelect = "DATE_TRUNC('year', date)";
     } else {
       dateGroupBy = "date";
       dateSelect = "date";
     }
 
+    const eventDateTrunc = scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))"
+      : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))"
+      : scale === 'year' ? "DATE_TRUNC('year', DATE(event_date))"
+      : "DATE(event_date)";
+    const installDateTrunc = scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))"
+      : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))"
+      : scale === 'year' ? "DATE_TRUNC('year', DATE(install_date))"
+      : "DATE(install_date)";
+
     const dailyQuery = `
       WITH daily_revenue AS (
         SELECT
-          ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"} as day,
+          ${eventDateTrunc} as day,
           SUM(price_usd) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
         FROM events_v2
         WHERE event_date >= $1::date AND event_date <= $2::date
-        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(event_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(event_date))" : "DATE(event_date)"}
+        GROUP BY ${eventDateTrunc}
       ),
       cohort_conversions AS (
         SELECT
-          ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"} as cohort_day,
+          ${installDateTrunc} as cohort_day,
           COUNT(DISTINCT q_user_id) as subscribers
         FROM events_v2
         WHERE install_date >= $1::date AND install_date <= $2::date
@@ -659,7 +671,7 @@ router.get('/main', async (req, res) => {
             event_name = 'Trial Converted'
             OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
           )
-        GROUP BY ${scale === 'week' ? "DATE_TRUNC('week', DATE(install_date))" : scale === 'month' ? "DATE_TRUNC('month', DATE(install_date))" : "DATE(install_date)"}
+        GROUP BY ${installDateTrunc}
       ),
       daily_spend AS (
         SELECT ${dateSelect} as day, SUM(spend) as spend
@@ -890,19 +902,35 @@ router.get('/marketing', async (req, res) => {
   try {
     const cohortAges = [4, 7, 30, 60, 180];
     const monthsBack = parseInt(req.query.months) || 6;
+    const scale = req.query.scale || 'month';
 
-    // Get monthly marketing metrics at different cohort ages
+    let periodSpendExpr, periodInstallExpr;
+    if (scale === 'day') {
+      periodSpendExpr = "TO_CHAR(date, 'YYYY-MM-DD')";
+      periodInstallExpr = "TO_CHAR(install_date, 'YYYY-MM-DD')";
+    } else if (scale === 'week') {
+      periodSpendExpr = "TO_CHAR(DATE_TRUNC('week', date), 'YYYY-MM-DD')";
+      periodInstallExpr = "TO_CHAR(DATE_TRUNC('week', install_date), 'YYYY-MM-DD')";
+    } else if (scale === 'year') {
+      periodSpendExpr = "TO_CHAR(DATE_TRUNC('year', date), 'YYYY')";
+      periodInstallExpr = "TO_CHAR(DATE_TRUNC('year', install_date), 'YYYY')";
+    } else {
+      periodSpendExpr = "TO_CHAR(date, 'YYYY-MM')";
+      periodInstallExpr = "TO_CHAR(install_date, 'YYYY-MM')";
+    }
+
+    // Get marketing metrics at different cohort ages grouped by scale period
     // IMPORTANT: Filter only Apple Ads users (media_source = 'Apple AdServices')
     const result = await db.query(`
       WITH monthly_spend AS (
-        SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
+        SELECT ${periodSpendExpr} as month, SUM(spend) as spend
         FROM apple_ads_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
-        GROUP BY TO_CHAR(date, 'YYYY-MM')
+        GROUP BY ${periodSpendExpr}
       ),
       cohort_data AS (
         SELECT
-          TO_CHAR(install_date, 'YYYY-MM') as month,
+          ${periodInstallExpr} as month,
           DATE_PART('day', event_date - install_date)::int as days_to_event,
           DATE_PART('day', CURRENT_DATE - install_date)::int as cohort_age,
           q_user_id,
@@ -4617,12 +4645,24 @@ router.get('/revenue-by-day', async (req, res) => {
   try {
     const months = parseInt(req.query.months) || 12;
     const days = [0, 7, 14, 30, 60, 90, 120, 180];
+    const scale = req.query.scale || 'month';
+
+    let cohortPeriodExpr;
+    if (scale === 'week') {
+      cohortPeriodExpr = "TO_CHAR(DATE_TRUNC('week', e.created_at), 'YYYY-MM-DD')";
+    } else if (scale === 'year') {
+      cohortPeriodExpr = "TO_CHAR(DATE_TRUNC('year', e.created_at), 'YYYY')";
+    } else if (scale === 'day') {
+      cohortPeriodExpr = "TO_CHAR(e.created_at, 'YYYY-MM-DD')";
+    } else {
+      cohortPeriodExpr = "TO_CHAR(DATE_TRUNC('month', e.created_at), 'YYYY-MM')";
+    }
 
     // Get cohorts with revenue at each day milestone
     const query = `
       WITH cohorts AS (
         SELECT
-          TO_CHAR(DATE_TRUNC('month', e.created_at), 'YYYY-MM') as cohort_month,
+          ${cohortPeriodExpr} as cohort_month,
           e.q_user_id,
           MIN(e.created_at) as first_event
         FROM events_v2 e

@@ -1,10 +1,19 @@
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { TopCountriesRoasWidget } from '../components/TopCountriesRoasWidget';
+import { DateScaleSelector, parseDateScaleFromURL, updateURLWithDateScale } from '../components/DateScaleSelector';
+import type { DateScale } from '../components/DateScaleSelector';
 
 export function MarketingDashboard() {
+  const [dateScale, setDateScale] = useState<DateScale>(() => parseDateScaleFromURL() || 'month');
+
+  useEffect(() => {
+    updateURLWithDateScale(dateScale);
+  }, [dateScale]);
+
   const { data: topCountriesRoas } = useQuery({
     queryKey: ['top-countries-roas'],
     queryFn: () => api.getTopCountriesRoas(10),
@@ -12,8 +21,8 @@ export function MarketingDashboard() {
   });
 
   const { data: marketingData, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['marketing'],
-    queryFn: () => api.getMarketing(6),
+    queryKey: ['marketing', dateScale],
+    queryFn: () => api.getMarketing(6, dateScale),
     refetchInterval: 60000,
   });
 
@@ -61,16 +70,19 @@ export function MarketingDashboard() {
             Spend, revenue, ROAS trends and keyword performance
           </p>
         </div>
-        <button
-          style={styles.refreshBtn}
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          <RefreshCw
-            size={16}
-            style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }}
-          />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <DateScaleSelector value={dateScale} onChange={setDateScale} />
+          <button
+            style={styles.refreshBtn}
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw
+              size={16}
+              style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -104,7 +116,7 @@ export function MarketingDashboard() {
         <div style={styles.grid2}>
           {/* Spend vs Revenue */}
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>Spend vs Revenue (Monthly)</h3>
+            <h3 style={styles.cardTitle}>Spend vs Revenue ({dateScale.charAt(0).toUpperCase() + dateScale.slice(1)}ly)</h3>
             <div style={{ height: 280 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>
@@ -152,7 +164,7 @@ export function MarketingDashboard() {
 
           {/* ROAS Trend */}
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>ROAS Trend (d7, Monthly)</h3>
+            <h3 style={styles.cardTitle}>ROAS Trend (d7, {dateScale.charAt(0).toUpperCase() + dateScale.slice(1)}ly)</h3>
             <div style={{ height: 280 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={[...marketingData.data].reverse()}>

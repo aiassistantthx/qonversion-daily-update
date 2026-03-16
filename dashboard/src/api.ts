@@ -372,7 +372,7 @@ export const api = {
   getForecast: () => fetchApi<ForecastData>('/dashboard/forecast'),
   getChurnRate: (months = 12) => fetchApi<ChurnRateData>(`/dashboard/churn-rate?months=${months}`),
   getTopCountriesRoas: (limit = 10) => fetchApi<{ countries: TopCountryRoas[] }>(`/dashboard/top-countries-roas?limit=${limit}`),
-  getMarketing: (months = 6) => fetchApi<{ data: MarketingMetrics[] }>(`/dashboard/marketing?months=${months}`),
+  getMarketing: (months = 6, scale = 'month') => fetchApi<{ data: MarketingMetrics[] }>(`/dashboard/marketing?months=${months}&scale=${scale}`),
   getKeywords: (days = 30) => fetchApi<{ keywords: KeywordPerformance[]; totals: { spend: number; installs: number; trials: number; conversions: number; revenue: number; keywordsWithAttribution: number; keywordsTotal: number; cop: number | null; roas: number | null; attributionRate: string } }>(`/dashboard/keywords?days=${days}`),
   getSeasonality: (months = 12) => fetchApi<SeasonalityData>(`/dashboard/seasonality?months=${months}`),
   getCohortMatrix: (months = 12, mode = 'calendar') => fetchApi<CohortMatrixData>(`/dashboard/cohort-matrix?months=${months}&mode=${mode}`),
