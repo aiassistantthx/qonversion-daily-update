@@ -5194,10 +5194,13 @@ router.get('/mrr-movement', async (req, res) => {
           e.price_usd,
           e.event_name,
           fp.first_payment_at,
+          -- MRR normalization: use raw price_usd for all events.
+          -- Weekly renewals happen ~4.33x/month, so SUM(price_usd) for weekly events
+          -- in a month already equals the monthly revenue from weekly subscribers.
+          -- Yearly: each payment = 12 months of revenue, normalize to 1 month.
           CASE
             WHEN product_id LIKE '%yearly%' THEN e.price_usd / 12
-            WHEN product_id LIKE '%monthly%' THEN e.price_usd
-            ELSE e.price_usd * 4.33
+            ELSE e.price_usd
           END AS mrr_value
         FROM events_v2 e
         LEFT JOIN first_payment fp ON e.q_user_id = fp.q_user_id
