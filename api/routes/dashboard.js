@@ -272,8 +272,9 @@ router.get('/main', async (req, res) => {
 
     // Cohort revenue from Apple Ads users (for ROAS calculation)
     // Revenue from users who installed THIS month AND came from Apple Ads
+    // Using proceeds (price_usd * 0.78) after Apple's 22% commission
     const cohortRevenueQuery = `
-      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND media_source = 'Apple AdServices'
@@ -284,9 +285,9 @@ router.get('/main', async (req, res) => {
     const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
     const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
-    // Cohort revenue for comparison (excluding today)
+    // Cohort revenue for comparison (excluding today), using proceeds
     const cohortRevenueForComparisonQuery = `
-      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND EXTRACT(DAY FROM install_date) <= $2
@@ -467,9 +468,9 @@ router.get('/main', async (req, res) => {
     const prevRevenueResult = await db.query(prevRevenueQuery, [prevMonth, comparisonDay]);
     const prevMonthRevenue = parseFloat(prevRevenueResult.rows[0]?.revenue) || 0;
 
-    // Cohort revenue from Apple Ads for first N days (for ROAS comparison)
+    // Cohort revenue from Apple Ads for first N days (for ROAS comparison), using proceeds
     const prevCohortRevenueQuery = `
-      SELECT COALESCE(SUM(price_usd), 0) as revenue
+      SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue
       FROM events_v2
       WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
         AND EXTRACT(DAY FROM install_date) <= $2
@@ -712,6 +713,7 @@ router.get('/main', async (req, res) => {
       const predictedCop = predictedFinalSubs > 0 ? spend / predictedFinalSubs : null;
 
       // Use Qonversion API for revenue if available, fallback to events_v2
+      // Note: Qonversion API returns gross sales ("After refunds", before Apple commission)
       const dateStr = formatDate(row.day);
       const revenue = qonversionSales[dateStr] ?? parseFloat(row.revenue) ?? 0;
 
@@ -723,7 +725,7 @@ router.get('/main', async (req, res) => {
         cohortAge,
         cop: currentCop,  // Always show actual COP (will decrease over time)
         copPredicted: predictedCop,  // Always show predicted final COP
-        roas: cohortAge >= 4 && spend > 0 ? revenue / spend : null,
+        roas: cohortAge >= 4 && spend > 0 ? (revenue * 0.78) / spend : null,
       };
     }).reverse();
 
@@ -733,9 +735,10 @@ router.get('/main', async (req, res) => {
     const monthlyQuery = `
       WITH cohort_revenue AS (
         -- Revenue from ALL users by their install month (cohort revenue)
+        -- Using proceeds (price_usd * 0.78) after Apple's 22% commission
         SELECT
           TO_CHAR(install_date, 'YYYY-MM') as month,
-          SUM(price_usd) FILTER (
+          SUM(price_usd * 0.78) FILTER (
             WHERE refund = false
             AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
           ) as revenue
@@ -837,7 +840,7 @@ router.get('/main', async (req, res) => {
         subscribers: monthSubscribers,
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop, // Use the correctly calculated predicted COP
-        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,  // Total ROAS (all traffic)
+        roas: monthSpend > 0 ? (monthRevenue * 0.78) / monthSpend : null,  // Total ROAS (all traffic, proceeds)
       };
     } else {
       // Add current month if not in array
@@ -851,7 +854,7 @@ router.get('/main', async (req, res) => {
         cop: monthSubscribers > 0 ? monthSpend / monthSubscribers : null,
         copPredicted: predictedCop,
         crToPaid: crToPaid,
-        roas: monthSpend > 0 ? monthRevenue / monthSpend : null,  // Total ROAS (all traffic)
+        roas: monthSpend > 0 ? (monthRevenue * 0.78) / monthSpend : null,  // Total ROAS (all traffic, proceeds)
       });
     }
 
@@ -998,8 +1001,8 @@ router.get('/marketing', async (req, res) => {
       ORDER BY ms.month DESC
     `);
 
-    // Apple commission factor: sales * 0.82 = proceeds (Apple takes ~18%)
-    const PROCEEDS_FACTOR = 0.82;
+    // Apple commission factor: sales * 0.78 = proceeds (Apple takes ~22%)
+    const PROCEEDS_FACTOR = 0.78;
 
     const data = result.rows.map(row => {
       const spend = parseFloat(row.spend) || 0;
@@ -1013,7 +1016,7 @@ router.get('/marketing', async (req, res) => {
       const cop180d = cohortAge >= 180 && row.subs_180d > 0 ? spend / row.subs_180d : null;
       const copTotal = row.subs_total > 0 ? spend / row.subs_total : null;
 
-      // Calculate ROAS at each age using proceeds (sales * 0.82)
+      // Calculate ROAS at each age using proceeds (sales * 0.78)
       const roas4d = cohortAge >= 4 && spend > 0 ? (parseFloat(row.rev_4d) * PROCEEDS_FACTOR) / spend : null;
       const roas7d = cohortAge >= 7 && spend > 0 ? (parseFloat(row.rev_7d) * PROCEEDS_FACTOR) / spend : null;
       const roas30d = cohortAge >= 30 && spend > 0 ? (parseFloat(row.rev_30d) * PROCEEDS_FACTOR) / spend : null;
