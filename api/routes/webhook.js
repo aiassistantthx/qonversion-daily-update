@@ -551,6 +551,28 @@ router.get('/daily', async (req, res) => {
       dailyMap[dateStr].cohortRevenue = parseFloat(row.total_revenue) || 0;
     }
 
+    // Get daily gross revenue (Sales) - sum of all revenue events
+    // Revenue events: Trial Converted, Subscription Started, Subscription Renewed (not refunds)
+    const dailyRevenue = await db.query(`
+      SELECT
+        DATE(event_date) as date,
+        COALESCE(SUM(CASE WHEN refund = false THEN price_usd ELSE 0 END), 0) as gross_revenue
+      FROM events_v2
+      WHERE event_name IN ('Trial Converted', 'Subscription Started', 'Subscription Renewed')
+        AND event_date >= CURRENT_DATE - INTERVAL '${days} days'
+      GROUP BY DATE(event_date)
+      ORDER BY date DESC
+    `);
+
+    // Add daily revenue (Sales) to map
+    for (const row of dailyRevenue.rows) {
+      const dateStr = row.date.toISOString().split('T')[0];
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, trials: 0, yearlySubscribers: 0, converted: 0, cohortRevenue: 0, revenue: 0 };
+      }
+      dailyMap[dateStr].revenue = parseFloat(row.gross_revenue) || 0;
+    }
+
     // Sort by date descending
     const daily = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
 
