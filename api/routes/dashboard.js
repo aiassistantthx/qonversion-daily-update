@@ -1006,20 +1006,23 @@ router.get('/marketing', async (req, res) => {
       const predictedSubs = subsTotal > 0 ? subsTotal / copDecayFactor : 0;
       const copPredicted = predictedSubs > 0 ? spend / predictedSubs : null;
 
-      // Predict final ROAS using best closed window and validated multipliers
-      // This gives more accurate predictions for young cohorts
-      const bestWindow = getBestClosedWindow(cohortAge);
-      const multiplier = ROAS_MULTIPLIERS[bestWindow] || 1.0;
-
-      // Get ROAS for the best closed window
+      // Predict final ROAS using the best AVAILABLE closed window data
+      // Match the ROAS data to its correct multiplier (not a mismatched window)
       let roasForPrediction = null;
-      if (bestWindow >= 180 && roas180d) roasForPrediction = roas180d;
-      else if (bestWindow >= 60 && roas60d) roasForPrediction = roas60d;
-      else if (bestWindow >= 30 && roas30d) roasForPrediction = roas30d;
-      else if (bestWindow >= 14 && roas7d) roasForPrediction = roas7d;  // Use d7 as proxy for d14
-      else if (bestWindow >= 7 && roas7d) roasForPrediction = roas7d;
-      else if (roas4d) roasForPrediction = roas4d;
-      else roasForPrediction = roasTotal;
+      let actualWindow = null;
+
+      // Find best available ROAS data with matching multiplier
+      // Order: prefer most mature window that has data
+      if (cohortAge >= 184 && roas180d) { roasForPrediction = roas180d; actualWindow = 180; }
+      else if (cohortAge >= 64 && roas60d) { roasForPrediction = roas60d; actualWindow = 60; }
+      else if (cohortAge >= 34 && roas30d) { roasForPrediction = roas30d; actualWindow = 30; }
+      else if (cohortAge >= 11 && roas7d) { roasForPrediction = roas7d; actualWindow = 7; }
+      else if (cohortAge >= 8 && roas4d) { roasForPrediction = roas4d; actualWindow = 4; }
+      else { roasForPrediction = roasTotal; actualWindow = Math.min(cohortAge, 4); }
+
+      // Use the multiplier that matches the ACTUAL data window
+      const multiplier = ROAS_MULTIPLIERS[actualWindow] || 1.0;
+      const bestWindow = actualWindow;
 
       // Apply multiplier to get predicted final ROAS
       const roasPredicted = roasForPrediction ? roasForPrediction * multiplier : null;
