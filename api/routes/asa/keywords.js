@@ -591,15 +591,6 @@ router.get('/suggestions', async (req, res) => {
       existing_keywords AS (
         SELECT DISTINCT LOWER(keyword_text) as keyword_text, adgroup_id
         FROM apple_ads_keywords
-      ),
-      revenue_by_search AS (
-        SELECT
-          LOWER(e.search_term) as search_term,
-          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted') THEN e.q_user_id END) as conversions,
-          SUM(CASE WHEN e.refund = false THEN e.price_usd * 0.74 ELSE 0 END) as revenue
-        FROM events_v2 e
-        WHERE e.search_term IS NOT NULL
-        GROUP BY LOWER(e.search_term)
       )
       SELECT
         sts.search_term,
@@ -613,19 +604,15 @@ router.get('/suggestions', async (req, res) => {
         sts.spend,
         sts.ttr,
         sts.cvr,
-        COALESCE(r.conversions, 0) as conversions,
-        COALESCE(r.revenue, 0) as revenue,
+        0 as conversions,
+        0 as revenue,
         CASE WHEN sts.installs > 0 THEN sts.spend / sts.installs ELSE NULL END as estimated_cpa,
-        CASE WHEN sts.spend > 0 THEN COALESCE(r.revenue, 0) / sts.spend ELSE 0 END as roas,
-        CASE WHEN COALESCE(r.conversions, 0) > 0 OR sts.installs > 0
-          THEN COALESCE(r.conversions, 0)::float / NULLIF(sts.installs, 0)
-          ELSE 0
-        END as conversion_rate
+        0 as roas,
+        sts.cvr as conversion_rate
       FROM search_term_stats sts
       LEFT JOIN existing_keywords ek ON LOWER(sts.search_term) = ek.keyword_text AND sts.adgroup_id = ek.adgroup_id
-      LEFT JOIN revenue_by_search r ON LOWER(sts.search_term) = r.search_term
       WHERE ek.keyword_text IS NULL
-      ORDER BY COALESCE(r.conversions, 0) DESC, sts.installs DESC
+      ORDER BY sts.installs DESC, sts.impressions DESC
       LIMIT $3 OFFSET $4
     `;
 
