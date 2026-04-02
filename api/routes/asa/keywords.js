@@ -545,6 +545,7 @@ router.delete('/negative/:keywordId', async (req, res) => {
 /**
  * GET /asa/keyword-suggestions
  * Get keyword suggestions from search terms with high conversion potential
+ * Optimized query - uses direct aggregation without expensive JOINs
  */
 router.get('/suggestions', async (req, res) => {
   try {
@@ -566,53 +567,30 @@ router.get('/suggestions', async (req, res) => {
       paramIndex++;
     }
 
+    // Optimized query: aggregate first, then filter out existing keywords
     const query = `
-      WITH search_term_stats AS (
-        SELECT
-          st.search_term,
-          st.adgroup_id,
-          ag.adgroup_name,
-          c.campaign_id,
-          c.campaign_name,
-          SUM(st.impressions) as impressions,
-          SUM(st.taps) as taps,
-          SUM(st.installs) as installs,
-          SUM(st.spend) as spend,
-          CASE WHEN SUM(st.impressions) > 0 THEN SUM(st.taps)::float / SUM(st.impressions) ELSE 0 END as ttr,
-          CASE WHEN SUM(st.taps) > 0 THEN SUM(st.installs)::float / SUM(st.taps) ELSE 0 END as cvr
-        FROM apple_ads_search_terms st
-        JOIN apple_ads_adgroups ag ON st.adgroup_id = ag.adgroup_id
-        JOIN apple_ads_campaigns c ON ag.campaign_id = c.campaign_id
-        WHERE st.impressions > 0
-          ${adGroupFilter}
-        GROUP BY st.search_term, st.adgroup_id, ag.adgroup_name, c.campaign_id, c.campaign_name
-        HAVING SUM(st.impressions) >= $1 AND SUM(st.installs) >= $2
-      ),
-      existing_keywords AS (
-        SELECT DISTINCT LOWER(keyword_text) as keyword_text, adgroup_id
-        FROM apple_ads_keywords
-      )
       SELECT
-        sts.search_term,
-        sts.adgroup_id,
-        sts.adgroup_name,
-        sts.campaign_id,
-        sts.campaign_name,
-        sts.impressions,
-        sts.taps,
-        sts.installs,
-        sts.spend,
-        sts.ttr,
-        sts.cvr,
-        0 as conversions,
-        0 as revenue,
-        CASE WHEN sts.installs > 0 THEN sts.spend / sts.installs ELSE NULL END as estimated_cpa,
-        0 as roas,
-        sts.cvr as conversion_rate
-      FROM search_term_stats sts
-      LEFT JOIN existing_keywords ek ON LOWER(sts.search_term) = ek.keyword_text AND sts.adgroup_id = ek.adgroup_id
-      WHERE ek.keyword_text IS NULL
-      ORDER BY sts.installs DESC, sts.impressions DESC
+        st.search_term,
+        st.campaign_id,
+        st.adgroup_id,
+        SUM(st.impressions) as impressions,
+        SUM(st.taps) as taps,
+        SUM(st.installs) as installs,
+        SUM(st.spend) as spend,
+        CASE WHEN SUM(st.impressions) > 0 THEN SUM(st.taps)::float / SUM(st.impressions) ELSE 0 END as ttr,
+        CASE WHEN SUM(st.taps) > 0 THEN SUM(st.installs)::float / SUM(st.taps) ELSE 0 END as cvr,
+        CASE WHEN SUM(st.installs) > 0 THEN SUM(st.spend) / SUM(st.installs) ELSE NULL END as estimated_cpa
+      FROM apple_ads_search_terms st
+      WHERE st.impressions > 0
+        ${adGroupFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM apple_ads_keywords k
+          WHERE k.adgroup_id = st.adgroup_id
+          AND LOWER(k.keyword_text) = LOWER(st.search_term)
+        )
+      GROUP BY st.search_term, st.campaign_id, st.adgroup_id
+      HAVING SUM(st.impressions) >= $1 AND SUM(st.installs) >= $2
+      ORDER BY SUM(st.installs) DESC, SUM(st.impressions) DESC
       LIMIT $3 OFFSET $4
     `;
 
@@ -622,20 +600,14 @@ router.get('/suggestions', async (req, res) => {
       suggestions: result.rows.map(row => ({
         search_term: row.search_term,
         ad_group_id: row.adgroup_id,
-        ad_group_name: row.adgroup_name,
         campaign_id: row.campaign_id,
-        campaign_name: row.campaign_name,
         impressions: parseInt(row.impressions),
         taps: parseInt(row.taps),
         installs: parseInt(row.installs),
         spend: parseFloat(row.spend || 0),
         ttr: parseFloat(row.ttr || 0),
         cvr: parseFloat(row.cvr || 0),
-        conversions: parseInt(row.conversions),
-        revenue: parseFloat(row.revenue || 0),
-        conversion_rate: parseFloat(row.conversion_rate || 0),
         estimated_cpa: row.estimated_cpa ? parseFloat(row.estimated_cpa) : null,
-        roas: parseFloat(row.roas || 0),
       })),
       total: result.rows.length,
       filters: {
