@@ -542,4 +542,125 @@ router.delete('/negative/:keywordId', async (req, res) => {
   }
 });
 
+/**
+ * GET /asa/keyword-suggestions
+ * Get keyword suggestions from search terms with high conversion potential
+ */
+router.get('/suggestions', async (req, res) => {
+  try {
+    const {
+      ad_group_id,
+      min_impressions = 100,
+      min_installs = 5,
+      limit = 50,
+      offset = 0
+    } = req.query;
+
+    let adGroupFilter = '';
+    const params = [parseInt(min_impressions), parseInt(min_installs), parseInt(limit), parseInt(offset)];
+    let paramIndex = 5;
+
+    if (ad_group_id) {
+      adGroupFilter = `AND st.ad_group_id = $${paramIndex}`;
+      params.push(ad_group_id);
+      paramIndex++;
+    }
+
+    const query = `
+      WITH search_term_stats AS (
+        SELECT
+          st.search_term_text,
+          st.ad_group_id,
+          ag.ad_group_name,
+          c.campaign_id,
+          c.campaign_name,
+          SUM(st.impressions) as impressions,
+          SUM(st.taps) as taps,
+          SUM(st.installs) as installs,
+          SUM(st.spend) as spend,
+          CASE WHEN SUM(st.impressions) > 0 THEN SUM(st.taps)::float / SUM(st.impressions) ELSE 0 END as ttr,
+          CASE WHEN SUM(st.taps) > 0 THEN SUM(st.installs)::float / SUM(st.taps) ELSE 0 END as cvr
+        FROM apple_ads_search_terms st
+        JOIN apple_ads_adgroups ag ON st.ad_group_id = ag.ad_group_id
+        JOIN apple_ads_campaigns c ON ag.campaign_id = c.campaign_id
+        WHERE st.impressions > 0
+          ${adGroupFilter}
+        GROUP BY st.search_term_text, st.ad_group_id, ag.ad_group_name, c.campaign_id, c.campaign_name
+        HAVING SUM(st.impressions) >= $1 AND SUM(st.installs) >= $2
+      ),
+      existing_keywords AS (
+        SELECT DISTINCT LOWER(keyword_text) as keyword_text, ad_group_id
+        FROM apple_ads_keywords
+      ),
+      revenue_by_search AS (
+        SELECT
+          LOWER(e.search_term) as search_term,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted') THEN e.q_user_id END) as conversions,
+          SUM(CASE WHEN e.refund = false THEN e.price_usd * 0.74 ELSE 0 END) as revenue
+        FROM events_v2 e
+        WHERE e.search_term IS NOT NULL
+        GROUP BY LOWER(e.search_term)
+      )
+      SELECT
+        sts.search_term_text,
+        sts.ad_group_id,
+        sts.ad_group_name,
+        sts.campaign_id,
+        sts.campaign_name,
+        sts.impressions,
+        sts.taps,
+        sts.installs,
+        sts.spend,
+        sts.ttr,
+        sts.cvr,
+        COALESCE(r.conversions, 0) as conversions,
+        COALESCE(r.revenue, 0) as revenue,
+        CASE WHEN sts.installs > 0 THEN sts.spend / sts.installs ELSE NULL END as estimated_cpa,
+        CASE WHEN sts.spend > 0 THEN COALESCE(r.revenue, 0) / sts.spend ELSE 0 END as roas,
+        CASE WHEN COALESCE(r.conversions, 0) > 0 OR sts.installs > 0
+          THEN COALESCE(r.conversions, 0)::float / NULLIF(sts.installs, 0)
+          ELSE 0
+        END as conversion_rate
+      FROM search_term_stats sts
+      LEFT JOIN existing_keywords ek ON LOWER(sts.search_term_text) = ek.keyword_text AND sts.ad_group_id = ek.ad_group_id
+      LEFT JOIN revenue_by_search r ON LOWER(sts.search_term_text) = r.search_term
+      WHERE ek.keyword_text IS NULL
+      ORDER BY COALESCE(r.conversions, 0) DESC, sts.installs DESC
+      LIMIT $3 OFFSET $4
+    `;
+
+    const result = await db.query(query, params);
+
+    res.json({
+      suggestions: result.rows.map(row => ({
+        search_term: row.search_term_text,
+        ad_group_id: row.ad_group_id,
+        ad_group_name: row.ad_group_name,
+        campaign_id: row.campaign_id,
+        campaign_name: row.campaign_name,
+        impressions: parseInt(row.impressions),
+        taps: parseInt(row.taps),
+        installs: parseInt(row.installs),
+        spend: parseFloat(row.spend || 0),
+        ttr: parseFloat(row.ttr || 0),
+        cvr: parseFloat(row.cvr || 0),
+        conversions: parseInt(row.conversions),
+        revenue: parseFloat(row.revenue || 0),
+        conversion_rate: parseFloat(row.conversion_rate || 0),
+        estimated_cpa: row.estimated_cpa ? parseFloat(row.estimated_cpa) : null,
+        roas: parseFloat(row.roas || 0),
+      })),
+      total: result.rows.length,
+      filters: {
+        min_impressions: parseInt(min_impressions),
+        min_installs: parseInt(min_installs),
+        ad_group_id: ad_group_id || null
+      }
+    });
+  } catch (error) {
+    console.error('Keyword suggestions error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

@@ -15,9 +15,12 @@ router.get('/', async (req, res) => {
   try {
     const { campaign_id, period = 'week', limit = 12, country, product_type } = req.query;
 
-    const dateGroup = period === 'month'
+    const dateGroupRevenue = period === 'month'
       ? "TO_CHAR(install_date, 'YYYY-MM')"
       : "TO_CHAR(DATE_TRUNC('week', install_date), 'YYYY-MM-DD')";
+    const dateGroupSpend = period === 'month'
+      ? "TO_CHAR(date, 'YYYY-MM')"
+      : "TO_CHAR(DATE_TRUNC('week', date), 'YYYY-MM-DD')";
 
     let campaignFilter = '';
     let countryFilter = '';
@@ -49,17 +52,17 @@ router.get('/', async (req, res) => {
     const query = `
       WITH cohort_spend AS (
         SELECT
-          ${dateGroup} as cohort,
+          ${dateGroupSpend} as cohort,
           COALESCE(SUM(spend), 0) as spend
         FROM apple_ads_campaigns
-        WHERE install_date IS NOT NULL
+        WHERE date IS NOT NULL
           ${campaignFilter}
           ${spendCountryFilter}
         GROUP BY 1
       ),
       cohort_revenue AS (
         SELECT
-          ${dateGroup} as cohort,
+          ${dateGroupRevenue} as cohort,
           install_date,
           SUM(CASE WHEN event_date - install_date <= 0 THEN price_usd * 0.74 ELSE 0 END) as revenue_d0,
           SUM(CASE WHEN event_date - install_date <= 3 THEN price_usd * 0.74 ELSE 0 END) as revenue_d3,
@@ -515,6 +518,78 @@ router.get('/debug/cohort-roas', async (req, res) => {
       eventsStats: eventsCheck.rows[0]
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /asa/cohorts/by-campaign
+ * Get cohort metrics by campaign using the v_cohort_metrics_campaigns view
+ */
+router.get('/by-campaign', async (req, res) => {
+  try {
+    const { days = 90 } = req.query;
+
+    const query = `
+      SELECT
+        campaign_id,
+        campaign_name,
+        spend,
+        roas_d0, roas_d4, roas_d7, roas_d14, roas_d30,
+        cop_d0, cop_d4, cop_d7, cop_d14, cop_d30,
+        cpt_d0, cpt_d4, cpt_d7, cpt_d14, cpt_d30,
+        cpts_d0, cpts_d4, cpts_d7, cpts_d14, cpts_d30,
+        revenue_d0, revenue_d7, revenue_d30,
+        trials_d0, trials_d7, trials_d30,
+        subscribers_d0, subscribers_d7, subscribers_d30
+      FROM v_cohort_metrics_campaigns
+      ORDER BY spend DESC
+    `;
+
+    const result = await db.query(query);
+
+    // Calculate totals
+    const totals = result.rows.reduce((acc, row) => ({
+      spend: acc.spend + parseFloat(row.spend || 0),
+      revenue_d7: acc.revenue_d7 + parseFloat(row.revenue_d7 || 0),
+      revenue_d30: acc.revenue_d30 + parseFloat(row.revenue_d30 || 0),
+    }), { spend: 0, revenue_d7: 0, revenue_d30: 0 });
+
+    res.json({
+      campaigns: result.rows.map(row => ({
+        campaign_id: row.campaign_id,
+        campaign_name: row.campaign_name,
+        spend: parseFloat(row.spend || 0),
+        roas_d0: row.roas_d0 ? parseFloat(row.roas_d0) : null,
+        roas_d4: row.roas_d4 ? parseFloat(row.roas_d4) : null,
+        roas_d7: row.roas_d7 ? parseFloat(row.roas_d7) : null,
+        roas_d14: row.roas_d14 ? parseFloat(row.roas_d14) : null,
+        roas_d30: row.roas_d30 ? parseFloat(row.roas_d30) : null,
+        cop_d0: row.cop_d0 ? parseFloat(row.cop_d0) : null,
+        cop_d4: row.cop_d4 ? parseFloat(row.cop_d4) : null,
+        cop_d7: row.cop_d7 ? parseFloat(row.cop_d7) : null,
+        cop_d14: row.cop_d14 ? parseFloat(row.cop_d14) : null,
+        cop_d30: row.cop_d30 ? parseFloat(row.cop_d30) : null,
+        cpt_d0: row.cpt_d0 ? parseFloat(row.cpt_d0) : null,
+        cpt_d4: row.cpt_d4 ? parseFloat(row.cpt_d4) : null,
+        cpt_d7: row.cpt_d7 ? parseFloat(row.cpt_d7) : null,
+        cpt_d14: row.cpt_d14 ? parseFloat(row.cpt_d14) : null,
+        cpt_d30: row.cpt_d30 ? parseFloat(row.cpt_d30) : null,
+        cpts_d0: row.cpts_d0 ? parseFloat(row.cpts_d0) : null,
+        cpts_d4: row.cpts_d4 ? parseFloat(row.cpts_d4) : null,
+        cpts_d7: row.cpts_d7 ? parseFloat(row.cpts_d7) : null,
+        cpts_d14: row.cpts_d14 ? parseFloat(row.cpts_d14) : null,
+        cpts_d30: row.cpts_d30 ? parseFloat(row.cpts_d30) : null,
+      })),
+      totals: {
+        spend: totals.spend,
+        roas_d7: totals.spend > 0 ? totals.revenue_d7 / totals.spend : 0,
+        roas_d30: totals.spend > 0 ? totals.revenue_d30 / totals.spend : 0,
+      },
+      total: result.rows.length
+    });
+  } catch (error) {
+    console.error('Cohorts by-campaign error:', error);
     res.status(500).json({ error: error.message });
   }
 });

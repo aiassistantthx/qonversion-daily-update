@@ -84,6 +84,12 @@ router.delete('/negative-keywords/:keywordId', (req, res, next) => {
 // Search terms
 router.use('/search-terms', searchTermsRouter);
 
+// Keyword suggestions (alias for keywords/suggestions)
+router.get('/keyword-suggestions', (req, res, next) => {
+  req.url = '/suggestions';
+  keywordsRouter(req, res, next);
+});
+
 // Automation rules
 // GET /asa/rules, POST /asa/rules, etc.
 router.use('/rules', rulesRouter);
