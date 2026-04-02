@@ -4,10 +4,13 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const { spawn } = require('child_process');
 const db = require('./db');
+const logger = require('./lib/logger');
 const webhookRouter = require('./routes/webhook');
 const dashboardRouter = require('./routes/dashboard');
 const asaRouter = require('./routes/asa');
 const appleAds = require('./services/appleAds');
+const requestIdMiddleware = require('./middleware/requestId');
+const requestLogger = require('./middleware/requestLogger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,19 +69,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Request ID middleware (must be before other middleware)
+app.use(requestIdMiddleware);
+
 // Middleware
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
-  });
-  next();
-});
+// Request logging with request ID
+app.use(requestLogger);
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
@@ -92,7 +91,7 @@ app.get('/health', async (req, res) => {
       database: 'connected',
     });
   } catch (error) {
-    console.error('Health check failed:', error);
+    logger.error({ err: error }, 'Health check failed');
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
@@ -727,7 +726,7 @@ app.post('/migrate/asa', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Migration error:', error);
+    logger.error({ err: error }, 'Migration error');
     res.status(500).json({
       error: error.message,
       hint: 'Some tables may already exist'
@@ -746,7 +745,7 @@ app.post('/backfill/campaign-attribution', async (req, res) => {
       return res.status(400).json({ error: 'mappings array required' });
     }
 
-    console.log(`Backfill request: ${mappings.length} user mappings`);
+    logger.info({ count: mappings.length }, 'Backfill request received');
 
     let updated = 0;
     const batchSize = 100;
@@ -789,7 +788,7 @@ app.post('/backfill/campaign-attribution', async (req, res) => {
       stats: stats.rows[0],
     });
   } catch (error) {
-    console.error('Backfill error:', error);
+    logger.error({ err: error }, 'Backfill error');
     res.status(500).json({ error: error.message });
   }
 });
@@ -818,7 +817,7 @@ app.get('/backfill/campaign-mapping', async (req, res) => {
 function runSyncMetrics(days = 7) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, 'scripts', 'sync-qonversion-metrics.js');
-    console.log(`[sync-metrics] Starting sync for last ${days} days...`);
+    logger.info({ days }, 'Starting sync-metrics');
     const proc = spawn(process.execPath, [scriptPath, `--days=${days}`], {
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -848,9 +847,9 @@ function scheduleDailySync() {
   next.setHours(2, 0, 0, 0);
   if (next <= now) next.setDate(next.getDate() + 1);
   const ms = next - now;
-  console.log(`[sync-metrics] Next sync at ${next.toISOString()} (in ${Math.round(ms / 60000)} min)`);
+  logger.info({ nextSync: next.toISOString(), minutesUntil: Math.round(ms / 60000) }, 'Scheduled next sync-metrics');
   setTimeout(() => {
-    runSyncMetrics(7).catch(err => console.error('[sync-metrics] Daily sync failed:', err.message));
+    runSyncMetrics(7).catch(err => logger.error({ err }, 'Daily sync-metrics failed'));
     scheduleDailySync();
   }, ms);
 }
@@ -867,7 +866,7 @@ app.post('/admin/sync-metrics', async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+  logger.error({ err, requestId: req.requestId }, 'Unhandled error');
   res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined,
@@ -884,17 +883,17 @@ async function start() {
   try {
     // Test database connection
     await db.query('SELECT 1');
-    console.log('Database connected successfully');
+    logger.info('Database connected successfully');
 
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Qonversion Attribution API running on port ${PORT}`);
-      console.log(`Health check: http://localhost:${PORT}/health`);
-      console.log(`Webhook URL: http://localhost:${PORT}/webhook`);
+      logger.info({ port: PORT }, 'Qonversion Attribution API started');
+      logger.info({ url: `http://localhost:${PORT}/health` }, 'Health check endpoint');
+      logger.info({ url: `http://localhost:${PORT}/webhook` }, 'Webhook endpoint');
     });
 
     scheduleDailySync();
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.fatal({ err: error }, 'Failed to start server');
     process.exit(1);
   }
 }

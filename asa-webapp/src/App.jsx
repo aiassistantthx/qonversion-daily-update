@@ -10,6 +10,7 @@ const CampaignCreate = lazy(() => import('./pages/CampaignCreate'));
 const AdGroups = lazy(() => import('./pages/AdGroups'));
 const Keywords = lazy(() => import('./pages/Keywords'));
 const SearchTerms = lazy(() => import('./pages/SearchTerms'));
+const KeywordDiscovery = lazy(() => import('./pages/KeywordDiscovery'));
 const NegativeKeywords = lazy(() => import('./pages/NegativeKeywords'));
 const Rules = lazy(() => import('./pages/Rules'));
 const RuleEdit = lazy(() => import('./pages/RuleEdit'));
@@ -17,6 +18,7 @@ const RulesExecutionLog = lazy(() => import('./pages/RulesExecutionLog'));
 const Templates = lazy(() => import('./pages/Templates'));
 const History = lazy(() => import('./pages/History'));
 const Countries = lazy(() => import('./pages/Countries'));
+const Cohorts = lazy(() => import('./pages/Cohorts'));
 
 function PageLoader() {
   return (
@@ -40,6 +42,7 @@ function App() {
             <Route path="/adgroups" element={<AdGroups />} />
             <Route path="/keywords" element={<Keywords />} />
             <Route path="/search-terms" element={<SearchTerms />} />
+            <Route path="/keyword-discovery" element={<KeywordDiscovery />} />
             <Route path="/negative-keywords" element={<NegativeKeywords />} />
             <Route path="/rules" element={<Rules />} />
             <Route path="/rules/new" element={<RuleEdit />} />
@@ -48,6 +51,7 @@ function App() {
             <Route path="/templates" element={<Templates />} />
             <Route path="/history" element={<History />} />
             <Route path="/countries" element={<Countries />} />
+            <Route path="/cohorts" element={<Cohorts />} />
           </Routes>
         </Suspense>
       </Layout>

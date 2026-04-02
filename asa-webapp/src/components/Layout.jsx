@@ -11,6 +11,8 @@ import {
   History,
   Globe,
   Search,
+  Sparkles,
+  BarChart3,
   Moon,
   Sun,
   Menu,
@@ -28,11 +30,13 @@ const prefetchMap = {
   '/adgroups': () => import('../pages/AdGroups'),
   '/keywords': () => import('../pages/Keywords'),
   '/search-terms': () => import('../pages/SearchTerms'),
+  '/keyword-discovery': () => import('../pages/KeywordDiscovery'),
   '/negative-keywords': () => import('../pages/NegativeKeywords'),
   '/countries': () => import('../pages/Countries'),
   '/rules': () => import('../pages/Rules'),
   '/templates': () => import('../pages/Templates'),
   '/history': () => import('../pages/History'),
+  '/cohorts': () => import('../pages/Cohorts'),
 };
 
 const navItems = [
@@ -41,8 +45,10 @@ const navItems = [
   { path: '/adgroups', label: 'Ad Groups', icon: Layers },
   { path: '/keywords', label: 'Keywords', icon: KeyRound },
   { path: '/search-terms', label: 'Search Terms', icon: Search },
+  { path: '/keyword-discovery', label: 'Keyword Discovery', icon: Sparkles },
   { path: '/negative-keywords', label: 'Negative Keywords', icon: XCircle },
   { path: '/countries', label: 'Countries', icon: Globe },
+  { path: '/cohorts', label: 'Cohorts', icon: BarChart3 },
   { path: '/rules', label: 'Rules', icon: Cog },
   { path: '/templates', label: 'Templates', icon: FileText },
   { path: '/history', label: 'History', icon: History },

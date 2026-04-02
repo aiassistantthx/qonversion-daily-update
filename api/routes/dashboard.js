@@ -181,37 +181,30 @@ router.get('/main', async (req, res) => {
     const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
     const prevMonthDays = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
 
-    // Campaign filter
-    let campaignCondition = '1=1';
+    // Campaign filter - using parameterized query to prevent SQL injection
+    let campaignIds = null;
     if (campaigns && campaigns.trim()) {
       const campaignList = campaigns.split(',').map(c => c.trim()).filter(Boolean);
       if (campaignList.length > 0) {
-        const quotedCampaigns = campaignList.map(c => `'${c}'`).join(',');
-        campaignCondition = `campaign_id IN (${quotedCampaigns})`;
+        campaignIds = campaignList.map(c => parseInt(c, 10)).filter(id => !isNaN(id));
+        if (campaignIds.length === 0) campaignIds = null;
       }
     }
 
     // ---- CURRENT MONTH METRICS ----
 
     // Spend this month (from apple_ads_campaigns)
-    const spendQuery = `
-      SELECT COALESCE(SUM(spend), 0) as spend
-      FROM apple_ads_campaigns
-      WHERE TO_CHAR(date, 'YYYY-MM') = $1
-        AND ${campaignCondition}
-    `;
-    const spendResult = await db.query(spendQuery, [currentMonth]);
+    const spendQuery = campaignIds
+      ? `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND campaign_id = ANY($2::bigint[])`
+      : `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1`;
+    const spendResult = await db.query(spendQuery, campaignIds ? [currentMonth, campaignIds] : [currentMonth]);
     const monthSpend = parseFloat(spendResult.rows[0]?.spend) || 0;
 
     // Spend for comparison (excluding today)
-    const spendForComparisonQuery = `
-      SELECT COALESCE(SUM(spend), 0) as spend
-      FROM apple_ads_campaigns
-      WHERE TO_CHAR(date, 'YYYY-MM') = $1
-        AND EXTRACT(DAY FROM date) <= $2
-        AND ${campaignCondition}
-    `;
-    const spendForComparisonResult = await db.query(spendForComparisonQuery, [currentMonth, comparisonDay]);
+    const spendForComparisonQuery = campaignIds
+      ? `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM date) <= $2 AND campaign_id = ANY($3::bigint[])`
+      : `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM date) <= $2`;
+    const spendForComparisonResult = await db.query(spendForComparisonQuery, campaignIds ? [currentMonth, comparisonDay, campaignIds] : [currentMonth, comparisonDay]);
     const monthSpendForComparison = parseFloat(spendForComparisonResult.rows[0]?.spend) || 0;
 
     // Revenue this month - use Qonversion API (gross sales after refunds)
@@ -273,30 +266,17 @@ router.get('/main', async (req, res) => {
     // Cohort revenue from Apple Ads users (for ROAS calculation)
     // Revenue from users who installed THIS month AND came from Apple Ads
     // Using proceeds (price_usd * 0.78) after Apple's 22% commission
-    const cohortRevenueQuery = `
-      SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue
-      FROM events_v2
-      WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-        AND media_source = 'Apple AdServices'
-        AND ${campaignCondition}
-        AND refund = false
-        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
-    `;
-    const cohortRevenueResult = await db.query(cohortRevenueQuery, [currentMonth]);
+    const cohortRevenueQuery = campaignIds
+      ? `SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue FROM events_v2 WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND media_source = 'Apple AdServices' AND campaign_id = ANY($2::bigint[]) AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')`
+      : `SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue FROM events_v2 WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND media_source = 'Apple AdServices' AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')`;
+    const cohortRevenueResult = await db.query(cohortRevenueQuery, campaignIds ? [currentMonth, campaignIds] : [currentMonth]);
     const monthCohortRevenue = parseFloat(cohortRevenueResult.rows[0]?.revenue) || 0;
 
     // Cohort revenue for comparison (excluding today), using proceeds
-    const cohortRevenueForComparisonQuery = `
-      SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue
-      FROM events_v2
-      WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-        AND EXTRACT(DAY FROM install_date) <= $2
-        AND media_source = 'Apple AdServices'
-        AND ${campaignCondition}
-        AND refund = false
-        AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')
-    `;
-    const cohortRevenueForComparisonResult = await db.query(cohortRevenueForComparisonQuery, [currentMonth, comparisonDay]);
+    const cohortRevenueForComparisonQuery = campaignIds
+      ? `SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue FROM events_v2 WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM install_date) <= $2 AND media_source = 'Apple AdServices' AND campaign_id = ANY($3::bigint[]) AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')`
+      : `SELECT COALESCE(SUM(price_usd * 0.78), 0) as revenue FROM events_v2 WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM install_date) <= $2 AND media_source = 'Apple AdServices' AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')`;
+    const cohortRevenueForComparisonResult = await db.query(cohortRevenueForComparisonQuery, campaignIds ? [currentMonth, comparisonDay, campaignIds] : [currentMonth, comparisonDay]);
     const monthCohortRevenueForComparison = parseFloat(cohortRevenueForComparisonResult.rows[0]?.revenue) || 0;
 
     // New subscribers this month (trial_converted + subscription_started for yearly)
@@ -328,90 +308,66 @@ router.get('/main', async (req, res) => {
 
     // COHORT COP calculation (excluding last 4 days for closed cohorts)
     // Group by install_date (cohort), not event_date
-    const copQuery = `
-      WITH cohort_conversions AS (
-        SELECT
-          DATE(install_date) as cohort_day,
-          COUNT(DISTINCT q_user_id) as subscribers
-        FROM events_v2
-        WHERE TO_CHAR(install_date, 'YYYY-MM') = $1
-          AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
-          AND ${campaignCondition}
-          AND (
-            event_name = 'Trial Converted'
-            OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%')
-          )
-        GROUP BY DATE(install_date)
-      ),
-      daily_spend AS (
-        SELECT date as day, SUM(spend) as spend
-        FROM apple_ads_campaigns
-        WHERE TO_CHAR(date, 'YYYY-MM') = $1
-          AND date <= CURRENT_DATE - INTERVAL '4 days'
-          AND ${campaignCondition}
-        GROUP BY date
-      )
-      SELECT
-        COALESCE(SUM(ds.spend), 0) as total_spend,
-        COALESCE(SUM(cc.subscribers), 0) as total_subscribers
-      FROM daily_spend ds
-      LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day
-    `;
-    const copResult = await db.query(copQuery, [currentMonth]);
+    const copQuery = campaignIds
+      ? `WITH cohort_conversions AS (
+          SELECT DATE(install_date) as cohort_day, COUNT(DISTINCT q_user_id) as subscribers
+          FROM events_v2
+          WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days' AND campaign_id = ANY($2::bigint[])
+            AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+          GROUP BY DATE(install_date)
+        ),
+        daily_spend AS (
+          SELECT date as day, SUM(spend) as spend FROM apple_ads_campaigns
+          WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND date <= CURRENT_DATE - INTERVAL '4 days' AND campaign_id = ANY($2::bigint[])
+          GROUP BY date
+        )
+        SELECT COALESCE(SUM(ds.spend), 0) as total_spend, COALESCE(SUM(cc.subscribers), 0) as total_subscribers
+        FROM daily_spend ds LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day`
+      : `WITH cohort_conversions AS (
+          SELECT DATE(install_date) as cohort_day, COUNT(DISTINCT q_user_id) as subscribers
+          FROM events_v2
+          WHERE TO_CHAR(install_date, 'YYYY-MM') = $1 AND DATE(install_date) <= CURRENT_DATE - INTERVAL '4 days'
+            AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+          GROUP BY DATE(install_date)
+        ),
+        daily_spend AS (
+          SELECT date as day, SUM(spend) as spend FROM apple_ads_campaigns
+          WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND date <= CURRENT_DATE - INTERVAL '4 days'
+          GROUP BY date
+        )
+        SELECT COALESCE(SUM(ds.spend), 0) as total_spend, COALESCE(SUM(cc.subscribers), 0) as total_subscribers
+        FROM daily_spend ds LEFT JOIN cohort_conversions cc ON ds.day = cc.cohort_day`;
+    const copResult = await db.query(copQuery, campaignIds ? [currentMonth, campaignIds] : [currentMonth]);
     const copSpend = parseFloat(copResult.rows[0]?.total_spend) || 0;
     const copSubs = parseInt(copResult.rows[0]?.total_subscribers) || 0;
     const cop = copSubs > 0 ? copSpend / copSubs : null;
 
     // COHORT COP 3d (cohorts from 7 to 4 days ago - closed cohorts)
-    const cop3dQuery = `
-      WITH period AS (
-        SELECT
-          CURRENT_DATE - INTERVAL '7 days' as start_date,
-          CURRENT_DATE - INTERVAL '4 days' as end_date
-      ),
-      subs AS (
-        SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM events_v2, period
-        WHERE DATE(install_date) BETWEEN start_date AND end_date
-          AND ${campaignCondition}
-          AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
-      ),
-      spend AS (
-        SELECT COALESCE(SUM(spend), 0) as total
-        FROM apple_ads_campaigns, period
-        WHERE date BETWEEN start_date AND end_date
-          AND ${campaignCondition}
-      )
-      SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
-    `;
-    const cop3dResult = await db.query(cop3dQuery);
+    const cop3dQuery = campaignIds
+      ? `WITH period AS (SELECT CURRENT_DATE - INTERVAL '7 days' as start_date, CURRENT_DATE - INTERVAL '4 days' as end_date),
+        subs AS (SELECT COUNT(DISTINCT q_user_id) as cnt FROM events_v2, period WHERE DATE(install_date) BETWEEN start_date AND end_date AND campaign_id = ANY($1::bigint[]) AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))),
+        spend AS (SELECT COALESCE(SUM(spend), 0) as total FROM apple_ads_campaigns, period WHERE date BETWEEN start_date AND end_date AND campaign_id = ANY($1::bigint[]))
+        SELECT spend.total as spend, subs.cnt as subs FROM spend, subs`
+      : `WITH period AS (SELECT CURRENT_DATE - INTERVAL '7 days' as start_date, CURRENT_DATE - INTERVAL '4 days' as end_date),
+        subs AS (SELECT COUNT(DISTINCT q_user_id) as cnt FROM events_v2, period WHERE DATE(install_date) BETWEEN start_date AND end_date AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))),
+        spend AS (SELECT COALESCE(SUM(spend), 0) as total FROM apple_ads_campaigns, period WHERE date BETWEEN start_date AND end_date)
+        SELECT spend.total as spend, subs.cnt as subs FROM spend, subs`;
+    const cop3dResult = await db.query(cop3dQuery, campaignIds ? [campaignIds] : []);
     const cop3dSpend = parseFloat(cop3dResult.rows[0]?.spend) || 0;
     const cop3dSubs = parseInt(cop3dResult.rows[0]?.subs) || 0;
     const cop3d = cop3dSubs > 0 ? cop3dSpend / cop3dSubs : null;
 
     // COHORT COP 7d (cohorts from 11 to 4 days ago - closed cohorts)
-    const cop7dQuery = `
-      WITH period AS (
-        SELECT
-          CURRENT_DATE - INTERVAL '11 days' as start_date,
-          CURRENT_DATE - INTERVAL '4 days' as end_date
-      ),
-      subs AS (
-        SELECT COUNT(DISTINCT q_user_id) as cnt
-        FROM events_v2, period
-        WHERE DATE(install_date) BETWEEN start_date AND end_date
-          AND ${campaignCondition}
-          AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
-      ),
-      spend AS (
-        SELECT COALESCE(SUM(spend), 0) as total
-        FROM apple_ads_campaigns, period
-        WHERE date BETWEEN start_date AND end_date
-          AND ${campaignCondition}
-      )
-      SELECT spend.total as spend, subs.cnt as subs FROM spend, subs
-    `;
-    const cop7dResult = await db.query(cop7dQuery);
+    const cop7dQuery = campaignIds
+      ? `WITH period AS (SELECT CURRENT_DATE - INTERVAL '11 days' as start_date, CURRENT_DATE - INTERVAL '4 days' as end_date),
+        subs AS (SELECT COUNT(DISTINCT q_user_id) as cnt FROM events_v2, period WHERE DATE(install_date) BETWEEN start_date AND end_date AND campaign_id = ANY($1::bigint[]) AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))),
+        spend AS (SELECT COALESCE(SUM(spend), 0) as total FROM apple_ads_campaigns, period WHERE date BETWEEN start_date AND end_date AND campaign_id = ANY($1::bigint[]))
+        SELECT spend.total as spend, subs.cnt as subs FROM spend, subs`
+      : `WITH period AS (SELECT CURRENT_DATE - INTERVAL '11 days' as start_date, CURRENT_DATE - INTERVAL '4 days' as end_date),
+        subs AS (SELECT COUNT(DISTINCT q_user_id) as cnt FROM events_v2, period WHERE DATE(install_date) BETWEEN start_date AND end_date AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))),
+        spend AS (SELECT COALESCE(SUM(spend), 0) as total FROM apple_ads_campaigns, period WHERE date BETWEEN start_date AND end_date)
+        SELECT spend.total as spend, subs.cnt as subs FROM spend, subs`;
+    const cop7dResult = await db.query(cop7dQuery, campaignIds ? [campaignIds] : []);
     const cop7dSpend = parseFloat(cop7dResult.rows[0]?.spend) || 0;
     const cop7dSubs = parseInt(cop7dResult.rows[0]?.subs) || 0;
     const cop7d = cop7dSubs > 0 ? cop7dSpend / cop7dSubs : null;
@@ -446,14 +402,10 @@ router.get('/main', async (req, res) => {
     // This gives a fair like-for-like comparison
 
     // Spend for first N days of previous month
-    const prevSpendQuery = `
-      SELECT COALESCE(SUM(spend), 0) as spend
-      FROM apple_ads_campaigns
-      WHERE TO_CHAR(date, 'YYYY-MM') = $1
-        AND EXTRACT(DAY FROM date) <= $2
-        AND ${campaignCondition}
-    `;
-    const prevSpendResult = await db.query(prevSpendQuery, [prevMonth, comparisonDay]);
+    const prevSpendQuery = campaignIds
+      ? `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM date) <= $2 AND campaign_id = ANY($3::bigint[])`
+      : `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND EXTRACT(DAY FROM date) <= $2`;
+    const prevSpendResult = await db.query(prevSpendQuery, campaignIds ? [prevMonth, comparisonDay, campaignIds] : [prevMonth, comparisonDay]);
     const prevMonthSpend = parseFloat(prevSpendResult.rows[0]?.spend) || 0;
 
     // Revenue for first N days of previous month (excluding today)
@@ -568,13 +520,10 @@ router.get('/main', async (req, res) => {
     const forecastRevenue = avgDailyRevenue * daysInMonth;
 
     // Full previous month actuals (for forecast comparison)
-    const prevMonthFullSpendQuery = `
-      SELECT COALESCE(SUM(spend), 0) as spend
-      FROM apple_ads_campaigns
-      WHERE TO_CHAR(date, 'YYYY-MM') = $1
-        AND ${campaignCondition}
-    `;
-    const prevMonthFullSpendResult = await db.query(prevMonthFullSpendQuery, [prevMonth]);
+    const prevMonthFullSpendQuery = campaignIds
+      ? `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1 AND campaign_id = ANY($2::bigint[])`
+      : `SELECT COALESCE(SUM(spend), 0) as spend FROM apple_ads_campaigns WHERE TO_CHAR(date, 'YYYY-MM') = $1`;
+    const prevMonthFullSpendResult = await db.query(prevMonthFullSpendQuery, campaignIds ? [prevMonth, campaignIds] : [prevMonth]);
     const prevMonthSpendActual = parseFloat(prevMonthFullSpendResult.rows[0]?.spend) || 0;
 
     const prevMonthFullRevenueQuery = `
@@ -1088,18 +1037,19 @@ router.get('/roas-evolution', async (req, res) => {
       ? ''
       : "AND media_source = 'Apple AdServices'";
 
-    // Build country filter
+    // Build country filter - using parameterized query to prevent SQL injection
     const countriesParam = req.query.countries || '';
-    let countryFilter = '';
+    let countryList = null;
     if (countriesParam.trim()) {
-      const countryList = countriesParam.split(',').map(c => c.trim()).filter(Boolean);
-      if (countryList.length > 0) {
-        const quotedCountries = countryList.map(c => `'${c.replace(/'/g, "''")}'`).join(',');
-        countryFilter = `AND country IN (${quotedCountries})`;
+      const parsed = countriesParam.split(',').map(c => c.trim()).filter(Boolean);
+      if (parsed.length > 0) {
+        countryList = parsed;
       }
     }
 
     // Get ROAS at different ages for each cohort month
+    const countryFilterSql = countryList ? 'AND country = ANY($1::text[])' : '';
+    const queryParams = countryList ? [countryList] : [];
     const result = await db.query(`
       WITH cohort_data AS (
         SELECT
@@ -1113,7 +1063,7 @@ router.get('/roas-evolution', async (req, res) => {
         FROM events_v2
         WHERE install_date >= CURRENT_DATE - INTERVAL '${monthsBack} months'
           ${mediaSourceFilter}
-          ${countryFilter}
+          ${countryFilterSql}
       ),
       monthly_spend AS (
         SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(spend) as spend
@@ -1174,7 +1124,7 @@ router.get('/roas-evolution', async (req, res) => {
       JOIN cohort_users cu ON ra.cohort_month = cu.cohort_month
       WHERE ms.spend >= ${minSpend} AND cu.user_count >= 5
       ORDER BY ra.cohort_month
-    `);
+    `, queryParams);
 
     // Helper function to predict payback months
     const predictPaybackMonths = (roasData, maxAge) => {
@@ -4081,13 +4031,23 @@ router.get('/countries', async (req, res) => {
   try {
     const { from, to, source, countries, limit = 20, sortBy = 'revenue' } = req.query;
 
-    // Date filter
-    let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
+    // Build parameterized query parts
+    const params = [];
+    let paramIndex = 1;
+
+    // Date filter - parameterized
+    let dateConditionInstall, dateConditionDate;
     if (from && to) {
-      dateCondition = `install_date >= '${from}' AND install_date <= '${to}'`;
+      dateConditionInstall = `install_date >= $${paramIndex}::date AND install_date <= $${paramIndex + 1}::date`;
+      dateConditionDate = `date >= $${paramIndex}::date AND date <= $${paramIndex + 1}::date`;
+      params.push(from, to);
+      paramIndex += 2;
+    } else {
+      dateConditionInstall = `install_date >= CURRENT_DATE - INTERVAL '30 days'`;
+      dateConditionDate = `date >= CURRENT_DATE - INTERVAL '30 days'`;
     }
 
-    // Source filter
+    // Source filter (safe - only preset values)
     let sourceCondition = '1=1';
     if (source === 'apple_ads') {
       sourceCondition = `media_source = 'Apple AdServices'`;
@@ -4095,17 +4055,20 @@ router.get('/countries', async (req, res) => {
       sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
     }
 
-    // Country filter
+    // Country filter - parameterized
     let countryCondition = '1=1';
+    let countryArray = null;
     if (countries && countries.trim()) {
       const countryList = countries.split(',').map(c => c.trim()).filter(Boolean);
       if (countryList.length > 0) {
-        const quotedCountries = countryList.map(c => `'${c}'`).join(',');
-        countryCondition = `country IN (${quotedCountries})`;
+        countryArray = countryList;
+        countryCondition = `country = ANY($${paramIndex}::text[])`;
+        params.push(countryArray);
+        paramIndex += 1;
       }
     }
 
-    // Sort validation and mapping
+    // Sort validation and mapping (safe - only preset values)
     const allowedSorts = {
       country: 'cm.country',
       source: 'cm.source',
@@ -4117,6 +4080,7 @@ router.get('/countries', async (req, res) => {
       trials: 'cm.trials'
     };
     const sortColumn = allowedSorts[sortBy] || 'revenue';
+    const safeLimit = Math.min(Math.max(1, parseInt(limit) || 20), 1000);
 
     const result = await db.query(`
       WITH user_countries AS (
@@ -4126,7 +4090,7 @@ router.get('/countries', async (req, res) => {
           media_source,
           install_date
         FROM events_v2
-        WHERE ${dateCondition}
+        WHERE ${dateConditionInstall}
           AND ${countryCondition}
         GROUP BY q_user_id, country, media_source, install_date
       ),
@@ -4135,7 +4099,7 @@ router.get('/countries', async (req, res) => {
           COALESCE(country, 'Unknown') as country,
           COUNT(DISTINCT q_user_id) as installs
         FROM events_v2
-        WHERE ${dateCondition}
+        WHERE ${dateConditionInstall}
           AND ${countryCondition}
           AND media_source = 'Apple AdServices'
         GROUP BY country
@@ -4143,11 +4107,11 @@ router.get('/countries', async (req, res) => {
       total_spend AS (
         SELECT COALESCE(SUM(spend), 0) as total_spend
         FROM apple_ads_campaigns
-        WHERE ${dateCondition.replaceAll('install_date', 'date')}
+        WHERE ${dateConditionDate}
       ),
       total_installs AS (
         SELECT COALESCE(SUM(installs), 0) as total_installs
-        FROM (SELECT COUNT(DISTINCT q_user_id) as installs FROM events_v2 WHERE ${dateCondition} AND ${countryCondition} AND media_source = 'Apple AdServices') t
+        FROM (SELECT COUNT(DISTINCT q_user_id) as installs FROM events_v2 WHERE ${dateConditionInstall} AND ${countryCondition} AND media_source = 'Apple AdServices') t
       ),
       country_metrics AS (
         SELECT
@@ -4195,8 +4159,8 @@ router.get('/countries', async (req, res) => {
       CROSS JOIN total_spend ts
       CROSS JOIN total_installs ti
       ORDER BY ${sortColumn} DESC NULLS LAST
-      LIMIT ${parseInt(limit)}
-    `);
+      LIMIT ${safeLimit}
+    `, params);
 
     res.json({
       countries: result.rows,
@@ -4215,13 +4179,23 @@ router.get('/countries-monthly', async (req, res) => {
   try {
     const { from, to, source, countries, sortBy = 'revenue' } = req.query;
 
-    // Date filter - default to last 12 months
-    let dateCondition = `install_date >= CURRENT_DATE - INTERVAL '12 months'`;
+    // Build parameterized query parts
+    const params = [];
+    let paramIndex = 1;
+
+    // Date filter - parameterized (default to last 12 months)
+    let dateConditionInstall, dateConditionDate;
     if (from && to) {
-      dateCondition = `install_date >= '${from}' AND install_date <= '${to}'`;
+      dateConditionInstall = `install_date >= $${paramIndex}::date AND install_date <= $${paramIndex + 1}::date`;
+      dateConditionDate = `date >= $${paramIndex}::date AND date <= $${paramIndex + 1}::date`;
+      params.push(from, to);
+      paramIndex += 2;
+    } else {
+      dateConditionInstall = `install_date >= CURRENT_DATE - INTERVAL '12 months'`;
+      dateConditionDate = `date >= CURRENT_DATE - INTERVAL '12 months'`;
     }
 
-    // Source filter
+    // Source filter (safe - only preset values)
     let sourceCondition = '1=1';
     if (source === 'apple_ads') {
       sourceCondition = `media_source = 'Apple AdServices'`;
@@ -4229,13 +4203,14 @@ router.get('/countries-monthly', async (req, res) => {
       sourceCondition = `(media_source IS NULL OR media_source != 'Apple AdServices')`;
     }
 
-    // Country filter
+    // Country filter - parameterized
     let countryCondition = '1=1';
     if (countries && countries.trim()) {
       const countryList = countries.split(',').map(c => c.trim()).filter(Boolean);
       if (countryList.length > 0) {
-        const quotedCountries = countryList.map(c => `'${c}'`).join(',');
-        countryCondition = `country IN (${quotedCountries})`;
+        countryCondition = `country = ANY($${paramIndex}::text[])`;
+        params.push(countryList);
+        paramIndex += 1;
       }
     }
 
@@ -4248,7 +4223,7 @@ router.get('/countries-monthly', async (req, res) => {
           install_date,
           TO_CHAR(install_date, 'YYYY-MM') as install_month
         FROM events_v2
-        WHERE ${dateCondition}
+        WHERE ${dateConditionInstall}
           AND ${countryCondition}
         GROUP BY q_user_id, country, media_source, install_date
       ),
@@ -4258,7 +4233,7 @@ router.get('/countries-monthly', async (req, res) => {
           TO_CHAR(install_date, 'YYYY-MM') as month,
           COUNT(DISTINCT q_user_id) as installs
         FROM events_v2
-        WHERE ${dateCondition}
+        WHERE ${dateConditionInstall}
           AND ${countryCondition}
           AND media_source = 'Apple AdServices'
         GROUP BY country, TO_CHAR(install_date, 'YYYY-MM')
@@ -4268,7 +4243,7 @@ router.get('/countries-monthly', async (req, res) => {
           TO_CHAR(date, 'YYYY-MM') as month,
           COALESCE(SUM(spend), 0) as spend
         FROM apple_ads_campaigns
-        WHERE ${dateCondition.replaceAll('install_date', 'date')}
+        WHERE ${dateConditionDate}
         GROUP BY TO_CHAR(date, 'YYYY-MM')
       ),
       monthly_total_installs AS (
@@ -4276,7 +4251,7 @@ router.get('/countries-monthly', async (req, res) => {
           TO_CHAR(install_date, 'YYYY-MM') as month,
           COUNT(DISTINCT q_user_id) as installs
         FROM events_v2
-        WHERE ${dateCondition}
+        WHERE ${dateConditionInstall}
           AND ${countryCondition}
           AND media_source = 'Apple AdServices'
         GROUP BY TO_CHAR(install_date, 'YYYY-MM')
@@ -4331,7 +4306,7 @@ router.get('/countries-monthly', async (req, res) => {
       LEFT JOIN monthly_spend ms ON cmm.month = ms.month
       LEFT JOIN monthly_total_installs mti ON cmm.month = mti.month
       ORDER BY cmm.month DESC, cmm.country
-    `);
+    `, params);
 
     // Calculate predicted ROAS and payback for each country-month
     const enrichedData = result.rows.map(row => {

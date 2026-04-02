@@ -4,7 +4,7 @@ const api = axios.create({
   baseURL: '/asa',
   headers: {
     'Content-Type': 'application/json',
-    'x-api-key': 'sk_dash_7f3k9m2x5p8q1n4v6b0c',
+    'x-api-key': import.meta.env.VITE_API_KEY || '',
   },
 });
 
@@ -87,8 +87,14 @@ export const getCountries = (params = {}) => api.get('/countries', { params }).t
 // Search Terms
 export const getSearchTerms = (params = {}) => api.get('/search-terms', { params }).then(res => res.data);
 
+// Keyword Suggestions
+export const getKeywordSuggestions = (params = {}) => api.get('/keyword-suggestions', { params }).then(res => res.data);
+
 // KPI
 export const getCohortCac = (params = {}) => api.get('/kpi/cohort-cac', { params }).then(res => res.data);
+
+// Cohorts
+export const getCohortsByCampaign = (params = {}) => api.get('/cohorts/by-campaign', { params }).then(res => res.data);
 
 // Alerts
 export const getAlerts = (params = {}) => api.get('/alerts', { params }).then(res => res.data);

@@ -62,27 +62,38 @@ const ExportButton = ({
 
   const exportExcel = async () => {
     try {
-      const XLSX = await import('xlsx');
+      const ExcelJS = await import('exceljs');
       const exportCols = columns.filter(c => selectedColumns.includes(c.key));
 
-      const wsData = [
-        exportCols.map(c => c.label),
-        ...data.map(item =>
-          exportCols.map(col => {
-            const value = col.getValue ? col.getValue(item) : item[col.key];
-            return value ?? '';
-          })
-        )
-      ];
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Data');
 
-      const ws = XLSX.utils.aoa_to_sheet(wsData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Data');
-      XLSX.writeFile(wb, `${filename}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      worksheet.columns = exportCols.map(col => ({
+        header: col.label,
+        key: col.key,
+        width: 15
+      }));
+
+      data.forEach(item => {
+        const row = {};
+        exportCols.forEach(col => {
+          row[col.key] = col.getValue ? col.getValue(item) : item[col.key] ?? '';
+        });
+        worksheet.addRow(row);
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
       setShowExportModal(false);
     } catch (error) {
       console.error('Excel export failed:', error);
-      alert('Excel export requires the xlsx library. Falling back to CSV.');
+      alert('Excel export failed. Falling back to CSV.');
       exportCSV();
     }
   };

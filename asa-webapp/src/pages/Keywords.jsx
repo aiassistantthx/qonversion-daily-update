@@ -736,7 +736,10 @@ export default function Keywords() {
         cpt_7d: kw.cpt_7d,
         roas: roas,
         sov: kw.sov,
-        installs_7d: kw.installs_7d
+        installs_7d: kw.installs_7d,
+        ltv_d30: kw.ltv_d30,
+        avg_ltv_d30: kw.avg_ltv_d30,
+        ltv_multiplier: kw.ltv_multiplier
       });
 
       if (!recommendation) {
@@ -1620,7 +1623,10 @@ export default function Keywords() {
                                 cpt_7d: kw.cpt_7d,
                                 roas: roas,
                                 sov: kw.sov,
-                                installs_7d: kw.installs_7d
+                                installs_7d: kw.installs_7d,
+                                ltv_d30: kw.ltv_d30,
+                                avg_ltv_d30: kw.avg_ltv_d30,
+                                ltv_multiplier: kw.ltv_multiplier
                               }}
                               inline={true}
                               onApply={(newBid) => {

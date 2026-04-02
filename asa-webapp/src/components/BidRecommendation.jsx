@@ -4,20 +4,23 @@ import { Button } from './Button';
 const TARGET_CAC = 65.68;
 
 function calculateBidRecommendation(currentBid, metrics) {
-  const { cpa_7d, cop_7d, cpt_7d, roas, sov, installs_7d } = metrics;
+  const { cpa_7d, cop_7d, roas, sov, installs_7d, ltv_d30, avg_ltv_d30, ltv_multiplier } = metrics;
 
   if (!currentBid || currentBid === 0) return null;
 
+  let baseBid = currentBid;
   let recommendedBid = currentBid;
   let reasons = [];
   let competitionLevel = 'medium';
 
   const cpa = parseFloat(cpa_7d) || 0;
   const cop = parseFloat(cop_7d) || 0;
-  const cpt = parseFloat(cpt_7d) || 0;
   const currentRoas = parseFloat(roas) || 0;
   const shareOfVoice = parseFloat(sov) || 0;
   const installs = parseInt(installs_7d) || 0;
+  const keywordLtv = parseFloat(ltv_d30) || 0;
+  const avgLtv = parseFloat(avg_ltv_d30) || 0;
+  const ltvMult = parseFloat(ltv_multiplier) || 1;
 
   if (cop > 0 && cop < TARGET_CAC * 0.8) {
     recommendedBid = currentBid * 1.15;
@@ -49,6 +52,22 @@ function calculateBidRecommendation(currentBid, metrics) {
     reasons.push('Low conversion volume - test lower bid');
   }
 
+  // Apply LTV-based adjustment
+  // Formula: recommended_bid = base_bid * (keyword_ltv_d30 / avg_ltv_d30)
+  baseBid = recommendedBid;
+  if (keywordLtv > 0 && avgLtv > 0 && ltvMult !== 1) {
+    // Cap the multiplier between 0.5x and 2x to prevent extreme adjustments
+    const cappedMultiplier = Math.max(0.5, Math.min(2.0, ltvMult));
+    recommendedBid = baseBid * cappedMultiplier;
+
+    const ltvDiffPercent = ((ltvMult - 1) * 100).toFixed(0);
+    if (ltvMult > 1.1) {
+      reasons.push(`High LTV keyword (+${ltvDiffPercent}% vs avg) - increase bid`);
+    } else if (ltvMult < 0.9) {
+      reasons.push(`Low LTV keyword (${ltvDiffPercent}% vs avg) - decrease bid`);
+    }
+  }
+
   if (shareOfVoice > 0.6) {
     competitionLevel = 'low';
   } else if (shareOfVoice < 0.2) {
@@ -77,7 +96,12 @@ function calculateBidRecommendation(currentBid, metrics) {
     status,
     reasons,
     competitionLevel,
-    metrics: { cpa, cop, roas: currentRoas, sov: shareOfVoice }
+    metrics: { cpa, cop, roas: currentRoas, sov: shareOfVoice },
+    ltv: {
+      keyword: keywordLtv,
+      average: avgLtv,
+      multiplier: ltvMult
+    }
   };
 }
 
@@ -86,7 +110,7 @@ export default function BidRecommendation({ currentBid, metrics, inline = false,
 
   if (!recommendation) return null;
 
-  const { recommendedBid, difference, differencePercent, status, reasons, competitionLevel } = recommendation;
+  const { recommendedBid, difference, differencePercent, status, reasons, competitionLevel, ltv } = recommendation;
 
   const isOptimal = status === 'optimal';
   const shouldIncrease = difference > 0;
@@ -136,6 +160,31 @@ export default function BidRecommendation({ currentBid, metrics, inline = false,
                 ))}
               </ul>
             </div>
+
+            {ltv && ltv.keyword > 0 && (
+              <div className="border-t border-gray-700 pt-2">
+                <div className="font-semibold mb-1">D30 LTV Analysis</div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="opacity-75">Keyword LTV:</span>
+                    <span className="ml-1 font-semibold">${ltv.keyword.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="opacity-75">Avg LTV:</span>
+                    <span className="ml-1 font-semibold">${ltv.average.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="mt-1">
+                  <span className="opacity-75">LTV vs Avg:</span>
+                  <span className={`ml-1 font-semibold ${
+                    ltv.multiplier > 1.1 ? 'text-green-300' :
+                    ltv.multiplier < 0.9 ? 'text-red-300' : 'text-gray-300'
+                  }`}>
+                    {ltv.multiplier >= 1 ? '+' : ''}{((ltv.multiplier - 1) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-gray-700 pt-2 flex items-center justify-between text-xs">
               <div>

@@ -8,6 +8,16 @@
  *   node daily-update-api.js              # последние 10 дней
  *   node daily-update-api.js --days=30    # последние 30 дней
  *   node daily-update-api.js --from=2026-02-01 --to=2026-03-08
+ *
+ * ВАЖНО:
+ * - Trial-to-Paid CR (row 64): дневные значения CR для каждой когорты из Qonversion Dashboard API
+ *   Обновляется за 30 дней, последние 4 дня пропускаются (trial period не завершён)
+ *   Источник: https://dash.qonversion.io/api/v1/analytics/chart/trial-to-paid
+ *
+ * - Cohort Revenue (row 93, B93:AJ93): ТРЕБУЕТ РУЧНОГО ОБНОВЛЕНИЯ через Playwright!
+ *   Источник: https://dash.qonversion.io/cohorts (колонка "Sum", metric=revenue, revenueType=gross)
+ *   Запуск: node cohort-revenue-scraper.js
+ *   API эндпоинта для когортов НЕТ - только UI scraping.
  */
 
 const fs = require('fs');
@@ -25,11 +35,16 @@ const CONFIG = {
     newTrials: 55,         // New Trials
     newYearlySubscribers: 58, // New Yearly Subscribers
     trialToPaidConversion: 64, // Trial-to-Paid %
-    cohortRevenue: 93      // Cohort LTV
+    cohortRevenue: 93      // Cohort LTV (updated via cohort-revenue-scraper.js only!)
+  },
+  // Trial-to-Paid CR settings
+  trialToPaid: {
+    updateDays: 30,        // Обновлять за последние 30 дней
+    skipLastDays: 4,       // Пропускать последние 4 дня (trial period не завершён)
   },
   // API endpoints
   apiUrl: 'http://rwwc84wcsgkc48g88wsoco4o.46.225.26.104.sslip.io',
-  apiKey: 'sk_dash_7f3k9m2x5p8q1n4v6b0c',
+  apiKey: process.env.DASHBOARD_API_KEY || '',
   // SSH fallback for when Traefik routing is broken
   ssh: {
     host: 'root@46.225.26.104',
@@ -39,7 +54,8 @@ const CONFIG = {
     containerPort: 3000,
   },
   // Базовая колонка (AMP = колонка 1030 = 26.02.2026)
-  baseDate: new Date(2026, 1, 26),
+  // Используем UTC чтобы избежать проблем с DST
+  baseDate: new Date(Date.UTC(2026, 1, 26)),
   baseColumnIndex: 1030,
 };
 
@@ -110,7 +126,8 @@ function findColumnForDate(targetDate) {
 
 function parseApiDate(dateStr) {
   const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
+  // Используем UTC чтобы избежать проблем с DST
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function formatDate(date) {
@@ -192,7 +209,7 @@ async function fetchWebhookStats() {
   return fetchViaSSH('/webhook/stats');
 }
 
-// Получить daily trials и yearly subscribers из webhook events
+// Получить daily trials, yearly subscribers и revenue из webhook events
 async function fetchWebhookDaily(days = 14) {
   log('Fetching /webhook/daily...');
 
@@ -213,7 +230,7 @@ async function fetchWebhookDaily(days = 14) {
     data = fetchViaSSH(`/webhook/daily?days=${days}`);
   }
 
-  // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers, converted, cohortRevenue } }
+  // Преобразуем в удобный формат { 'YYYY-MM-DD': { trials, yearlySubscribers, converted, cohortRevenue, revenue } }
   const result = {};
   for (const day of data.daily || []) {
     result[day.date] = {
@@ -221,6 +238,7 @@ async function fetchWebhookDaily(days = 14) {
       yearlySubscribers: day.yearlySubscribers || 0,
       converted: day.converted || 0,
       cohortRevenue: day.cohortRevenue || 0,
+      revenue: day.revenue || 0,  // Daily gross revenue (Sales)
     };
   }
   log(`Got webhook daily data for ${Object.keys(result).length} days`);
@@ -283,6 +301,7 @@ async function fetchQonversionProceeds() {
 }
 
 // Получить Trial-to-Paid CR из Qonversion Dashboard API
+// Возвращает дневные значения CR для каждой когорты
 async function fetchTrialToPaid() {
   log('Fetching Trial-to-Paid from Qonversion Dashboard API...');
 
@@ -297,10 +316,10 @@ async function fetchTrialToPaid() {
     .map(c => `${c.name}=${c.value}`)
     .join('; ');
 
-  // Get last 30 days
+  // Get last 60 days to have enough data for 30-day rolling average
   const now = new Date();
   const from = new Date(now);
-  from.setDate(from.getDate() - 30);
+  from.setDate(from.getDate() - 60);
   const fromTs = Math.floor(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()) / 1000);
   const toTs = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59) / 1000);
 
@@ -321,7 +340,7 @@ async function fetchTrialToPaid() {
     throw new Error('Qonversion auth expired. Run: cd ~/scripts/qonversion && node login.js');
   }
 
-  // Convert to { 'YYYY-MM-DD': crPercent }
+  // Собираем дневные значения CR (точечные, не rolling average)
   const result = {};
   const series = data.data?.series?.find(s => s.label === 'Total');
 
@@ -329,8 +348,9 @@ async function fetchTrialToPaid() {
     for (const point of series.data) {
       const date = new Date(point.start_time * 1000).toISOString().split('T')[0];
       const cr = point.value || 0;
+      // Записываем только если CR > 0 (триал завершился)
       if (cr > 0) {
-        result[date] = Math.round(cr * 100) / 100;
+        result[date] = Math.round(cr * 10) / 10; // Округляем до 1 знака после запятой
       }
     }
   }
@@ -496,7 +516,7 @@ async function ensureSheetHasEnoughColumns(updater, maxDate, options) {
   return { added: columnsToAdd, copied: columnsToAdd };
 }
 
-async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, trialToPaidData, options) {
+async function updateGoogleSheets(dashboardData, webhookDaily, trialToPaidData, options) {
   if (options.dryRun) {
     log('DRY RUN: Skipping Google Sheets update');
     return [];
@@ -521,6 +541,12 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
   }
 
   log(`Updating range: ${formatDate(fromDate)} to ${formatDate(toDate)}`);
+
+  // Trial-to-Paid CR: обновляем за 30 дней, пропуская последние 4
+  const trialToPaidSkipCutoff = new Date(today);
+  trialToPaidSkipCutoff.setDate(trialToPaidSkipCutoff.getDate() - CONFIG.trialToPaid.skipLastDays);
+  const trialToPaidFromDate = new Date(today);
+  trialToPaidFromDate.setDate(trialToPaidFromDate.getDate() - CONFIG.trialToPaid.updateDays);
 
   // Определяем максимальную дату из данных
   let maxDataDate = fromDate;
@@ -556,8 +582,11 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
       if (options.verbose) log(`  SKIP: Spend для ${day.date} = 0`);
     }
 
-    // Sales (row 19) - берём из Qonversion API
-    const revenue = qonversionProceeds[day.date] || 0;
+    // Webhook data for this day
+    const webhookData = webhookDaily[day.date];
+
+    // Sales (row 19) - берём из webhook events (gross revenue)
+    const revenue = webhookData?.revenue || 0;
     if (revenue > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.sales}`,
@@ -566,7 +595,6 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
     }
 
     // Yearly Subscribers (row 58) - берём из webhook events
-    const webhookData = webhookDaily[day.date];
     if (webhookData?.yearlySubscribers > 0) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.newYearlySubscribers}`,
@@ -583,21 +611,18 @@ async function updateGoogleSheets(dashboardData, qonversionProceeds, webhookDail
     }
 
     // Trial-to-Paid Conversion Rate (row 64) - из Qonversion Dashboard API
+    // Обновляем за 30 дней, но пропускаем последние 4 дня (trial period не завершён)
     const trialToPaidCR = trialToPaidData[day.date];
-    if (trialToPaidCR > 0) {
+    if (trialToPaidCR > 0 && date <= trialToPaidSkipCutoff && date >= trialToPaidFromDate) {
       updates.push({
         range: `${CONFIG.sheet}!${column}${CONFIG.rows.trialToPaidConversion}`,
         value: `${trialToPaidCR.toFixed(1)}%`
       });
     }
 
-    // Cohort Revenue (row 93) - revenue для когорты этого дня
-    if (webhookData?.cohortRevenue > 0) {
-      updates.push({
-        range: `${CONFIG.sheet}!${column}${CONFIG.rows.cohortRevenue}`,
-        value: Math.round(webhookData.cohortRevenue)
-      });
-    }
+    // Cohort Revenue (row 93) - НЕ обновляем автоматически!
+    // Используй cohort-revenue-scraper.js для точных данных из Qonversion UI
+    // Данные из webhook API неполные и не подходят для LTV когорты
   }
 
   // ========== ЗАПИСЫВАЕМ В GOOGLE SHEETS ==========
@@ -638,21 +663,19 @@ async function main() {
   try {
     // Получаем данные из API
     const dashboardData = await fetchDashboardMain();
-    const qonversionProceeds = await fetchQonversionProceeds();
-    const webhookDaily = await fetchWebhookDaily(options.days + 7); // +7 для буфера
+    const webhookDaily = await fetchWebhookDaily(options.days + 7); // +7 для буфера, теперь включает revenue
     const trialToPaidData = await fetchTrialToPaid();
 
     log(`Got ${dashboardData.daily.length} daily records`);
     log(`Got ${dashboardData.monthly.length} monthly records`);
-    log(`Got proceeds for ${Object.keys(qonversionProceeds).length} days from Qonversion`);
-    log(`Got trials/subscribers for ${Object.keys(webhookDaily).length} days from webhook`);
+    log(`Got trials/subscribers/revenue for ${Object.keys(webhookDaily).length} days from webhook`);
     log(`Got trial-to-paid CR for ${Object.keys(trialToPaidData).length} days from Qonversion`);
 
     // Вычисляем unit economics
     const metrics = calculateUnitEconomics(dashboardData);
 
     // Обновляем Google Sheets
-    const updates = await updateGoogleSheets(dashboardData, qonversionProceeds, webhookDaily, trialToPaidData, options);
+    const updates = await updateGoogleSheets(dashboardData, webhookDaily, trialToPaidData, options);
 
     // Генерируем отчёт
     const report = generateReport(metrics, options);

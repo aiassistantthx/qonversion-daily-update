@@ -32,7 +32,7 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'qonversion_analytics',
   user: process.env.DB_USER || 'qonversion',
-  password: process.env.DB_PASSWORD || 'qonv_attr_2026',
+  password: process.env.DB_PASSWORD,
 });
 
 function sleep(ms) {
