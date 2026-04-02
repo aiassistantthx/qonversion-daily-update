@@ -561,7 +561,7 @@ router.get('/suggestions', async (req, res) => {
     let paramIndex = 5;
 
     if (ad_group_id) {
-      adGroupFilter = `AND st.ad_group_id = $${paramIndex}`;
+      adGroupFilter = `AND st.adgroup_id = $${paramIndex}`;
       params.push(ad_group_id);
       paramIndex++;
     }
@@ -569,9 +569,9 @@ router.get('/suggestions', async (req, res) => {
     const query = `
       WITH search_term_stats AS (
         SELECT
-          st.search_term_text,
-          st.ad_group_id,
-          ag.ad_group_name,
+          st.search_term,
+          st.adgroup_id,
+          ag.adgroup_name,
           c.campaign_id,
           c.campaign_name,
           SUM(st.impressions) as impressions,
@@ -581,15 +581,15 @@ router.get('/suggestions', async (req, res) => {
           CASE WHEN SUM(st.impressions) > 0 THEN SUM(st.taps)::float / SUM(st.impressions) ELSE 0 END as ttr,
           CASE WHEN SUM(st.taps) > 0 THEN SUM(st.installs)::float / SUM(st.taps) ELSE 0 END as cvr
         FROM apple_ads_search_terms st
-        JOIN apple_ads_adgroups ag ON st.ad_group_id = ag.ad_group_id
+        JOIN apple_ads_adgroups ag ON st.adgroup_id = ag.adgroup_id
         JOIN apple_ads_campaigns c ON ag.campaign_id = c.campaign_id
         WHERE st.impressions > 0
           ${adGroupFilter}
-        GROUP BY st.search_term_text, st.ad_group_id, ag.ad_group_name, c.campaign_id, c.campaign_name
+        GROUP BY st.search_term, st.adgroup_id, ag.adgroup_name, c.campaign_id, c.campaign_name
         HAVING SUM(st.impressions) >= $1 AND SUM(st.installs) >= $2
       ),
       existing_keywords AS (
-        SELECT DISTINCT LOWER(keyword_text) as keyword_text, ad_group_id
+        SELECT DISTINCT LOWER(keyword_text) as keyword_text, adgroup_id
         FROM apple_ads_keywords
       ),
       revenue_by_search AS (
@@ -602,9 +602,9 @@ router.get('/suggestions', async (req, res) => {
         GROUP BY LOWER(e.search_term)
       )
       SELECT
-        sts.search_term_text,
-        sts.ad_group_id,
-        sts.ad_group_name,
+        sts.search_term,
+        sts.adgroup_id,
+        sts.adgroup_name,
         sts.campaign_id,
         sts.campaign_name,
         sts.impressions,
@@ -622,8 +622,8 @@ router.get('/suggestions', async (req, res) => {
           ELSE 0
         END as conversion_rate
       FROM search_term_stats sts
-      LEFT JOIN existing_keywords ek ON LOWER(sts.search_term_text) = ek.keyword_text AND sts.ad_group_id = ek.ad_group_id
-      LEFT JOIN revenue_by_search r ON LOWER(sts.search_term_text) = r.search_term
+      LEFT JOIN existing_keywords ek ON LOWER(sts.search_term) = ek.keyword_text AND sts.adgroup_id = ek.adgroup_id
+      LEFT JOIN revenue_by_search r ON LOWER(sts.search_term) = r.search_term
       WHERE ek.keyword_text IS NULL
       ORDER BY COALESCE(r.conversions, 0) DESC, sts.installs DESC
       LIMIT $3 OFFSET $4
@@ -633,9 +633,9 @@ router.get('/suggestions', async (req, res) => {
 
     res.json({
       suggestions: result.rows.map(row => ({
-        search_term: row.search_term_text,
-        ad_group_id: row.ad_group_id,
-        ad_group_name: row.ad_group_name,
+        search_term: row.search_term,
+        ad_group_id: row.adgroup_id,
+        ad_group_name: row.adgroup_name,
         campaign_id: row.campaign_id,
         campaign_name: row.campaign_name,
         impressions: parseInt(row.impressions),
