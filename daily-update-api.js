@@ -24,6 +24,17 @@ const fs = require('fs');
 const path = require('path');
 const SheetsUpdater = require('./sheets-updater');
 
+// Load .env file
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, 'utf-8').split('\n').forEach(line => {
+    const match = line.match(/^([^#=]+)=(.*)$/);
+    if (match && !process.env[match[1].trim()]) {
+      process.env[match[1].trim()] = match[2].trim();
+    }
+  });
+}
+
 // ============ CONFIGURATION ============
 
 const CONFIG = {
@@ -53,10 +64,10 @@ const CONFIG = {
     containerName: 'rwwc84wcsgkc48g88wsoco4o',
     containerPort: 3000,
   },
-  // Базовая колонка (AMP = колонка 1030 = 26.02.2026)
+  // Базовая колонка (AMQ = колонка 1031 = 26.02.2026)
   // Используем UTC чтобы избежать проблем с DST
   baseDate: new Date(Date.UTC(2026, 1, 26)),
-  baseColumnIndex: 1030,
+  baseColumnIndex: 1031,
 };
 
 const { execSync } = require('child_process');
@@ -130,6 +141,142 @@ function parseApiDate(dateStr) {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
+// ============ VALIDATION ============
+
+// Проверяет что baseColumnIndex соответствует реальным данным в таблице
+// Возвращает { valid: true } или { valid: false, expected: X, actual: Y, suggestedFix: Z }
+async function validateBaseColumnIndex(updater) {
+  const baseCol = columnIndexToLetter(CONFIG.baseColumnIndex);
+  const headers = await updater.readRange(`${CONFIG.sheet}!${baseCol}1`);
+
+  if (!headers || !headers[0] || !headers[0][0]) {
+    return { valid: false, error: `No header found in column ${baseCol}` };
+  }
+
+  const headerValue = headers[0][0]; // e.g., "26.02"
+  const match = headerValue.match(/^(\d{1,2})\.(\d{1,2})$/);
+
+  if (!match) {
+    return { valid: false, error: `Invalid header format: ${headerValue}` };
+  }
+
+  const [, day, month] = match.map(Number);
+  const expectedDay = CONFIG.baseDate.getUTCDate();
+  const expectedMonth = CONFIG.baseDate.getUTCMonth() + 1;
+
+  if (day === expectedDay && month === expectedMonth) {
+    return { valid: true };
+  }
+
+  // Найдём правильный baseColumnIndex
+  // Ищем колонку с датой baseDate в диапазоне ±10 от текущего индекса
+  for (let offset = -10; offset <= 10; offset++) {
+    const testCol = columnIndexToLetter(CONFIG.baseColumnIndex + offset);
+    const testHeaders = await updater.readRange(`${CONFIG.sheet}!${testCol}1`);
+
+    if (testHeaders && testHeaders[0] && testHeaders[0][0]) {
+      const testMatch = testHeaders[0][0].match(/^(\d{1,2})\.(\d{1,2})$/);
+      if (testMatch) {
+        const [, testDay, testMonth] = testMatch.map(Number);
+        if (testDay === expectedDay && testMonth === expectedMonth) {
+          return {
+            valid: false,
+            error: `baseColumnIndex mismatch`,
+            expected: `${expectedDay}.${String(expectedMonth).padStart(2, '0')}`,
+            actual: headerValue,
+            suggestedFix: CONFIG.baseColumnIndex + offset,
+            currentIndex: CONFIG.baseColumnIndex
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    valid: false,
+    error: `Could not find column with date ${expectedDay}.${String(expectedMonth).padStart(2, '0')}`,
+    actual: headerValue
+  };
+}
+
+// Проверяет записанные данные после обновления
+async function validateWrittenData(updater, updates) {
+  if (updates.length === 0) return { valid: true, checked: 0 };
+
+  const errors = [];
+  const samplesToCheck = Math.min(5, updates.length); // Проверяем до 5 случайных значений
+  const indices = [];
+
+  // Берём первые, последние и случайные
+  indices.push(0);
+  if (updates.length > 1) indices.push(updates.length - 1);
+  if (updates.length > 2) indices.push(Math.floor(updates.length / 2));
+
+  for (const idx of indices) {
+    const update = updates[idx];
+    const actual = await updater.readRange(update.range);
+    const actualValue = actual?.[0]?.[0];
+
+    // Сравниваем (учитываем что числа могут быть строками)
+    const expectedStr = String(update.value);
+    const actualStr = String(actualValue || '');
+
+    // Для чисел сравниваем с округлением
+    const expectedNum = parseFloat(expectedStr.replace('%', ''));
+    const actualNum = parseFloat(actualStr.replace('%', '').replace(/,/g, ''));
+
+    if (isNaN(expectedNum) || isNaN(actualNum)) {
+      // Строковое сравнение
+      if (expectedStr !== actualStr) {
+        errors.push({ range: update.range, expected: update.value, actual: actualValue });
+      }
+    } else {
+      // Числовое сравнение с допуском 1%
+      if (Math.abs(expectedNum - actualNum) > Math.abs(expectedNum) * 0.01 + 1) {
+        errors.push({ range: update.range, expected: update.value, actual: actualValue });
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    checked: indices.length,
+    errors: errors
+  };
+}
+
+// Проверяет что заголовки последних колонок соответствуют расчёту
+async function validateRecentHeaders(updater, lastDate) {
+  const errors = [];
+
+  // Проверяем последние 3 дня
+  for (let i = 0; i < 3; i++) {
+    const checkDate = new Date(lastDate);
+    checkDate.setDate(checkDate.getDate() - i);
+
+    const expectedCol = findColumnIndexForDate(checkDate);
+    const colLetter = columnIndexToLetter(expectedCol);
+    const headers = await updater.readRange(`${CONFIG.sheet}!${colLetter}1`);
+
+    const expectedHeader = `${checkDate.getUTCDate()}.${String(checkDate.getUTCMonth() + 1).padStart(2, '0')}`;
+    const actualHeader = headers?.[0]?.[0] || '';
+
+    if (actualHeader !== expectedHeader) {
+      errors.push({
+        date: checkDate.toISOString().split('T')[0],
+        column: colLetter,
+        expected: expectedHeader,
+        actual: actualHeader
+      });
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
+
 function formatDate(date) {
   return date.toISOString().split('T')[0];
 }
@@ -143,7 +290,19 @@ const QONVERSION_API_URL = `https://api.qonversion.io/v1/analytics/${QONVERSION_
 // Gets container IP dynamically and uses wget from coolify-proxy
 function fetchViaSSH(endpoint) {
   const { host, key, containerName, containerPort } = CONFIG.ssh;
-  const fullContainerName = `${containerName}-085425930777`;
+
+  // Find container name dynamically (suffix changes after redeploy)
+  const findContainerCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker ps --format '{{.Names}}' | grep '^${containerName}-'"`;
+
+  let fullContainerName;
+  try {
+    fullContainerName = execSync(findContainerCmd, { encoding: 'utf-8', timeout: 10000 }).trim();
+    if (!fullContainerName) {
+      throw new Error('Container not found');
+    }
+  } catch (error) {
+    throw new Error(`Failed to find container: ${error.message}`);
+  }
 
   // Get container IP dynamically
   const getIpCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${host} "docker inspect ${fullContainerName} --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"`;
@@ -516,14 +675,11 @@ async function ensureSheetHasEnoughColumns(updater, maxDate, options) {
   return { added: columnsToAdd, copied: columnsToAdd };
 }
 
-async function updateGoogleSheets(dashboardData, webhookDaily, trialToPaidData, options) {
+async function updateGoogleSheets(updater, dashboardData, webhookDaily, trialToPaidData, options) {
   if (options.dryRun) {
     log('DRY RUN: Skipping Google Sheets update');
     return [];
   }
-
-  const updater = new SheetsUpdater(CONFIG.spreadsheetId);
-  await updater.init();
 
   const updates = [];
   const today = new Date();
@@ -660,6 +816,28 @@ async function main() {
 
   fs.mkdirSync(REPORT_DIR, { recursive: true });
 
+  // Создаём updater для валидации и записи
+  const updater = new SheetsUpdater(CONFIG.spreadsheetId);
+  await updater.init();
+
+  // ========== ВАЛИДАЦИЯ КОНФИГА ==========
+  log('Validating baseColumnIndex...');
+  const configValidation = await validateBaseColumnIndex(updater);
+  if (!configValidation.valid) {
+    if (configValidation.suggestedFix) {
+      log(`WARNING: baseColumnIndex mismatch detected!`);
+      log(`  Expected date: ${configValidation.expected}`);
+      log(`  Actual in column ${columnIndexToLetter(CONFIG.baseColumnIndex)}: ${configValidation.actual}`);
+      log(`  Auto-correcting: ${CONFIG.baseColumnIndex} → ${configValidation.suggestedFix}`);
+      CONFIG.baseColumnIndex = configValidation.suggestedFix;
+    } else {
+      log(`ERROR: ${configValidation.error}`);
+      throw new Error(`Config validation failed: ${configValidation.error}`);
+    }
+  } else {
+    log('Config OK');
+  }
+
   try {
     // Получаем данные из API
     const dashboardData = await fetchDashboardMain();
@@ -675,7 +853,37 @@ async function main() {
     const metrics = calculateUnitEconomics(dashboardData);
 
     // Обновляем Google Sheets
-    const updates = await updateGoogleSheets(dashboardData, webhookDaily, trialToPaidData, options);
+    const updates = await updateGoogleSheets(updater, dashboardData, webhookDaily, trialToPaidData, options);
+
+    // ========== ВАЛИДАЦИЯ ПОСЛЕ ЗАПИСИ ==========
+    if (updates.length > 0) {
+      log('Validating written data...');
+
+      // Проверяем записанные значения
+      const dataValidation = await validateWrittenData(updater, updates);
+      if (!dataValidation.valid) {
+        log(`WARNING: Data validation found ${dataValidation.errors.length} mismatches:`);
+        for (const err of dataValidation.errors) {
+          log(`  ${err.range}: expected ${err.expected}, got ${err.actual}`);
+        }
+      } else {
+        log(`Data validation OK (checked ${dataValidation.checked} samples)`);
+      }
+
+      // Проверяем заголовки дат
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const headerValidation = await validateRecentHeaders(updater, today);
+      if (!headerValidation.valid) {
+        log(`WARNING: Header validation found ${headerValidation.errors.length} mismatches:`);
+        for (const err of headerValidation.errors) {
+          log(`  Column ${err.column} (${err.date}): expected "${err.expected}", got "${err.actual}"`);
+        }
+        log(`This may indicate baseColumnIndex drift. Check CONFIG.baseColumnIndex.`);
+      } else {
+        log('Header validation OK');
+      }
+    }
 
     // Генерируем отчёт
     const report = generateReport(metrics, options);
