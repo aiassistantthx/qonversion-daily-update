@@ -4168,6 +4168,8 @@ router.get('/countries', async (req, res) => {
           COUNT(DISTINCT CASE WHEN e.event_name = 'Trial Started' THEN e.q_user_id END) as trials,
           COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted')
             AND e.product_id LIKE '%yearly%' AND e.refund = false THEN e.q_user_id END) as subscribers,
+          COUNT(DISTINCT CASE WHEN e.event_name IN ('Subscription Started', 'Trial Converted')
+            AND e.refund = false THEN e.q_user_id END) as all_paid_users,
           COALESCE(SUM(CASE WHEN e.refund = false THEN e.price_usd ELSE 0 END), 0) as revenue
         FROM user_countries uc
         LEFT JOIN events_v2 e ON uc.q_user_id = e.q_user_id
@@ -4181,6 +4183,7 @@ router.get('/countries', async (req, res) => {
         cm.users,
         cm.trials,
         cm.subscribers,
+        cm.all_paid_users,
         ROUND(cm.revenue::numeric, 2) as revenue,
         CASE
           WHEN cm.source = 'Apple Ads' AND ti.total_installs > 0 THEN
@@ -4192,6 +4195,11 @@ router.get('/countries', async (req, res) => {
             ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.subscribers, 0), 2)
           ELSE NULL
         END as cop,
+        CASE
+          WHEN cm.source = 'Apple Ads' AND cm.all_paid_users > 0 AND ti.total_installs > 0 THEN
+            ROUND(((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) / NULLIF(cm.all_paid_users, 0), 2)
+          ELSE NULL
+        END as cop_all,
         CASE
           WHEN cm.source = 'Apple Ads' AND ti.total_installs > 0 AND
                ((COALESCE(ci.installs, 0)::numeric / NULLIF(ti.total_installs, 0)) * ts.total_spend) > 0 THEN
