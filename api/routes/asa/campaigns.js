@@ -129,19 +129,24 @@ router.get('/', async (req, res) => {
     `);
     const alertsMap = new Map(alertsQuery.rows.map(a => [String(a.campaign_id), a]));
 
-    // Get cohort ROAS (D7, D30) for each campaign
-    const cohortRoasQuery = await db.query(`
+    // Get cohort metrics (COP D4/D7, ROAS D4/D7/D30) for each campaign
+    const cohortMetricsQuery = await db.query(`
       WITH spend_by_campaign AS (
         SELECT campaign_id::TEXT as campaign_id, SUM(spend) as total_spend
         FROM apple_ads_campaigns
         WHERE ${dateCondition}
         GROUP BY campaign_id
       ),
-      cohort_revenue AS (
+      cohort_data AS (
         SELECT
           campaign_id::TEXT as campaign_id,
+          -- Revenue by cohort window
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '4 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d4,
           SUM(CASE WHEN event_date - install_date <= INTERVAL '7 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d7,
-          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30
+          SUM(CASE WHEN event_date - install_date <= INTERVAL '30 days' AND refund = false THEN COALESCE(price_usd, 0) * 0.74 ELSE 0 END) as revenue_d30,
+          -- Subscribers by cohort window
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= INTERVAL '4 days' AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as subs_d4,
+          COUNT(DISTINCT CASE WHEN event_date - install_date <= INTERVAL '7 days' AND event_name IN ('Subscription Started', 'Trial Converted') THEN q_user_id END) as subs_d7
         FROM events_v2
         WHERE ${revenueCondition}
           AND campaign_id IS NOT NULL
@@ -149,18 +154,26 @@ router.get('/', async (req, res) => {
       )
       SELECT
         s.campaign_id,
+        s.total_spend,
+        -- ROAS
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d4, 0) / s.total_spend ELSE 0 END as roas_d4,
         CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d7, 0) / s.total_spend ELSE 0 END as roas_d7,
-        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d30, 0) / s.total_spend ELSE 0 END as roas_d30
+        CASE WHEN s.total_spend > 0 THEN COALESCE(r.revenue_d30, 0) / s.total_spend ELSE 0 END as roas_d30,
+        -- COP
+        CASE WHEN COALESCE(r.subs_d4, 0) > 0 THEN s.total_spend / r.subs_d4 ELSE NULL END as cop_d4,
+        CASE WHEN COALESCE(r.subs_d7, 0) > 0 THEN s.total_spend / r.subs_d7 ELSE NULL END as cop_d7,
+        COALESCE(r.subs_d4, 0) as subs_d4,
+        COALESCE(r.subs_d7, 0) as subs_d7
       FROM spend_by_campaign s
-      LEFT JOIN cohort_revenue r ON s.campaign_id = r.campaign_id
+      LEFT JOIN cohort_data r ON s.campaign_id = r.campaign_id
     `);
-    const cohortRoasMap = new Map(cohortRoasQuery.rows.map(c => [String(c.campaign_id), c]));
+    const cohortMetricsMap = new Map(cohortMetricsQuery.rows.map(c => [String(c.campaign_id), c]));
 
     // Enrich campaigns with performance data and budget alerts
     const enriched = filtered.map(campaign => {
       const perf = performanceMap.get(String(campaign.id));
       const alert = alertsMap.get(String(campaign.id));
-      const cohortRoas = cohortRoasMap.get(String(campaign.id));
+      const cohortMetrics = cohortMetricsMap.get(String(campaign.id));
 
       let budgetUsedPct = null;
       if (perf && perf.daily_budget > 0) {
@@ -185,8 +198,16 @@ router.get('/', async (req, res) => {
           ...perf,
           predicted_roas_365: predictedRoas365,
           trend_7d: trend7d,
-          roas_d7: cohortRoas ? parseFloat(cohortRoas.roas_d7) || 0 : 0,
-          roas_d30: cohortRoas ? parseFloat(cohortRoas.roas_d30) || 0 : 0
+          // Cohort ROAS
+          roas_d4: cohortMetrics ? parseFloat(cohortMetrics.roas_d4) || 0 : 0,
+          roas_d7: cohortMetrics ? parseFloat(cohortMetrics.roas_d7) || 0 : 0,
+          roas_d30: cohortMetrics ? parseFloat(cohortMetrics.roas_d30) || 0 : 0,
+          // Cohort COP
+          cop_d4: cohortMetrics ? parseFloat(cohortMetrics.cop_d4) || null : null,
+          cop_d7: cohortMetrics ? parseFloat(cohortMetrics.cop_d7) || null : null,
+          // Cohort subs
+          subs_d4: cohortMetrics ? parseInt(cohortMetrics.subs_d4) || 0 : 0,
+          subs_d7: cohortMetrics ? parseInt(cohortMetrics.subs_d7) || 0 : 0
         } : null,
         budgetAlert: alert ? {
           level: alert.alert_level,

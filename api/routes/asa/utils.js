@@ -64,25 +64,41 @@ function invalidateCache(entityType, entityId) {
  * Parse date filter from query params
  * @param {Object} query - req.query object
  * @returns {Object} - { dateFilter, dateCondition, revenueCondition }
+ *
+ * Supports:
+ * - days=30 — last 30 days
+ * - from=2026-01-01&to=2026-01-31 — specific range
+ * - cohort_offset=7 — exclude last N days (for closed cohort analysis)
  */
 function parseDateFilter(query) {
-  let { days = 7, from, to } = query;
+  let { days = 7, from, to, cohort_offset } = query;
   let dateFilter;
+
+  // Parse cohort_offset to exclude last N days
+  const offset = cohort_offset ? parseInt(cohort_offset) : 0;
 
   if (from && to) {
     dateFilter = { from, to };
   } else {
     days = parseInt(days) || 7;
-    dateFilter = { days };
+    dateFilter = { days, cohort_offset: offset };
   }
 
-  const dateCondition = dateFilter.days
-    ? `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-    : `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+  let dateCondition, revenueCondition;
 
-  const revenueCondition = dateFilter.days
-    ? `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`
-    : `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
+  if (dateFilter.days) {
+    if (offset > 0) {
+      // Exclude last N days for closed cohort analysis
+      dateCondition = `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days' AND date < CURRENT_DATE - INTERVAL '${offset} days'`;
+      revenueCondition = `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days' AND install_date < CURRENT_DATE - INTERVAL '${offset} days'`;
+    } else {
+      dateCondition = `date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`;
+      revenueCondition = `install_date >= CURRENT_DATE - INTERVAL '${dateFilter.days} days'`;
+    }
+  } else {
+    dateCondition = `date >= '${dateFilter.from}' AND date <= '${dateFilter.to}'`;
+    revenueCondition = `install_date >= '${dateFilter.from}' AND install_date <= '${dateFilter.to}'`;
+  }
 
   return { dateFilter, dateCondition, revenueCondition };
 }
