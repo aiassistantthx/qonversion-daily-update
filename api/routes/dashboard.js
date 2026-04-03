@@ -930,6 +930,9 @@ router.get('/marketing', async (req, res) => {
             WHERE days_to_event <= 7 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_7d,
           COUNT(DISTINCT q_user_id) FILTER (
+            WHERE days_to_event <= 14 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
+          ) as subs_14d,
+          COUNT(DISTINCT q_user_id) FILTER (
             WHERE days_to_event <= 30 AND (event_name = 'Trial Converted' OR (event_name = 'Subscription Started' AND product_id LIKE '%yearly%'))
           ) as subs_30d,
           COUNT(DISTINCT q_user_id) FILTER (
@@ -945,6 +948,7 @@ router.get('/marketing', async (req, res) => {
           -- Revenue within X days of install
           SUM(price_usd) FILTER (WHERE days_to_event <= 4 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_4d,
           SUM(price_usd) FILTER (WHERE days_to_event <= 7 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_7d,
+          SUM(price_usd) FILTER (WHERE days_to_event <= 14 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_14d,
           SUM(price_usd) FILTER (WHERE days_to_event <= 30 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_30d,
           SUM(price_usd) FILTER (WHERE days_to_event <= 60 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_60d,
           SUM(price_usd) FILTER (WHERE days_to_event <= 180 AND refund = false AND event_name IN ('Subscription Renewed', 'Subscription Started', 'Trial Converted')) as rev_180d,
@@ -959,12 +963,14 @@ router.get('/marketing', async (req, res) => {
         COALESCE(ca.cohort_age, 0) as cohort_age,
         COALESCE(ca.subs_4d, 0) as subs_4d,
         COALESCE(ca.subs_7d, 0) as subs_7d,
+        COALESCE(ca.subs_14d, 0) as subs_14d,
         COALESCE(ca.subs_30d, 0) as subs_30d,
         COALESCE(ca.subs_60d, 0) as subs_60d,
         COALESCE(ca.subs_180d, 0) as subs_180d,
         COALESCE(ca.subs_total, 0) as subs_total,
         COALESCE(ca.rev_4d, 0) as rev_4d,
         COALESCE(ca.rev_7d, 0) as rev_7d,
+        COALESCE(ca.rev_14d, 0) as rev_14d,
         COALESCE(ca.rev_30d, 0) as rev_30d,
         COALESCE(ca.rev_60d, 0) as rev_60d,
         COALESCE(ca.rev_180d, 0) as rev_180d,
@@ -984,6 +990,7 @@ router.get('/marketing', async (req, res) => {
       // Calculate COP at each age (only show if cohort is old enough)
       const cop4d = cohortAge >= 4 && row.subs_4d > 0 ? spend / row.subs_4d : null;
       const cop7d = cohortAge >= 7 && row.subs_7d > 0 ? spend / row.subs_7d : null;
+      const cop14d = cohortAge >= 14 && row.subs_14d > 0 ? spend / row.subs_14d : null;
       const cop30d = cohortAge >= 30 && row.subs_30d > 0 ? spend / row.subs_30d : null;
       const cop60d = cohortAge >= 60 && row.subs_60d > 0 ? spend / row.subs_60d : null;
       const cop180d = cohortAge >= 180 && row.subs_180d > 0 ? spend / row.subs_180d : null;
@@ -992,6 +999,7 @@ router.get('/marketing', async (req, res) => {
       // Calculate ROAS at each age using proceeds (sales * 0.78)
       const roas4d = cohortAge >= 4 && spend > 0 ? (parseFloat(row.rev_4d) * PROCEEDS_FACTOR) / spend : null;
       const roas7d = cohortAge >= 7 && spend > 0 ? (parseFloat(row.rev_7d) * PROCEEDS_FACTOR) / spend : null;
+      const roas14d = cohortAge >= 14 && spend > 0 ? (parseFloat(row.rev_14d) * PROCEEDS_FACTOR) / spend : null;
       const roas30d = cohortAge >= 30 && spend > 0 ? (parseFloat(row.rev_30d) * PROCEEDS_FACTOR) / spend : null;
       const roas60d = cohortAge >= 60 && spend > 0 ? (parseFloat(row.rev_60d) * PROCEEDS_FACTOR) / spend : null;
       const roas180d = cohortAge >= 180 && spend > 0 ? (parseFloat(row.rev_180d) * PROCEEDS_FACTOR) / spend : null;
@@ -1016,6 +1024,7 @@ router.get('/marketing', async (req, res) => {
       if (cohortAge >= 184 && roas180d) { roasForPrediction = roas180d; actualWindow = 180; }
       else if (cohortAge >= 64 && roas60d) { roasForPrediction = roas60d; actualWindow = 60; }
       else if (cohortAge >= 34 && roas30d) { roasForPrediction = roas30d; actualWindow = 30; }
+      else if (cohortAge >= 18 && roas14d) { roasForPrediction = roas14d; actualWindow = 14; }
       else if (cohortAge >= 11 && roas7d) { roasForPrediction = roas7d; actualWindow = 7; }
       else if (cohortAge >= 8 && roas4d) { roasForPrediction = roas4d; actualWindow = 4; }
       else { roasForPrediction = roasTotal; actualWindow = Math.min(cohortAge, 4); }
@@ -1047,10 +1056,10 @@ router.get('/marketing', async (req, res) => {
         month: row.month,
         spend,
         cohortAge,
-        cop: { d4: cop4d, d7: cop7d, d30: cop30d, d60: cop60d, d180: cop180d, total: copTotal, predicted: copPredicted },
-        roas: { d4: roas4d, d7: roas7d, d30: roas30d, d60: roas60d, d180: roas180d, total: roasTotal, predicted: roasPredicted },
-        subs: { d4: parseInt(row.subs_4d), d7: parseInt(row.subs_7d), d30: parseInt(row.subs_30d), d60: parseInt(row.subs_60d), d180: parseInt(row.subs_180d), total: parseInt(row.subs_total) },
-        revenue: { d4: parseFloat(row.rev_4d), d7: parseFloat(row.rev_7d), d30: parseFloat(row.rev_30d), d60: parseFloat(row.rev_60d), d180: parseFloat(row.rev_180d), total: parseFloat(row.rev_total) },
+        cop: { d4: cop4d, d7: cop7d, d14: cop14d, d30: cop30d, d60: cop60d, d180: cop180d, total: copTotal, predicted: copPredicted },
+        roas: { d4: roas4d, d7: roas7d, d14: roas14d, d30: roas30d, d60: roas60d, d180: roas180d, total: roasTotal, predicted: roasPredicted },
+        subs: { d4: parseInt(row.subs_4d), d7: parseInt(row.subs_7d), d14: parseInt(row.subs_14d), d30: parseInt(row.subs_30d), d60: parseInt(row.subs_60d), d180: parseInt(row.subs_180d), total: parseInt(row.subs_total) },
+        revenue: { d4: parseFloat(row.rev_4d), d7: parseFloat(row.rev_7d), d14: parseFloat(row.rev_14d), d30: parseFloat(row.rev_30d), d60: parseFloat(row.rev_60d), d180: parseFloat(row.rev_180d), total: parseFloat(row.rev_total) },
         paybackMonths,
         predictedPaybackMonths,
         isPaidBack,
